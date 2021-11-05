@@ -112,9 +112,9 @@ class Shape(object):
 class ShapeAO(Shape):
     def __init__(self):
         grid = [
-            'AAA',
+            'AA',
             'A',
-            'AAA'
+            'AA'
         ]
         super().__init__(grid)
 

@@ -18,11 +18,13 @@ class Game(object):
     def __init__(self, dt=datetime.date.today()) -> None:
         super().__init__()
         self.shapes = [ShapeAO(), ShapeG(), ShapeI(), ShapeL(), Shapel(), ShapeO(), ShapeS(), ShapeSS(), ShapeT(), ShapeZ()]
-        random.shuffle(self.shapes)
+        # random.shuffle(self.shapes)
         self.board = Board(build_mx(self.n, self.m), self.shapes)
         self.mark_date(dt)
         self.visited = set()
         self.cnt = 0
+        self.should_exit = False
+        self.wf = open(dt.strftime('%Y%m%d'), 'w')
     
     def mark_date(self, dt):
         weekday = dt.weekday()
@@ -42,17 +44,20 @@ class Game(object):
         else:
             self.board.b[7][1+weekday] = '*'
     
-    def solve(self):
-        self.try_put()
+    def solve(self, find_one_exit=True):
+        self.try_put(find_one_exit)
 
-    def try_put(self):
-        if len(self.board.remind_shapes) == 6:
+    def try_put(self, find_one_exit):
+        if False and len(self.board.remind_shapes) == 6:
             print(self.cnt)
             print(self)
             self.cnt = 0
         if len(self.board.remind_shapes) == 0:
-            print('solve!')
-            print(self)
+            # print('solve!')
+            # print(self)
+            self.save()
+            if find_one_exit:
+                self.should_exit = True
             return
         found_empty = False
         for x in range(self.n):
@@ -73,7 +78,9 @@ class Game(object):
                             self.board.remind_shapes = self.board.remind_shapes[:k] + self.board.remind_shapes[k+1:]
                             if self.board not in self.visited:
                                 self.visited.add(self.board)
-                                self.try_put()
+                                self.try_put(find_one_exit)
+                                if self.should_exit:
+                                    return
                             self.board.remind_shapes = self.board.remind_shapes[:k] + [shape] + self.board.remind_shapes[k:]
                             self.board.b = ori_b
     
@@ -98,6 +105,10 @@ class Game(object):
             if not succ:
                 break
         return succ, new_b
+    
+    def save(self):
+        self.wf.write(str(self))
+        self.wf.write('\n')
     
     def __str__(self):
         return '\n'.join(['{' + ''.join(row) + '}' for row in self.board.b])
