@@ -11,7 +11,7 @@ BLOCK = '*'
 
 class Game(object):
     board = None
-    shapes: List[Shape]  = [] # [shape, ...]
+    shapes: List[Shape] = []  # [shape, ...]
     n, m = 8, 7
     visited = set()
 
@@ -24,8 +24,9 @@ class Game(object):
         self.visited = set()
         self.cnt = 0
         self.should_exit = False
-        self.wf = open(dt.strftime('%Y%m%d'), 'w')
-    
+        self.wf = None
+        self.dt = dt
+
     def mark_date(self, dt):
         weekday = dt.weekday()
         month, day = dt.month, dt.day
@@ -43,7 +44,7 @@ class Game(object):
             self.board.b[6][4+weekday] = '*'
         else:
             self.board.b[7][1+weekday] = '*'
-    
+
     def solve(self, find_one_exit=True):
         self.try_put(find_one_exit)
 
@@ -53,8 +54,8 @@ class Game(object):
             print(self)
             self.cnt = 0
         if len(self.board.remind_shapes) == 0:
-            # print('solve!')
-            # print(self)
+            print('solve!')
+            print(self)
             self.save()
             if find_one_exit:
                 self.should_exit = True
@@ -83,7 +84,7 @@ class Game(object):
                                     return
                             self.board.remind_shapes = self.board.remind_shapes[:k] + [shape] + self.board.remind_shapes[k:]
                             self.board.b = ori_b
-    
+
     def fit_put(self, x, y, shape: Shape):
         if len(shape.grid) == 0:
             return True
@@ -105,11 +106,13 @@ class Game(object):
             if not succ:
                 break
         return succ, new_b
-    
+
     def save(self):
+        if self.wf is None:
+            self.wf = open(self.dt.strftime('%Y%m%d'), 'w')
         self.wf.write(str(self))
         self.wf.write('\n')
-    
+
     def __str__(self):
         return '\n'.join(['{' + ''.join(row) + '}' for row in self.board.b])
 
@@ -128,7 +131,7 @@ class Board(object):
 
     def __hash__(self) -> int:
         return hash(self.__str__())
-    
+
     def __eq__(self, other):
         if not isinstance(other, type(self)): return NotImplemented
         return self.__str__() == other.__str__()
