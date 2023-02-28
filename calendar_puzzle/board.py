@@ -27,7 +27,8 @@ class Game(object):
         self.wf = None
         self.dt = dt
 
-    def mark_date(self, dt):
+    def mark_date(self, dt=None):
+        dt = self.dt if dt is None else dt
         weekday = dt.weekday()
         month, day = dt.month, dt.day
         self.board.b[0][6] = '#'
@@ -36,24 +37,24 @@ class Game(object):
         self.board.b[7][1] = '#'
         self.board.b[7][2] = '#'
         self.board.b[7][3] = '#'
-        self.board.b[(month-1)//6][(month-1)%6] = '*'
-        self.board.b[2+(day-1)//7][(day-1)%7] = '*'
+        self.board.b[(month-1)//6][(month-1)%6] = BLOCK
+        self.board.b[2+(day-1)//7][(day-1)%7] = BLOCK
         if weekday == 6:
-            self.board.b[6][3] = '*'
+            self.board.b[6][3] = BLOCK
         elif 0 <= weekday <= 2:
-            self.board.b[6][4+weekday] = '*'
+            self.board.b[6][4+weekday] = BLOCK
         else:
-            self.board.b[7][1+weekday] = '*'
+            self.board.b[7][1+weekday] = BLOCK
 
     def solve(self, find_one_exit=True):
         self.try_put(find_one_exit)
 
     def try_put(self, find_one_exit):
-        if False and len(self.board.remind_shapes) == 6:
+        if False and len(self.board.remaining_shapes) == 6:
             print(self.cnt)
             print(self)
             self.cnt = 0
-        if len(self.board.remind_shapes) == 0:
+        if len(self.board.remaining_shapes) == 0:
             print('solve!')
             print(self)
             self.save()
@@ -70,19 +71,19 @@ class Game(object):
                 break
         for i in range(self.n):
             for j in range(self.m):
-                for k, shape in enumerate(self.board.remind_shapes):
+                for k, shape in enumerate(self.board.remaining_shapes):
                     for ss in shape.all_shapes():
                         succ, new_b = self.fit_put(i, j, ss)
                         if new_b[x][y] != ' ' and succ:
                             self.cnt += 1
                             self.board.b, ori_b = new_b, copy.deepcopy(self.board.b)
-                            self.board.remind_shapes = self.board.remind_shapes[:k] + self.board.remind_shapes[k+1:]
+                            self.board.remaining_shapes = self.board.remaining_shapes[:k] + self.board.remaining_shapes[k+1:]
                             if self.board not in self.visited:
                                 self.visited.add(self.board)
                                 self.try_put(find_one_exit)
                                 if self.should_exit:
                                     return
-                            self.board.remind_shapes = self.board.remind_shapes[:k] + [shape] + self.board.remind_shapes[k:]
+                            self.board.remaining_shapes = self.board.remaining_shapes[:k] + [shape] + self.board.remaining_shapes[k:]
                             self.board.b = ori_b
 
     def fit_put(self, x, y, shape: Shape):
@@ -119,15 +120,15 @@ class Game(object):
 
 class Board(object):
     b = EMPTY_SHAPE
-    remind_shapes = []
+    remaining_shapes = []
 
-    def __init__(self, b, remind_shapes) -> None:
+    def __init__(self, b, remaining_shapes) -> None:
         super().__init__()
-        self.b, self.remind_shapes = b, remind_shapes
+        self.b, self.remaining_shapes = b, remaining_shapes
 
     def __str__(self):
         board_str = '\n'.join(['{' + ''.join(row) + '}' for row in self.b])
-        return f'{board_str}\nwith remind shapes\n' + '\n'.join(map(str, sorted(self.remind_shapes)))
+        return f'{board_str}\nwith remaining shapes\n' + '\n'.join(map(str, sorted(self.remaining_shapes)))
 
     def __hash__(self) -> int:
         return hash(self.__str__())
