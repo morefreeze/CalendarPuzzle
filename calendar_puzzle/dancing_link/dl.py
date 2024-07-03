@@ -11,13 +11,16 @@ class Node:
         self.down = self
         self.left = self
         self.right = self
-        self.size = 0
+        self.head = self
+        self.size = 0 # only col head has size
 
 def append_col(col_head, new_node):
+    new_node.head = col_head
     new_node.up = col_head.up
     new_node.down = col_head
     col_head.up.down = new_node
     col_head.up = new_node
+    col_head.size += 1
 
 def append_row(first, new_node):
     new_node.right = first
@@ -55,20 +58,18 @@ class Dlx:
                         first = new_node
                     append_col(col_node, new_node)
                     append_row(first, new_node)
-                    
-                    col_node.size += 1
         self.print_dlx()
 
     def search(self, k=0):
         if self.head.right == self.head:
-            yield self.solution
+            yield self.solution.copy()
             return
 
         col = self.choose_column()
         self.cover(col)
         row = col.down
         while row != col:
-            self.solution.append(row.name)
+            self.solution.append(row)
             j = row.right
             while j != row:
                 self.cover(j.head)
@@ -79,14 +80,15 @@ class Dlx:
             while j != row:
                 self.uncover(j.head)
                 j = j.left
+            row = row.down
         self.uncover(col)
 
     def choose_column(self):
         col = self.head.right
         min_value = float('inf')
         for node in self.iter_columns():
-            if node.name < min_value:
-                min_value = node.name
+            if node.size < min_value:
+                min_value = node.size
                 col = node
         return col
 
@@ -96,31 +98,31 @@ class Dlx:
             yield node
             node = node.right
 
-    def cover(self, col):
-        col.left.right = col.right
-        col.right.left = col.left
-        row = col.down
-        while row != col:
+    def cover(self, col_head: Node):
+        col_head.left.right = col_head.right
+        col_head.right.left = col_head.left
+        row = col_head.down
+        while row != col_head:
             j = row.right
             while j != row:
                 j.down.up = j.up
                 j.up.down = j.down
-                j.head.value -= 1
+                j.head.size -= 1
                 j = j.right
             row = row.down
 
-    def uncover(self, col):
-        row = col.up
-        while row != col:
+    def uncover(self, col_head: Node):
+        row = col_head.up
+        while row != col_head:
             j = row.left
             while j != row:
-                j.head.value += 1
+                j.head.size += 1
                 j.down.up = j
                 j.up.down = j
                 j = j.left
             row = row.up
-        col.left.right = col
-        col.right.left = col
+        col_head.left.right = col_head
+        col_head.right.left = col_head
 
     def print_dlx(self):
         """
