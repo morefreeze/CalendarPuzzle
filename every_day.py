@@ -1,7 +1,7 @@
 import datetime
 from tqdm import tqdm
 from calendar_puzzle.board import Game
-from calendar_puzzle.shape import Shape, ShapeS, ShapeSS
+from calendar_puzzle.shape import Shape, ShapeS, ShapeN
 
 if __name__ == '__main__':
     dt = datetime.date.today()

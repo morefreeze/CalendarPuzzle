@@ -109,12 +109,12 @@ class Shape(object):
     def __lt__(self, rhs):
         return self.name < rhs.name
 
-class ShapeAO(Shape):
+class ShapeU(Shape):
     def __init__(self):
         grid = [
-            'AA',
-            'A',
-            'AA'
+            'UU',
+            'U',
+            'UU'
         ]
         super().__init__(grid)
 
@@ -150,12 +150,12 @@ class Shapel(Shape):
         ]
         super().__init__(grid)
 
-class ShapeO(Shape):
+class ShapeQ(Shape):
     def __init__(self):
         grid = [
-            'O',
-            'OO',
-            'OO',
+            'Q',
+            'QQ',
+            'QQ',
         ]
         super().__init__(grid)
 
@@ -167,11 +167,11 @@ class ShapeS(Shape):
         ]
         super().__init__(grid)
 
-class ShapeSS(Shape):
+class ShapeN(Shape):
     def __init__(self):
         grid = [
-            '  DD',
-            'DDD',
+            '  NN',
+            'NNN',
         ]
         super().__init__(grid)
 

@@ -3,8 +3,8 @@ import random
 import copy
 from typing import List
 
-from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeAO, ShapeG, ShapeI, ShapeL, Shapel,
-                                   ShapeO, ShapeS, ShapeSS, ShapeT, ShapeZ,
+from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeG, ShapeI, ShapeL, Shapel,
+                                   ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
 
 BLOCK = '*'
@@ -17,7 +17,7 @@ class Game(object):
 
     def __init__(self, dt=datetime.date.today()) -> None:
         super().__init__()
-        self.shapes = [ShapeAO(), ShapeG(), ShapeI(), ShapeL(), Shapel(), ShapeO(), ShapeS(), ShapeSS(), ShapeT(), ShapeZ()]
+        self.shapes = [ShapeU(), ShapeG(), ShapeI(), ShapeL(), Shapel(), ShapeQ(), ShapeS(), ShapeN(), ShapeT(), ShapeZ()]
         # random.shuffle(self.shapes)
         self.board = Board(build_mx(self.n, self.m), self.shapes)
         self.mark_date(dt)
