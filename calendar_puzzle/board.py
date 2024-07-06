@@ -1,7 +1,7 @@
 import datetime
 import random
 import copy
-from typing import List
+from typing import List, Tuple
 
 from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeG, ShapeI, ShapeL, Shapel,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
@@ -86,9 +86,9 @@ class Game(object):
                             self.board.remaining_shapes = self.board.remaining_shapes[:k] + [shape] + self.board.remaining_shapes[k:]
                             self.board.b = ori_b
 
-    def fit_put(self, x, y, shape: Shape):
+    def fit_put(self, x, y: int, shape: Shape) -> Tuple[bool, list[list]]:
         if len(shape.grid) == 0:
-            return True
+            return True, self.board.b
         n, m = len(shape.grid), len(shape.grid[0])
         new_b = copy.deepcopy(self.board.b)
         succ = True

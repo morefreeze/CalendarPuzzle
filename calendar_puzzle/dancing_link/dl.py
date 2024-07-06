@@ -27,7 +27,7 @@ def append_row(first, new_node):
     new_node.left = first.left
     first.left.right = first.left = new_node
 
-cap = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+cap = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 # implement dancing link basic data struct
 class Dlx:
     # build dancing link from matrix must at least one row and one column, its value should be 0 or 1
@@ -45,7 +45,7 @@ class Dlx:
             self.head.left.right = node
             self.head.left = node
 
-        self.print_dlx()
+        # self.print_dlx()
 
         for i in range(n):
             prev = None
@@ -58,7 +58,7 @@ class Dlx:
                         first = new_node
                     append_col(col_node, new_node)
                     append_row(first, new_node)
-        self.print_dlx()
+        # self.print_dlx()
 
     def search(self, k=0):
         if self.head.right == self.head:
