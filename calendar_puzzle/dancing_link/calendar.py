@@ -1,16 +1,20 @@
 # generate each shape which put in a board, present it as a row of dancing link
 # convert matrix to an array and use it as a row of dancing link
 import datetime
+from itertools import zip_longest
 from calendar_puzzle.board import Board, Game
-from calendar_puzzle.dancing_link.dl import Dlx
+from calendar_puzzle.dancing_link.dl import Dlx, Node
 from calendar_puzzle.shape import Shape
 
 
 class FasterGame(Game):
     def __init__(self, dt=datetime.date.today()) -> None:
         super().__init__(dt)
-        mx = [row for row in self.gen_shape_in_board()]
-        self.dlx = Dlx(mx)
+        mx, row_names = [], ['head']
+        for row, row_name in self.gen_shape_in_board():
+            mx.append(row)
+            row_names.append(row_name)
+        self.dlx = Dlx(mx, row_names)
         
     def gen_shape_in_board(self):
         shape_n = len(self.board.remaining_shapes)
@@ -30,14 +34,26 @@ class FasterGame(Game):
                             if row_int not in row_visit:
                                 row_visit.add(row_int)
                                 row_arr = fill_up_lead_zeros(int2arr(row_int), nn)
-                                yield row_arr
+                                row_name = '\n'.join([''.join(row) for row in new_b])
+                                yield row_arr, row_name
 
     def solve(self, find_one_exit=True):
         for solution in self.dlx.search():
-            print(solution)
+            b_str = ''
+            for step in solution:
+                new_b_str = self.dlx.row_names[step.coordinate[0]]
+                if len(b_str) == 0:
+                    b_str = list(new_b_str)
+                    continue
+                assert(len(b_str) == len(new_b_str))
+                for i in range(len(b_str)):
+                    if b_str[i] != new_b_str[i] and b_str[i] == ' ':
+                        b_str[i] = new_b_str[i]
+            print(''.join(b_str))
             if find_one_exit:
                 return
-            
+
+int2board: dict[int, list[list]] = dict()
 def board_k2int(b: list[list], k: int, ss: Shape, n: int) -> int:
     # convert board matrix to an array and concat k to it
     # to form a row of dancing link
@@ -51,7 +67,17 @@ def board_k2int(b: list[list], k: int, ss: Shape, n: int) -> int:
             if b[i][j] == ss.name:
                 result |= p
             p <<= 1
+    int2board[result] = b.copy()
     return result
+
+def node2board(node: Node) -> list[list]:
+    result = 1 << (node.coordinate[1]-1)
+    head = node
+    node = head.right
+    while node != head:
+        result |= 1 << (node.coordinate[1] - 1)
+        node = node.right
+    return int2board[result]
 
 def int2arr(k:int) -> list[int]:
     return [int(c) for c in bin(k)[2:]]

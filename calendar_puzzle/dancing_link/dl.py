@@ -31,11 +31,13 @@ cap = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 # implement dancing link basic data struct
 class Dlx:
     # build dancing link from matrix must at least one row and one column, its value should be 0 or 1
-    def __init__(self, mx):
+    def __init__(self, mx, row_names=None):
         n, m = len(mx), len(mx[0])
         self.head = Node((0,0), "head")
         self.nodes: dict[int, Node] = {}
-        self.solution = []
+        self.solution: list[Node] = []
+        self.row_names = [f'{i}' for i in range(n+1)] if row_names is None else row_names
+        assert(len(row_names) == n+1)
 
         for j in range(m):
             node = Node((0, j+1), f"h{cap[j]}")
