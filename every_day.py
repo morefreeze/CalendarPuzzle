@@ -7,6 +7,7 @@ from calendar_puzzle.shape import Shape, ShapeS, ShapeN
 if __name__ == '__main__':
     dt = datetime.date.today()
     for i in tqdm(range(30)):
+        print()
         # g = Game(dt=dt)
         g = FasterGame(dt=dt)
         # print(g.board)
