@@ -1,7 +1,5 @@
 from collections import defaultdict
 
-from pyparsing import col
-
 
 class Node:
     def __init__(self, coordinate, name):
