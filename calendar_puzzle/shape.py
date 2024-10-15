@@ -118,12 +118,12 @@ class ShapeU(Shape):
         ]
         super().__init__(grid)
 
-class ShapeG(Shape):
+class ShapeY(Shape):
     def __init__(self):
         grid = [
-            'GGG',
-            'G',
-            'G'
+            'YYY',
+            'Y',
+            'Y'
         ]
         super().__init__(grid)
 

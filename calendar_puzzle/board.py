@@ -6,7 +6,7 @@ from typing import List, Tuple
 from colorama import init, Fore
 init(autoreset=True)
 
-from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeG, ShapeI, ShapeL, Shapel,
+from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeY, ShapeI, ShapeL, Shapel,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
 
@@ -35,7 +35,7 @@ class Game(object):
 
     def __init__(self, dt=datetime.date.today()) -> None:
         super().__init__()
-        self.shapes = [ShapeU(), ShapeG(), ShapeI(), ShapeL(), Shapel(), ShapeQ(), ShapeS(), ShapeN(), ShapeT(), ShapeZ()]
+        self.shapes = [ShapeU(), ShapeY(), ShapeI(), ShapeL(), Shapel(), ShapeQ(), ShapeS(), ShapeN(), ShapeT(), ShapeZ()]
         # random.shuffle(self.shapes)
         self.board = Board(build_mx(self.n, self.m), self.shapes)
         self.mark_date(dt)
