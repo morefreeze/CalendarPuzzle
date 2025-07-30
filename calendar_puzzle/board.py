@@ -3,11 +3,29 @@ import random
 import copy
 from typing import List, Tuple
 
+from colorama import init, Fore
+init(autoreset=True)
+
 from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeG, ShapeI, ShapeL, Shapel,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
 
 BLOCK = '*'
+
+COLOR_MAP = {
+    'U': Fore.RED,
+    'G': Fore.GREEN,
+    'I': Fore.BLUE,
+    'L': Fore.MAGENTA,
+    'l': Fore.CYAN,
+    'Q': Fore.YELLOW,
+    'S': Fore.WHITE,
+    'N': Fore.LIGHTRED_EX,
+    'T': Fore.LIGHTGREEN_EX,
+    'Z': Fore.LIGHTMAGENTA_EX,
+    '*': Fore.LIGHTBLACK_EX,
+    '#': Fore.LIGHTBLACK_EX
+}
 
 class Game(object):
     board = None
@@ -127,8 +145,18 @@ class Board(object):
         self.b, self.remaining_shapes = b, remaining_shapes
 
     def __str__(self):
-        board_str = '\n'.join(['{' + ''.join(row) + '}' for row in self.b])
-        return f'{board_str}\nwith remaining shapes\n' + '\n'.join(map(str, sorted(self.remaining_shapes)))
+        board_rows = []
+        for row in self.b:
+            colored_chars = []
+            for char in row:
+                if char in COLOR_MAP:
+                    colored_chars.append(COLOR_MAP[char] + char)
+                else:
+                    colored_chars.append(char)
+            board_rows.append('{' + ''.join(colored_chars) + '}')
+        board_str = '\n'.join(board_rows)
+        remaining_shapes_str = '\n'.join(map(str, sorted(self.remaining_shapes)))
+        return f'{board_str}\nwith remaining shapes\n{remaining_shapes_str}'
 
     def __hash__(self) -> int:
         return hash(self.__str__())

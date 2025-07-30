@@ -2,9 +2,10 @@
 # convert matrix to an array and use it as a row of dancing link
 import datetime
 from itertools import zip_longest
-from calendar_puzzle.board import Board, Game
+from calendar_puzzle.board import Board, Game, COLOR_MAP
 from calendar_puzzle.dancing_link.dl import Dlx, Node
 from calendar_puzzle.shape import Shape
+from colorama import Fore
 
 
 class FasterGame(Game):
@@ -49,7 +50,11 @@ class FasterGame(Game):
                 for i in range(len(b_str)):
                     if b_str[i] != new_b_str[i] and b_str[i] == ' ':
                         b_str[i] = new_b_str[i]
-            print(''.join(b_str))
+            colored_output = []
+            for char in b_str:
+                color = COLOR_MAP.get(char, Fore.WHITE)
+                colored_output.append(f"{color}{char}{Fore.RESET}")
+            print(''.join(colored_output))
             if find_one_exit:
                 return
 
