@@ -8,6 +8,8 @@ const DraggableBlock = ({
   color = 'lightblue', 
   shape = [[1]] 
 }) => {
+  const CELL_SIZE = 20; // 与网格中的CELL_SIZE保持一致的比例
+  
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'BLOCK',
     item: { id, label, color, shape },
@@ -23,10 +25,10 @@ const DraggableBlock = ({
           <div 
             key={cellIndex} 
             style={{
-              width: '20px', 
-              height: '20px', 
+              width: `${CELL_SIZE}px`, 
+              height: `${CELL_SIZE}px`, 
               backgroundColor: cell ? color : 'transparent',
-              border: '1px solid black'
+              border: cell ? '1px solid black' : '1px solid transparent'
             }} 
           />
         ))}
@@ -38,13 +40,14 @@ const DraggableBlock = ({
     <div
       ref={drag}
       style={{
-        backgroundColor: 'lightblue',
-        border: '1px solid black',
+        backgroundColor: '#f0f0f0',
+        border: '1px solid #333',
         opacity: isDragging ? 0.5 : 1,
         cursor: 'move',
         display: 'inline-block',
         padding: '5px',
-        margin: '5px'
+        margin: '5px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}
     >
       {renderBlockShape()}

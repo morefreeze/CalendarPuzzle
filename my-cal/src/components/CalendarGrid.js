@@ -10,16 +10,13 @@ const CalendarGrid = () => {
   const [, drop] = useDrop({
     accept: 'BLOCK',
     drop: (item, monitor) => {
-      const gridRect = gridRef.current.getBoundingClientRect();
       const dropResult = monitor.getDropResult();
-      
       if (dropResult) {
         const newBlock = {
           ...item,
           x: dropResult.x,
           y: dropResult.y,
-          gridOffsetX: gridRect.left,
-          gridOffsetY: gridRect.top
+          section: dropResult.section
         };
         setDroppedBlocks(prev => [...prev, newBlock]);
       }
@@ -31,13 +28,14 @@ const CalendarGrid = () => {
   const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   const CELL_SIZE = 70;
+  const GAP_SIZE = 2;
 
   const renderGrid = () => {
     const grid = [];
 
-    // 月份行
+    // 月份行 - 第0行
     grid.push(
-      months.map((month, index) => (
+      months.slice(0, 12).map((month, index) => (
         <GridCell 
           key={`month-${index}`} 
           label={month} 
@@ -45,29 +43,27 @@ const CalendarGrid = () => {
           x={index}
           y={0}
           canDrop={true}
-          drop={drop}
         />
       ))
     );
 
-    // 日期行
+    // 日期行 - 第1行
     grid.push(
-      days.map((day, index) => (
+      days.slice(0, 31).map((day, index) => (
         <GridCell 
           key={`day-${index}`} 
-          label={day} 
+          label={day.toString()} 
           section="days"
           x={index}
           y={1}
           canDrop={true}
-          drop={drop}
         />
       ))
     );
 
-    // 星期行
+    // 星期行 - 第2行
     grid.push(
-      weekdays.map((day, index) => (
+      weekdays.slice(0, 7).map((day, index) => (
         <GridCell 
           key={`weekday-${index}`} 
           label={day} 
@@ -75,7 +71,6 @@ const CalendarGrid = () => {
           x={index}
           y={2}
           canDrop={true}
-          drop={drop}
         />
       ))
     );
@@ -87,49 +82,41 @@ const CalendarGrid = () => {
     {
       id: 'I-block',
       label: 'I',
-      color: '#00FFFF', // 青色
-      shape: [
-        [1, 1, 1, 1]  // 长条形
-      ]
+      color: '#00FFFF',
+      shape: [[1, 1, 1, 1]]
     },
     {
       id: 'O-block',
       label: 'O',
-      color: '#FFFF00', // 黄色
-      shape: [
-        [1, 1],
-        [1, 1]  // 正方形
-      ]
+      color: '#FFFF00',
+      shape: [[1, 1], [1, 1]]
     },
     {
       id: 'T-block',
       label: 'T',
-      color: '#800080', // 紫色
-      shape: [
-        [0, 1, 0],
-        [1, 1, 1]  // T形
-      ]
+      color: '#800080',
+      shape: [[0, 1, 0], [1, 1, 1]]
     },
     {
       id: 'L-block',
       label: 'L',
-      color: '#FFA500', // 橙色
-      shape: [
-        [1, 0],
-        [1, 0],
-        [1, 1]  // L形
-      ]
+      color: '#FFA500',
+      shape: [[1, 0], [1, 0], [1, 1]]
     },
     {
       id: 'S-block',
       label: 'S',
-      color: '#00FF00', // 绿色
-      shape: [
-        [0, 1, 1],
-        [1, 1, 0]  // S形
-      ]
+      color: '#00FF00',
+      shape: [[0, 1, 1], [1, 1, 0]]
     }
   ];
+
+  // 计算块在网格中的精确位置
+  const calculateBlockPosition = (block) => {
+    const left = block.x * (CELL_SIZE + GAP_SIZE);
+    const top = block.y * (CELL_SIZE + GAP_SIZE);
+    return { left, top };
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -141,51 +128,63 @@ const CalendarGrid = () => {
         style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(7, 70px)', 
-          gap: '2px',
+          gap: `${GAP_SIZE}px`,
           marginBottom: '20px',
-          position: 'relative'
+          position: 'relative',
+          border: '2px solid #333',
+          padding: '10px'
         }}
       >
         {renderGrid().flat()}
-        {droppedBlocks.map((block, index) => (
-          <div 
-            key={`dropped-${index}`}
-            style={{
-              position: 'absolute',
-              left: block.x * CELL_SIZE,
-              top: block.y * CELL_SIZE,
-              width: block.shape[0].length * CELL_SIZE,  // 使用 CELL_SIZE 而不是 BLOCK_CELL_SIZE
-              height: block.shape.length * CELL_SIZE,    // 使用 CELL_SIZE 而不是 BLOCK_CELL_SIZE
-              backgroundColor: block.color,
-              opacity: 0.8,
-              display: 'flex',
-              flexDirection: 'column',
-              zIndex: 10,  // 添加 z-index 确保块在网格上方
-              pointerEvents: 'none'  // 防止块阻挡后续拖放
-            }}
-          >
-          {block.shape.map((row, rowIndex) => (
-          <div key={rowIndex} style={{ display: 'flex' }}>
-            {row.map((cell, cellIndex) => (
-              cell ? (
-                <div 
-                  key={cellIndex} 
-                  style={{
-                    width: `${CELL_SIZE}px`,
-                    height: `${CELL_SIZE}px`,
-                    backgroundColor: block.color,
-                    border: '1px solid rgba(0,0,0,0.2)'
-                  }} 
-                />
-              ) : null
-            ))}
-          </div>
-        ))}
-        </div>
-      ))}
+        
+        {droppedBlocks.map((block, index) => {
+          const position = calculateBlockPosition(block);
+          return (
+            <div 
+              key={`dropped-${index}`}
+              style={{
+                position: 'absolute',
+                left: position.left,
+                top: position.top,
+                width: block.shape[0].length * CELL_SIZE,
+                height: block.shape.length * CELL_SIZE,
+                backgroundColor: 'transparent',
+                pointerEvents: 'none',
+                zIndex: 10
+              }}
+            >
+              {block.shape.map((row, rowIndex) => (
+                <div key={rowIndex} style={{ display: 'flex' }}>
+                  {row.map((cell, cellIndex) => (
+                    cell ? (
+                      <div 
+                        key={cellIndex} 
+                        style={{
+                          width: `${CELL_SIZE}px`,
+                          height: `${CELL_SIZE}px`,
+                          backgroundColor: block.color,
+                          border: '1px solid rgba(0,0,0,0.3)',
+                          boxSizing: 'border-box'
+                        }} 
+                      />
+                    ) : (
+                      <div 
+                        key={cellIndex} 
+                        style={{
+                          width: `${CELL_SIZE}px`,
+                          height: `${CELL_SIZE}px`
+                        }} 
+                      />
+                    )
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
       
-      <div style={{ display: 'flex', gap: '10px' }}>
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         {blockTypes.map(block => (
           <DraggableBlock 
             key={block.id} 

@@ -1,20 +1,20 @@
 import React from 'react';
 import { useDrop } from 'react-dnd';
 
-const GridCell = ({ label, section, x, y, canDrop = false, drop }) => {
+const GridCell = ({ label, section, x, y, canDrop = false }) => {
   const sectionColors = {
-    'months': '#FFB6C1',      // 浅粉色
-    'days': '#90EE90',        // 浅绿色
-    'weekdays': '#87CEFA',    // 浅蓝色
-    'main-grid': '#D3D3D3',   // 浅灰色
-    'extra-block': '#F08080'  // 浅珊瑚色
+    'months': '#FFB6C1',
+    'days': '#90EE90',
+    'weekdays': '#87CEFA',
+    'main-grid': '#D3D3D3',
+    'extra-block': '#F08080'
   };
 
   const [{ isOver, canDropHere }, dropRef] = useDrop({
     accept: 'BLOCK',
     drop: (item, monitor) => {
       if (canDrop) {
-        return { x, y };
+        return { x, y, section };
       }
       return undefined;
     },
@@ -32,7 +32,8 @@ const GridCell = ({ label, section, x, y, canDrop = false, drop }) => {
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: sectionColors[section] || '#FFFFFF',
-    opacity: isOver && canDropHere ? 0.5 : 1
+    opacity: isOver && canDropHere ? 0.5 : 1,
+    cursor: canDrop ? 'pointer' : 'default'
   };
 
   return (
