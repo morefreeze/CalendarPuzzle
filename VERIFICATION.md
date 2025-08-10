@@ -44,4 +44,4 @@ After the application is running, you can test the new features and bug fixes.
 ### 3.3. Drag Preview
 
 - **Action:** Drag any block over the calendar grid without dropping it.
-- **Expected Behavior:** As you move the block over the grid, a semi-transparent "ghost" version of the block should appear on the grid, showing you exactly where it will be placed if you drop it. This preview should follow your cursor in real-time. When you drop the block, the preview should disappear and be replaced by the solid block. If you drag the block away from the grid, the preview should disappear.
+- **Expected Behavior:** As you move the block over the grid, a semi-transparent "ghost" version of the block should appear on the grid, showing you exactly where it will be placed if you drop it. This preview should follow your cursor in real-time. When you drop the block, the preview should disappear and be replaced by the solid block. **Crucially, the block must remain in its new position on the grid and not snap back to its starting point.** If you drag the block away from the grid, the preview should disappear.

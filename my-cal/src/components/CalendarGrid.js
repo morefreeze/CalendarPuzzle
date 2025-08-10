@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useDrop } from 'react-dnd';
 import GridCell from './GridCell';
 import DraggableBlock from './DraggableBlock';
@@ -11,7 +11,7 @@ const CalendarGrid = () => {
   const [previewBlock, setPreviewBlock] = useState(null);
   const gridRef = useRef(null);
 
-  const calculateDropPosition = (item, monitor) => {
+  const calculateDropPosition = useCallback((item, monitor) => {
     if (!gridRef.current) {
       return null;
     }
@@ -37,9 +37,9 @@ const CalendarGrid = () => {
       x: gridX - blockCellOffsetX,
       y: gridY - blockCellOffsetY,
     };
-  };
+  }, []);
 
-  const [, drop] = useDrop({
+  const [, drop] = useDrop(() => ({
     accept: 'BLOCK',
     drop: (item, monitor) => {
       const position = calculateDropPosition(item, monitor);
@@ -65,7 +65,7 @@ const CalendarGrid = () => {
         }
       }
     }
-  });
+  }), [calculateDropPosition, previewBlock]);
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const days = Array.from({length: 31}, (_, i) => i + 1);
