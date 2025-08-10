@@ -3,6 +3,9 @@ import { useDrop } from 'react-dnd';
 import GridCell from './GridCell';
 import DraggableBlock from './DraggableBlock';
 
+const CELL_SIZE = 70;
+const GAP_SIZE = 2;
+
 const CalendarGrid = () => {
   const [droppedBlocks, setDroppedBlocks] = useState([]);
   const gridRef = useRef(null);
@@ -10,25 +13,46 @@ const CalendarGrid = () => {
   const [, drop] = useDrop({
     accept: 'BLOCK',
     drop: (item, monitor) => {
-      const dropResult = monitor.getDropResult();
-      if (dropResult) {
-        const newBlock = {
-          ...item,
-          x: dropResult.x,
-          y: dropResult.y,
-          section: dropResult.section
-        };
-        setDroppedBlocks(prev => [...prev, newBlock]);
+      if (!gridRef.current) {
+        return;
       }
+      const gridRect = gridRef.current.getBoundingClientRect();
+      const clientOffset = monitor.getClientOffset();
+
+      const initialClientOffset = monitor.getInitialClientOffset();
+      const initialSourceClientOffset = monitor.getInitialSourceClientOffset();
+
+      if (!clientOffset || !initialClientOffset || !initialSourceClientOffset) {
+        return;
+      }
+
+      const xPos = clientOffset.x - gridRect.left;
+      const yPos = clientOffset.y - gridRect.top;
+
+      const dragOffsetX = initialClientOffset.x - initialSourceClientOffset.x;
+      const dragOffsetY = initialClientOffset.y - initialSourceClientOffset.y;
+
+      const blockCellOffsetX = Math.floor(dragOffsetX / item.cellSize);
+      const blockCellOffsetY = Math.floor(dragOffsetY / item.cellSize);
+
+      const gridX = Math.floor(xPos / (CELL_SIZE + GAP_SIZE));
+      const gridY = Math.floor(yPos / (CELL_SIZE + GAP_SIZE));
+
+      const finalX = gridX - blockCellOffsetX;
+      const finalY = gridY - blockCellOffsetY;
+
+      const newBlock = {
+        ...item,
+        x: finalX,
+        y: finalY,
+      };
+      setDroppedBlocks(prev => [...prev, newBlock]);
     }
   });
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const days = Array.from({length: 31}, (_, i) => i + 1);
   const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-  const CELL_SIZE = 70;
-  const GAP_SIZE = 2;
 
   const renderGrid = () => {
     const grid = [];
@@ -78,7 +102,7 @@ const CalendarGrid = () => {
     return grid;
   };
 
-  const blockTypes = [
+  const [blockTypes, setBlockTypes] = useState([
     {
       id: 'I-block',
       label: 'I',
@@ -109,7 +133,43 @@ const CalendarGrid = () => {
       color: '#00FF00',
       shape: [[0, 1, 1], [1, 1, 0]]
     }
-  ];
+  ]);
+
+  const rotateShape = (shape) => {
+    const rows = shape.length;
+    const cols = shape[0].length;
+    const newShape = Array(cols).fill(0).map(() => Array(rows).fill(0));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        newShape[col][rows - 1 - row] = shape[row][col];
+      }
+    }
+    return newShape;
+  };
+
+  const flipShape = (shape) => {
+    return shape.map(row => row.slice().reverse());
+  };
+
+  const handleRotate = (blockId) => {
+    const newBlockTypes = blockTypes.map(block => {
+      if (block.id === blockId) {
+        return { ...block, shape: rotateShape(block.shape) };
+      }
+      return block;
+    });
+    setBlockTypes(newBlockTypes);
+  };
+
+  const handleFlip = (blockId) => {
+    const newBlockTypes = blockTypes.map(block => {
+      if (block.id === blockId) {
+        return { ...block, shape: flipShape(block.shape) };
+      }
+      return block;
+    });
+    setBlockTypes(newBlockTypes);
+  };
 
   // 计算块在网格中的精确位置
   const calculateBlockPosition = (block) => {
@@ -192,6 +252,8 @@ const CalendarGrid = () => {
             label={block.label}
             color={block.color}
             shape={block.shape}
+            onRotate={() => handleRotate(block.id)}
+            onFlip={() => handleFlip(block.id)}
           />
         ))}
       </div>

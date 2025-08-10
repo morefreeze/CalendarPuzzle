@@ -12,12 +12,7 @@ const GridCell = ({ label, section, x, y, canDrop = false }) => {
 
   const [{ isOver, canDropHere }, dropRef] = useDrop({
     accept: 'BLOCK',
-    drop: (item, monitor) => {
-      if (canDrop) {
-        return { x, y, section };
-      }
-      return undefined;
-    },
+    drop: () => undefined,
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
       canDropHere: !!monitor.canDrop()
