@@ -24,24 +24,31 @@ This will open the application in your default web browser, usually at `http://l
 
 ## 3. Verifying the Changes
 
-After the application is running, you can test the new features and bug fixes.
+The application has been updated with the core gameplay logic for the calendar puzzle.
 
-### 3.1. Coordinate Misalignment Fix
+### 3.1. Board Layout and Date Display
 
-- **Action:** Drag any of the blocks from the bottom panel and drop it onto the calendar grid.
-- **Expected Behavior:** The block should be placed on the grid smoothly. The part of the block that you "grabbed" with your cursor should be the part that aligns with the grid cell you drop it on. The placement should not feel offset or misaligned.
-
-### 3.2. Block Rotation and Flip
-
-- **Action:** Before dragging a block, click the "Rotate" and "Flip" buttons that appear below each block in the bottom panel.
+- **Action:** Observe the main grid when the application loads.
 - **Expected Behavior:**
-    - Clicking "Rotate" should rotate the block's shape 90 degrees clockwise.
-    - Clicking "Flip" should flip the block's shape horizontally.
-    - You can click the buttons multiple times to see the shape change.
-- **Action:** Drag a rotated or flipped block onto the grid.
-- **Expected Behavior:** The block should be dropped onto the grid with its new, transformed shape.
+    - You should see a new 7x8 grid layout representing a calendar.
+    - The cells for the current month, day, and weekday should be highlighted with a distinct color (e.g., khaki). These are the cells that must remain uncovered.
 
-### 3.3. Drag Preview
+### 3.2. Placing Blocks and Game Rules
 
-- **Action:** Drag any block over the calendar grid without dropping it.
-- **Expected Behavior:** As you move the block over the grid, a semi-transparent "ghost" version of the block should appear on the grid, showing you exactly where it will be placed if you drop it. This preview should follow your cursor in real-time. When you drop the block, the preview should disappear and be replaced by the solid block. **Crucially, the block must remain in its new position on the grid and not snap back to its starting point.** If you drag the block away from the grid, the preview should disappear.
+- **Action:**
+    1.  Drag a block from the bottom panel and move it over the grid.
+    2.  Try to place it in a valid, empty position.
+    3.  Try to place it so it overlaps with another block you've already placed.
+    4.  Try to place it so it covers one of the highlighted date cells.
+    5.  Successfully place a block on the board.
+- **Expected Behavior:**
+    - As you drag the block, a semi-transparent preview should show its potential position.
+    - When hovering over an **invalid** position (out-of-bounds, overlapping another block, or covering a date cell), the preview should turn red.
+    - You should **not** be able to drop a block in an invalid position. When you release the mouse, the block should not be placed.
+    - You **should** be able to drop a block in a valid position.
+    - Once a block is placed on the board, it should disappear from the selection panel at the bottom. You can only use each block shape once.
+
+### 3.3. Block Transformations
+
+- **Action:** Before dragging a block, use the "Rotate" and "Flip" buttons.
+- **Expected Behavior:** The block's shape in the bottom panel should change. All the game rules (placement, collision, etc.) should apply correctly to the new, transformed shape.

@@ -7,7 +7,8 @@ const GridCell = ({ label, section, x, y, canDrop = false }) => {
     'days': '#90EE90',
     'weekdays': '#87CEFA',
     'main-grid': '#D3D3D3',
-    'extra-block': '#F08080'
+    'extra-block': '#F08080',
+    'uncover': '#F0E68C'
   };
 
   const [{ isOver, canDropHere }, dropRef] = useDrop({
