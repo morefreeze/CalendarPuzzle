@@ -21,6 +21,8 @@ const CalendarGrid = () => {
   const [droppedBlocks, setDroppedBlocks] = useState([]);
   const [previewBlock, setPreviewBlock] = useState(null);
   const gridRef = useRef(null);
+  const droppedBlocksRef = useRef(droppedBlocks);
+  droppedBlocksRef.current = droppedBlocks;
 
   const uncoverableCells = useMemo(() => {
     const today = new Date();
@@ -66,7 +68,7 @@ const CalendarGrid = () => {
       }
     }
 
-    const allDroppedCells = droppedBlocks.flatMap(b =>
+    const allDroppedCells = droppedBlocksRef.current.flatMap(b =>
       b.shape.flatMap((row, rIdx) =>
         row.map((c, cIdx) => (c === 1 ? { x: b.x + cIdx, y: b.y + rIdx } : null))
       ).filter(Boolean)
@@ -82,7 +84,7 @@ const CalendarGrid = () => {
     }
 
     return true;
-  }, [droppedBlocks, uncoverableCells]);
+  }, [uncoverableCells]);
 
   const calculateDropPosition = useCallback((item, monitor) => {
     if (!gridRef.current) return null;

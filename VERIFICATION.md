@@ -44,8 +44,8 @@ The application has been updated with the core gameplay logic for the calendar p
 - **Expected Behavior:**
     - As you drag the block, a semi-transparent preview should show its potential position.
     - When hovering over an **invalid** position (out-of-bounds, overlapping another block, or covering a date cell), the preview should turn red.
-    - You should **not** be able to drop a block in an invalid position. When you release the mouse, the block should not be placed.
-    - You **should** be able to drop a block in a valid position.
+    - You should **not** be able to drop a block in an invalid position.
+    - You **should** be able to drop a block in a valid position. **Please test this thoroughly to ensure blocks are placed correctly and stay on the board after the mouse is released.**
     - Once a block is placed on the board, it should disappear from the selection panel at the bottom. You can only use each block shape once.
 
 ### 3.3. Block Transformations
