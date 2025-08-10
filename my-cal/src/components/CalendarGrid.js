@@ -8,45 +8,62 @@ const GAP_SIZE = 2;
 
 const CalendarGrid = () => {
   const [droppedBlocks, setDroppedBlocks] = useState([]);
+  const [previewBlock, setPreviewBlock] = useState(null);
   const gridRef = useRef(null);
+
+  const calculateDropPosition = (item, monitor) => {
+    if (!gridRef.current) {
+      return null;
+    }
+    const gridRect = gridRef.current.getBoundingClientRect();
+    const clientOffset = monitor.getClientOffset();
+    const initialClientOffset = monitor.getInitialClientOffset();
+    const initialSourceClientOffset = monitor.getInitialSourceClientOffset();
+
+    if (!clientOffset || !initialClientOffset || !initialSourceClientOffset) {
+      return null;
+    }
+
+    const xPos = clientOffset.x - gridRect.left;
+    const yPos = clientOffset.y - gridRect.top;
+    const dragOffsetX = initialClientOffset.x - initialSourceClientOffset.x;
+    const dragOffsetY = initialClientOffset.y - initialSourceClientOffset.y;
+    const blockCellOffsetX = Math.floor(dragOffsetX / item.cellSize);
+    const blockCellOffsetY = Math.floor(dragOffsetY / item.cellSize);
+    const gridX = Math.floor(xPos / (CELL_SIZE + GAP_SIZE));
+    const gridY = Math.floor(yPos / (CELL_SIZE + GAP_SIZE));
+
+    return {
+      x: gridX - blockCellOffsetX,
+      y: gridY - blockCellOffsetY,
+    };
+  };
 
   const [, drop] = useDrop({
     accept: 'BLOCK',
     drop: (item, monitor) => {
-      if (!gridRef.current) {
+      const position = calculateDropPosition(item, monitor);
+      if (position) {
+        const newBlock = { ...item, ...position };
+        setDroppedBlocks(prev => [...prev, newBlock]);
+      }
+      setPreviewBlock(null); // Clear preview on drop
+    },
+    hover: (item, monitor) => {
+      if (!monitor.isOver()) {
+        if (previewBlock) {
+          setPreviewBlock(null);
+        }
         return;
       }
-      const gridRect = gridRef.current.getBoundingClientRect();
-      const clientOffset = monitor.getClientOffset();
 
-      const initialClientOffset = monitor.getInitialClientOffset();
-      const initialSourceClientOffset = monitor.getInitialSourceClientOffset();
-
-      if (!clientOffset || !initialClientOffset || !initialSourceClientOffset) {
-        return;
+      const position = calculateDropPosition(item, monitor);
+      if (position) {
+        const newPreview = { ...item, ...position };
+        if (!previewBlock || previewBlock.x !== newPreview.x || previewBlock.y !== newPreview.y || previewBlock.id !== item.id) {
+          setPreviewBlock(newPreview);
+        }
       }
-
-      const xPos = clientOffset.x - gridRect.left;
-      const yPos = clientOffset.y - gridRect.top;
-
-      const dragOffsetX = initialClientOffset.x - initialSourceClientOffset.x;
-      const dragOffsetY = initialClientOffset.y - initialSourceClientOffset.y;
-
-      const blockCellOffsetX = Math.floor(dragOffsetX / item.cellSize);
-      const blockCellOffsetY = Math.floor(dragOffsetY / item.cellSize);
-
-      const gridX = Math.floor(xPos / (CELL_SIZE + GAP_SIZE));
-      const gridY = Math.floor(yPos / (CELL_SIZE + GAP_SIZE));
-
-      const finalX = gridX - blockCellOffsetX;
-      const finalY = gridY - blockCellOffsetY;
-
-      const newBlock = {
-        ...item,
-        x: finalX,
-        y: finalY,
-      };
-      setDroppedBlocks(prev => [...prev, newBlock]);
     }
   });
 
@@ -197,6 +214,51 @@ const CalendarGrid = () => {
       >
         {renderGrid().flat()}
         
+        {previewBlock && (() => {
+          const position = calculateBlockPosition(previewBlock);
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                left: position.left,
+                top: position.top,
+                width: previewBlock.shape[0].length * CELL_SIZE,
+                height: previewBlock.shape.length * CELL_SIZE,
+                backgroundColor: 'transparent',
+                pointerEvents: 'none',
+                zIndex: 5,
+                opacity: 0.5
+              }}
+            >
+              {previewBlock.shape.map((row, rowIndex) => (
+                <div key={rowIndex} style={{ display: 'flex' }}>
+                  {row.map((cell, cellIndex) => (
+                    cell ? (
+                      <div
+                        key={cellIndex}
+                        style={{
+                          width: `${CELL_SIZE}px`,
+                          height: `${CELL_SIZE}px`,
+                          backgroundColor: previewBlock.color,
+                          border: '1px solid rgba(0,0,0,0.3)',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        key={cellIndex}
+                        style={{
+                          width: `${CELL_SIZE}px`,
+                          height: `${CELL_SIZE}px`
+                        }}
+                      />
+                    )
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {droppedBlocks.map((block, index) => {
           const position = calculateBlockPosition(block);
           return (
