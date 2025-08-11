@@ -15,6 +15,9 @@ const DraggableBlock = ({
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'BLOCK',
     item: { id, label, color, shape, cellSize: CELL_SIZE },
+    drop: (item, monitor) => {
+      console.log('Drop block event triggered:', item);
+    },
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging()
     })
