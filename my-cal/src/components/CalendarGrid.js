@@ -8,14 +8,14 @@ export const CELL_BOARDER = 1;
 const GAP_SIZE = 0;
 
 const boardLayoutData = [
-  [{ type: 'month', value: 'Jan' }, { type: 'month', value: 'Feb' }, { type: 'month', value: 'Mar' }, { type: 'month', value: 'Apr' }, { type: 'month', value: 'May' }, { type: 'month', value: 'Jun' }, { type: 'month', value: 'Jul' }],
-  [{ type: 'month', value: 'Aug' }, { type: 'month', value: 'Sep' }, { type: 'month', value: 'Oct' }, { type: 'month', value: 'Nov' }, { type: 'month', value: 'Dec' }, { type: 'empty', value: null }, { type: 'empty', value: null }],
+  [{ type: 'month', value: 'Jan' }, { type: 'month', value: 'Feb' }, { type: 'month', value: 'Mar' }, { type: 'month', value: 'Apr' }, { type: 'month', value: 'May' }, { type: 'month', value: 'Jun' }, { type: 'empty', value: null }],
+  [{ type: 'month', value: 'Jul' }, { type: 'month', value: 'Aug' }, { type: 'month', value: 'Sep' }, { type: 'month', value: 'Oct' }, { type: 'month', value: 'Nov' }, { type: 'month', value: 'Dec' }, { type: 'empty', value: null }],
   [{ type: 'day', value: 1 }, { type: 'day', value: 2 }, { type: 'day', value: 3 }, { type: 'day', value: 4 }, { type: 'day', value: 5 }, { type: 'day', value: 6 }, { type: 'day', value: 7 }],
   [{ type: 'day', value: 8 }, { type: 'day', value: 9 }, { type: 'day', value: 10 }, { type: 'day', value: 11 }, { type: 'day', value: 12 }, { type: 'day', value: 13 }, { type: 'day', value: 14 }],
   [{ type: 'day', value: 15 }, { type: 'day', value: 16 }, { type: 'day', value: 17 }, { type: 'day', value: 18 }, { type: 'day', value: 19 }, { type: 'day', value: 20 }, { type: 'day', value: 21 }],
   [{ type: 'day', value: 22 }, { type: 'day', value: 23 }, { type: 'day', value: 24 }, { type: 'day', value: 25 }, { type: 'day', value: 26 }, { type: 'day', value: 27 }, { type: 'day', value: 28 }],
   [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: 'Sun' }, { type: 'weekday', value: 'Mon' }, { type: 'weekday', value: 'Tue' }, { type: 'weekday', value: 'Wed' }],
-  [{ type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }]
+  [ { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
 ];
 
 const CalendarGrid = () => {
@@ -46,7 +46,8 @@ const CalendarGrid = () => {
     return coords;
   }, []);
 
-  const isValidPlacement = useCallback((block, newCoords) => {
+  // 第三个参数excludeId用于排除正在移动的方块自身
+  const isValidPlacement = useCallback((block, newCoords, excludeId = null) => {
     const blockCells = [];
     block.shape.forEach((row, rowIndex) => {
       row.forEach((cell, colIndex) => {
@@ -69,7 +70,10 @@ const CalendarGrid = () => {
       }
     }
 
-    const allDroppedCells = droppedBlocksRef.current.flatMap(b =>
+    // 排除正在移动的方块
+    const allDroppedCells = droppedBlocksRef.current
+      .filter(b => excludeId === null || b.id !== excludeId)
+      .flatMap(b =>
       b.shape.flatMap((row, rIdx) =>
         row.map((c, cIdx) => (c === 1 ? { x: b.x + cIdx, y: b.y + rIdx } : null))
       ).filter(Boolean)
@@ -85,7 +89,7 @@ const CalendarGrid = () => {
     }
 
     return true;
-  }, [uncoverableCells]);
+  }, [uncoverableCells, droppedBlocksRef]);
 
   const calculateDropPosition = useCallback((item, monitor) => {
     if (!gridRef.current) {
@@ -97,7 +101,6 @@ const CalendarGrid = () => {
     const initialClientOffset = monitor.getInitialClientOffset();
     const initialSourceClientOffset = monitor.getInitialSourceClientOffset();
     const offset = monitor.getDifferenceFromInitialOffset();
-    console.log('offset', offset);
 
     if (!offset) {
       console.log('calculateDropPosition: offset is null');
@@ -128,12 +131,19 @@ const CalendarGrid = () => {
     return { x: gridX - blockCellOffsetX, y: gridY - blockCellOffsetY };
   }, []);
 
+  // 定义所有方块类型，包括原始的和新增的
   const [blockTypes, setBlockTypes] = useState([
     { id: 'I-block', label: 'I', color: '#00FFFF', shape: [[1, 1, 1, 1]] },
     { id: 'O-block', label: 'O', color: '#FFFF00', shape: [[1, 1], [1, 1]] },
-    { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [1, 1, 1]] },
-    { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 1]] },
-    { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]] }
+    { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [0, 1, 0], [1, 1, 1]] },
+    { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 0], [1, 1]] },
+    { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]] },
+    { id: 'Z-block', label: 'Z', color: '#FF0000', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
+    { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 0], [1, 1], [0, 1]] },
+    { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]] },
+    { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
+    { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]] },
+    { id: 'l-block', label: 'l', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]] },
   ]);
 
   const [, drop] = useDrop(() => ({
@@ -145,13 +155,29 @@ const CalendarGrid = () => {
       let position = calculateDropPosition(item, monitor);
       console.log('Calculated drop position:', position);
 
-      const isPlacementValid = position && isValidPlacement(item, position);
+      // 传递item.id作为excludeId，排除正在移动的方块自身
+      const isPlacementValid = position && isValidPlacement(item, position, item.id);
       console.log('Placement validity:', isPlacementValid);
       if (isPlacementValid) {
         const newBlock = { ...item, ...position };
-        console.log('Adding new block:', newBlock);
-        setDroppedBlocks(prev => [...prev, newBlock]);
-        setBlockTypes(prev => prev.filter(block => block.id !== item.id));
+        console.log('Placing block:', newBlock);
+
+        // 检查是否是已放置的方块被移动
+        const existingBlockIndex = droppedBlocksRef.current.findIndex(b => b.id === item.id);
+        if (existingBlockIndex >= 0) {
+          // 更新已放置方块的位置
+          setDroppedBlocks(prev => {
+            const updatedBlocks = [...prev];
+            updatedBlocks[existingBlockIndex] = newBlock;
+            return updatedBlocks;
+          });
+          console.log('Updated existing block position:', item.id);
+        } else {
+          // 添加新方块
+          setDroppedBlocks(prev => [...prev, newBlock]);
+          setBlockTypes(prev => prev.filter(block => block.id !== item.id));
+          console.log('Added new block:', item.id);
+        }
       } else {
         console.log('Placement invalid. Reasons:');
         if (!position) {
@@ -163,24 +189,24 @@ const CalendarGrid = () => {
       setPreviewBlock(null);
     },
     hover: (item, monitor) => {
-      console.log('Hover event triggered:', item);
+      console.debug('Hover event triggered:', item);
       // Log hover client offset for comparison
       const clientOffset = monitor.getClientOffset();
-      console.log('Hover clientOffset:', clientOffset);
+      console.debug('Hover clientOffset:', clientOffset);
 
       if (!monitor.isOver()) {
-        console.log('Mouse not over grid, clearing preview');
+        console.debug('Mouse not over grid, clearing preview');
         if (previewBlock) setPreviewBlock(null);
         return;
       }
       const position = calculateDropPosition(item, monitor);
-      console.log('Calculated hover position:', position);
+      console.debug('Calculated hover position:', position);
       if (position) {
-        const isValid = isValidPlacement(item, position);
-        console.log('Hover position validity:', isValid);
+        const isValid = isValidPlacement(item, position, item.id);
+        console.debug('Hover position validity:', isValid);
         const newPreview = { ...item, ...position, isValid };
         if (!previewBlock || previewBlock.x !== newPreview.x || previewBlock.y !== newPreview.y || previewBlock.id !== item.id || previewBlock.isValid !== isValid) {
-          console.log('Updating preview block:', newPreview);
+          console.debug('Updating preview block:', newPreview);
           setPreviewBlock(newPreview);
         }
       }
@@ -190,7 +216,8 @@ const CalendarGrid = () => {
   // 添加额外的调试日志
   useEffect(() => {
     console.log('Block types updated:', blockTypes);
-  }, [blockTypes]);
+    console.log('droppedBlocksRef.current:', droppedBlocksRef.current);
+  }, [blockTypes, droppedBlocksRef]);
 
 
   const rotateShape = (shape) => {
@@ -220,10 +247,6 @@ const CalendarGrid = () => {
     top: block.y * (CELL_SIZE + GAP_SIZE),
   });
 
-  // 在 CalendarGrid 组件的顶部附近添加这个 effect
-  useEffect(() => {
-    console.log('Dropped blocks updated:', droppedBlocks);
-  }, [droppedBlocks]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -231,7 +254,6 @@ const CalendarGrid = () => {
         ref={(el) => {
           drop(el);
           gridRef.current = el;
-          console.log('gridRef set:', el !== null);
         }}
         style={{
           display: 'grid',
@@ -305,53 +327,60 @@ const CalendarGrid = () => {
         })()}
 
         {/* Render dropped blocks as draggable components */}
-        {droppedBlocks.map((block, index) => {
+        {droppedBlocks.map((block) => {
+          // Calculate position based on grid coordinates
           const position = calculateBlockPosition(block);
+
+          // 不立即从droppedBlocks移除，而是允许拖动到新位置
+          const handleBlockDrag = () => {
+            console.log('Starting to drag placed block:', block.id);
+          };
+
+          // 处理已放置方块拖动结束后的逻辑
+          const handleBlockDragEnd = (didDrop) => {
+            // 如果方块没有被放置在有效位置，将其返回面板
+            if (!didDrop) {
+              console.log('Block dragged out of board, returning to panel:', block.id);
+              // 从droppedBlocks中移除
+              setDroppedBlocks(prev => prev.filter(b => b.id !== block.id));
+              // 添加回blockTypes
+              setBlockTypes(prev => [...prev, block]);
+            } else {
+              console.log('Block moved to new position:', block.id);
+              // 位置更新由drop处理函数完成
+            }
+          };
+
+          // 处理双击事件 - 将方块返回面板
+          const handleDoubleClick = (blockId) => {
+            console.log('Double clicked block, returning to panel:', blockId);
+            // 从droppedBlocks中移除
+            setDroppedBlocks(prev => prev.filter(b => b.id !== blockId));
+            // 添加回blockTypes
+            setBlockTypes(prev => [...prev, block]);
+          };
+
           return (
-            <div
-              key={`dropped-${index}`}
-              style={{
-                position: 'absolute',
-                left: position.left,
-                top: position.top,
-                gap: `${GAP_SIZE}px`,
-                width: block.shape[0].length * CELL_SIZE,
-                height: block.shape.length * CELL_SIZE,
-                backgroundColor: 'transparent',
-                pointerEvents: 'none',
-                zIndex: 10
-              }}
-            >
-              {block.shape.map((row, rowIndex) => (
-                <div key={rowIndex} style={{ display: 'flex' }}>
-                  {row.map((cell, cellIndex) => (
-                    cell ? (
-                      <div
-                        key={cellIndex}
-                        style={{
-                          width: `${CELL_SIZE}px`,
-                          height: `${CELL_SIZE}px`,
-                          gap: `${GAP_SIZE}px`,
-                          backgroundColor: block.color,
-                          border: `${CELL_BOARDER}px solid rgba(0,0,0,0.3)`,
-                          boxSizing: 'border-box'
-                        }}
-                      />
-                    ) : (
-                      <div
-                        key={cellIndex}
-                        style={{ width: `${CELL_SIZE}px`, height: `${CELL_SIZE}px` }}
-                      />
-                    )
-                  ))}
-                </div>
-              ))}
-            </div>
+            <DraggableBlock
+            key={`dropped-${block.id}`}
+            id={block.id}
+            label={block.label}
+            color={block.color}
+            shape={block.shape}
+            onRotate={() => handleRotate(block.id)}
+            onFlip={() => handleFlip(block.id)}
+            onDragStart={handleBlockDrag}
+            onDragEnd={handleBlockDragEnd}
+            onDoubleClick={handleDoubleClick}
+            isPlaced={true}
+            style={{ position: 'absolute', left: `${position.left}px`, top: `${position.top}px` }}
+          />
           );
         })}
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+      {/* 确保同一行中的方块容器大小相同 */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
         {blockTypes.map(block => (
           <DraggableBlock
             key={block.id}
