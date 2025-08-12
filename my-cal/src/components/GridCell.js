@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDrop } from 'react-dnd';
-import { CELL_SIZE } from './CalendarGrid';
+import { CELL_SIZE, CELL_BOARDER } from './CalendarGrid';
 
 const GridCell = ({ label, section, x, y, canDrop = false }) => {
   const sectionColors = {
@@ -13,7 +13,7 @@ const GridCell = ({ label, section, x, y, canDrop = false }) => {
   };
 
   const [{ isOver, canDropHere }, dropRef] = useDrop({
-    accept: 'CELLBLOCK',
+    accept: 'CELL_BLOCK',
     drop: () => undefined,
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
@@ -24,7 +24,8 @@ const GridCell = ({ label, section, x, y, canDrop = false }) => {
   const cellStyle = {
     width: `${CELL_SIZE}px`,
     height: `${CELL_SIZE}px`,
-    border: '1px solid black',
+    border: `${CELL_BOARDER}px solid black`,
+    boxSizing: 'border-box',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',

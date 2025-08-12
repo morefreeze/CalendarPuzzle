@@ -1,20 +1,21 @@
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useDrop } from 'react-dnd';
 import GridCell from './GridCell';
 import DraggableBlock from './DraggableBlock';
 
-export const CELL_SIZE = 68;
+export const CELL_SIZE = 70;
+export const CELL_BOARDER = 1;
 const GAP_SIZE = 0;
 
 const boardLayoutData = [
-  [{type: 'month', value: 'Jan'}, {type: 'month', value: 'Feb'}, {type: 'month', value: 'Mar'}, {type: 'month', value: 'Apr'}, {type: 'month', value: 'May'}, {type: 'month', value: 'Jun'}, {type: 'month', value: 'Jul'}],
-  [{type: 'month', value: 'Aug'}, {type: 'month', value: 'Sep'}, {type: 'month', value: 'Oct'}, {type: 'month', value: 'Nov'}, {type: 'month', value: 'Dec'}, {type: 'empty', value: null}, {type: 'empty', value: null}],
-  [{type: 'day', value: 1}, {type: 'day', value: 2}, {type: 'day', value: 3}, {type: 'day', value: 4}, {type: 'day', value: 5}, {type: 'day', value: 6}, {type: 'day', value: 7}],
-  [{type: 'day', value: 8}, {type: 'day', value: 9}, {type: 'day', value: 10}, {type: 'day', value: 11}, {type: 'day', value: 12}, {type: 'day', value: 13}, {type: 'day', value: 14}],
-  [{type: 'day', value: 15}, {type: 'day', value: 16}, {type: 'day', value: 17}, {type: 'day', value: 18}, {type: 'day', value: 19}, {type: 'day', value: 20}, {type: 'day', value: 21}],
-  [{type: 'day', value: 22}, {type: 'day', value: 23}, {type: 'day', value: 24}, {type: 'day', value: 25}, {type: 'day', value: 26}, {type: 'day', value: 27}, {type: 'day', value: 28}],
-  [{type: 'day', value: 29}, {type: 'day', value: 30}, {type: 'day', value: 31}, {type: 'weekday', value: 'Sun'}, {type: 'weekday', value: 'Mon'}, {type: 'weekday', value: 'Tue'}, {type: 'weekday', value: 'Wed'}],
-  [{type: 'weekday', value: 'Thu'}, {type: 'weekday', value: 'Fri'}, {type: 'weekday', value: 'Sat'}, {type: 'empty', value: null}, {type: 'empty', value: null}, {type: 'empty', value: null}, {type: 'empty', value: null}]
+  [{ type: 'month', value: 'Jan' }, { type: 'month', value: 'Feb' }, { type: 'month', value: 'Mar' }, { type: 'month', value: 'Apr' }, { type: 'month', value: 'May' }, { type: 'month', value: 'Jun' }, { type: 'month', value: 'Jul' }],
+  [{ type: 'month', value: 'Aug' }, { type: 'month', value: 'Sep' }, { type: 'month', value: 'Oct' }, { type: 'month', value: 'Nov' }, { type: 'month', value: 'Dec' }, { type: 'empty', value: null }, { type: 'empty', value: null }],
+  [{ type: 'day', value: 1 }, { type: 'day', value: 2 }, { type: 'day', value: 3 }, { type: 'day', value: 4 }, { type: 'day', value: 5 }, { type: 'day', value: 6 }, { type: 'day', value: 7 }],
+  [{ type: 'day', value: 8 }, { type: 'day', value: 9 }, { type: 'day', value: 10 }, { type: 'day', value: 11 }, { type: 'day', value: 12 }, { type: 'day', value: 13 }, { type: 'day', value: 14 }],
+  [{ type: 'day', value: 15 }, { type: 'day', value: 16 }, { type: 'day', value: 17 }, { type: 'day', value: 18 }, { type: 'day', value: 19 }, { type: 'day', value: 20 }, { type: 'day', value: 21 }],
+  [{ type: 'day', value: 22 }, { type: 'day', value: 23 }, { type: 'day', value: 24 }, { type: 'day', value: 25 }, { type: 'day', value: 26 }, { type: 'day', value: 27 }, { type: 'day', value: 28 }],
+  [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: 'Sun' }, { type: 'weekday', value: 'Mon' }, { type: 'weekday', value: 'Tue' }, { type: 'weekday', value: 'Wed' }],
+  [{ type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }]
 ];
 
 const CalendarGrid = () => {
@@ -139,11 +140,11 @@ const CalendarGrid = () => {
     accept: 'BLOCK',
     drop: (item, monitor) => {
       console.log('Drop event triggered:', item);
-      
+
       // Use alternative calculation if needed
       let position = calculateDropPosition(item, monitor);
       console.log('Calculated drop position:', position);
-      
+
       const isPlacementValid = position && isValidPlacement(item, position);
       console.log('Placement validity:', isPlacementValid);
       if (isPlacementValid) {
@@ -166,7 +167,7 @@ const CalendarGrid = () => {
       // Log hover client offset for comparison
       const clientOffset = monitor.getClientOffset();
       console.log('Hover clientOffset:', clientOffset);
-      
+
       if (!monitor.isOver()) {
         console.log('Mouse not over grid, clearing preview');
         if (previewBlock) setPreviewBlock(null);
@@ -226,14 +227,14 @@ const CalendarGrid = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div 
-        ref={(el) => { 
-          drop(el); 
-          gridRef.current = el; 
+      <div
+        ref={(el) => {
+          drop(el);
+          gridRef.current = el;
           console.log('gridRef set:', el !== null);
         }}
-        style={{ 
-          display: 'grid', 
+        style={{
+          display: 'grid',
           gridTemplateColumns: `repeat(${boardLayoutData[0].length}, ${CELL_SIZE}px)`,
           gap: `${GAP_SIZE}px`,
           marginBottom: '20px',
@@ -258,7 +259,7 @@ const CalendarGrid = () => {
             );
           })
         )}
-        
+
         {previewBlock && (() => {
           const position = calculateBlockPosition(previewBlock);
           return (
@@ -284,8 +285,9 @@ const CalendarGrid = () => {
                         style={{
                           width: `${CELL_SIZE}px`,
                           height: `${CELL_SIZE}px`,
+                          gap: `${GAP_SIZE}px`,
                           backgroundColor: previewBlock.isValid ? previewBlock.color : 'red',
-                          border: '1px solid rgba(0,0,0,0.3)',
+                          border: `${CELL_BOARDER}px solid rgba(0,0,0,0.3)`,
                           boxSizing: 'border-box'
                         }}
                       />
@@ -301,15 +303,18 @@ const CalendarGrid = () => {
             </div>
           );
         })()}
+
+        {/* Render dropped blocks as draggable components */}
         {droppedBlocks.map((block, index) => {
           const position = calculateBlockPosition(block);
           return (
-            <div 
+            <div
               key={`dropped-${index}`}
               style={{
                 position: 'absolute',
                 left: position.left,
                 top: position.top,
+                gap: `${GAP_SIZE}px`,
                 width: block.shape[0].length * CELL_SIZE,
                 height: block.shape.length * CELL_SIZE,
                 backgroundColor: 'transparent',
@@ -321,19 +326,20 @@ const CalendarGrid = () => {
                 <div key={rowIndex} style={{ display: 'flex' }}>
                   {row.map((cell, cellIndex) => (
                     cell ? (
-                      <div 
-                        key={cellIndex} 
+                      <div
+                        key={cellIndex}
                         style={{
                           width: `${CELL_SIZE}px`,
                           height: `${CELL_SIZE}px`,
+                          gap: `${GAP_SIZE}px`,
                           backgroundColor: block.color,
-                          border: '1px solid rgba(0,0,0,0.3)',
+                          border: `${CELL_BOARDER}px solid rgba(0,0,0,0.3)`,
                           boxSizing: 'border-box'
-                        }} 
+                        }}
                       />
                     ) : (
-                      <div 
-                        key={cellIndex} 
+                      <div
+                        key={cellIndex}
                         style={{ width: `${CELL_SIZE}px`, height: `${CELL_SIZE}px` }}
                       />
                     )
@@ -344,12 +350,12 @@ const CalendarGrid = () => {
           );
         })}
       </div>
-      
+
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         {blockTypes.map(block => (
-          <DraggableBlock 
-            key={block.id} 
-            id={block.id} 
+          <DraggableBlock
+            key={block.id}
+            id={block.id}
             label={block.label}
             color={block.color}
             shape={block.shape}

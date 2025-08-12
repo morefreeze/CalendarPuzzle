@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDrag } from 'react-dnd';
 import PropTypes from 'prop-types';
+import { CELL_BOARDER } from './CalendarGrid';
 
 const DraggableBlock = ({ 
   id, 
@@ -10,7 +11,8 @@ const DraggableBlock = ({
   onRotate,
   onFlip
 }) => {
-  const CELL_SIZE = 20; // 与网格中的CELL_SIZE保持一致的比例
+  const CELL_SIZE = 20;
+  const GAP_SIZE = 3;
   
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'BLOCK',
@@ -32,8 +34,10 @@ const DraggableBlock = ({
             style={{
               width: `${CELL_SIZE}px`, 
               height: `${CELL_SIZE}px`, 
+              gap: `${GAP_SIZE}px`,
               backgroundColor: cell ? color : 'transparent',
-              border: cell ? '1px solid black' : '1px solid transparent'
+              border: cell ? `${CELL_BOARDER}px solid black` : '1px solid transparent',
+              boxSizing: 'border-box'
             }} 
           />
         ))}
