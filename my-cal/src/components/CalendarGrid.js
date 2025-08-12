@@ -134,12 +134,12 @@ const CalendarGrid = () => {
   // 定义所有方块类型，包括原始的和新增的
   const [blockTypes, setBlockTypes] = useState([
     { id: 'I-block', label: 'I', color: '#00FFFF', shape: [[1, 1, 1, 1]] },
-    { id: 'O-block', label: 'O', color: '#FFFF00', shape: [[1, 1], [1, 1]] },
+    // { id: 'O-block', label: 'O', color: '#FFFF00', shape: [[1, 1], [1, 1]] },
     { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [0, 1, 0], [1, 1, 1]] },
     { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 0], [1, 1]] },
     { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]] },
     { id: 'Z-block', label: 'Z', color: '#FF0000', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
-    { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 0], [1, 1], [0, 1]] },
+    { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]] },
     { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]] },
     { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
     { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]] },
@@ -216,11 +216,12 @@ const CalendarGrid = () => {
   // 添加额外的调试日志
   useEffect(() => {
     console.log('Block types updated:', blockTypes);
-    console.log('droppedBlocksRef.current:', droppedBlocksRef.current);
-  }, [blockTypes, droppedBlocksRef]);
+  }, [blockTypes]);
 
 
+  // 顺时针旋转90度
   const rotateShape = (shape) => {
+    console.debug('Original shape for rotation:', shape);
     const rows = shape.length;
     const cols = shape[0].length;
     const newShape = Array(cols).fill(0).map(() => Array(rows).fill(0));
@@ -229,17 +230,85 @@ const CalendarGrid = () => {
         newShape[col][rows - 1 - row] = shape[row][col];
       }
     }
+    console.debug('Rotated shape:', newShape);
     return newShape;
   };
 
-  const flipShape = (shape) => shape.map(row => row.slice().reverse());
+  // 水平翻转
+  const flipShape = (shape) => {
+    console.debug('Original shape for flipping:', shape);
+    const newShape = shape.map(row => [...row].reverse());
+    console.debug('Flipped shape:', newShape);
+    return newShape;
+  };
 
+  // 使用setTimeout模拟异步更新，测试useCallback的依赖追踪机制
   const handleRotate = (blockId) => {
-    setBlockTypes(prev => prev.map(b => b.id === blockId ? { ...b, shape: rotateShape(b.shape) } : b));
+    console.log('--- Rotating block ---');
+    console.log('Block ID:', blockId);
+    // 添加小延迟模拟异步操作
+    setTimeout(() => {
+      setBlockTypes(prev => {
+        console.debug('Current blockTypes:', prev);
+        const updated = prev.map(b => {
+          if (b.id === blockId) {
+            const newShape = rotateShape(b.shape);
+            console.log('Block shape updated from', b.shape, 'to', newShape);
+            return { ...b, shape: newShape };
+          }
+          return b;
+        });
+        console.debug('Updated blockTypes:', updated);
+        return updated;
+      });
+    }, 100);
   };
 
   const handleFlip = (blockId) => {
-    setBlockTypes(prev => prev.map(b => b.id === blockId ? { ...b, shape: flipShape(b.shape) } : b));
+    console.log('Flipping block:', blockId);
+    setBlockTypes(prev => {
+      const updated = prev.map(b => {
+        if (b.id === blockId) {
+          const newShape = flipShape(b.shape);
+          return { ...b, shape: newShape };
+        }
+        return b;
+      });
+      return updated;
+    });
+  };
+
+  // 为已放置的方块添加旋转和翻转功能
+  const handlePlacedBlockRotate = (blockId) => {
+    console.log('--- Rotating placed block ---', blockId);
+    setDroppedBlocks(prev => {
+      const updated = prev.map(b => {
+        if (b.id === blockId) {
+          const newShape = rotateShape(b.shape);
+          console.log('Old shape:', b.shape);
+          console.log('New shape:', newShape);
+          return { ...b, shape: newShape };
+        }
+        return b;
+      });
+      return updated;
+    });
+  };
+
+  const handlePlacedBlockFlip = (blockId) => {
+    console.log('Flipping placed block:', blockId);
+    setDroppedBlocks(prev => {
+      const updated = prev.map(b => {
+        if (b.id === blockId) {
+          const newShape = flipShape(b.shape);
+          console.log('Old shape:', b.shape);
+          console.log('New shape:', newShape);
+          return { ...b, shape: newShape };
+        }
+        return b;
+      });
+      return updated;
+    });
   };
 
   const calculateBlockPosition = (block) => ({
@@ -367,8 +436,8 @@ const CalendarGrid = () => {
             label={block.label}
             color={block.color}
             shape={block.shape}
-            onRotate={() => handleRotate(block.id)}
-            onFlip={() => handleFlip(block.id)}
+            onRotate={() => handlePlacedBlockRotate(block.id)}
+            onFlip={() => handlePlacedBlockFlip(block.id)}
             onDragStart={handleBlockDrag}
             onDragEnd={handleBlockDragEnd}
             onDoubleClick={handleDoubleClick}
@@ -388,6 +457,8 @@ const CalendarGrid = () => {
             label={block.label}
             color={block.color}
             shape={block.shape}
+            // 添加日志追踪传递的shape值
+            onDragStart={() => console.log('CalendarGrid: Dragging block with shape:', block.shape)}
             onRotate={() => handleRotate(block.id)}
             onFlip={() => handleFlip(block.id)}
           />
