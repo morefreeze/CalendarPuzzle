@@ -1,0 +1,118 @@
+/* index.wxss */
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: bold;
+  margin-bottom: 20rpx;
+}
+
+.grid-container {
+  display: grid;
+  border: 10px solid #333;
+  padding: 0px;
+  gap: var(--grid-gap, 0px);
+}
+
+.grid-cell {
+  width: var(--cell-size, 70px);
+  height: var(--cell-size, 70px);
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 28rpx;
+  font-weight: bold;
+  border: 1rpx solid black;
+}
+
+.cell-month {
+  background-color: #FFB6C1; /* LightPink */
+}
+
+.cell-day {
+  background-color: #90EE90; /* LightGreen */
+}
+
+.cell-weekday {
+  background-color: #87CEFA; /* LightSkyBlue */
+}
+
+.cell-empty {
+  background-color: #FFFFFF;
+  border: 1rpx solid transparent;
+}
+
+.uncover {
+  background-color: #F0E68C; /* Khaki */
+}
+
+.page-container {
+  width: 100vw;
+  height: 100vh;
+}
+
+.dropped-blocks-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.placed-block-wrapper {
+  position: absolute;
+  pointer-events: all;
+}
+
+/* Override for cells inside a placed block */
+.placed-block-wrapper .shape-cell {
+  width: var(--cell-size, 70px);
+  height: var(--cell-size, 70px);
+}
+
+.palette-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 20rpx;
+  padding: 10rpx;
+  background-color: #f0f0f0;
+  border-radius: 10rpx;
+}
+
+.ghost-block {
+  position: fixed;
+  z-index: 999;
+  pointer-events: none; /* The ghost should not intercept touch events */
+  opacity: 0.7;
+  transform: translate(-50%, -50%); /* Center the ghost on the touch point */
+}
+
+.ghost-block .shape-cell {
+    width: var(--cell-size, 70px);
+    height: var(--cell-size, 70px);
+}
+
+.preview-block {
+  position: absolute;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.preview-block .shape-cell {
+  width: var(--cell-size, 70px);
+  height: var(--cell-size, 70px);
+}
+
+.preview-block .valid-preview {
+  background-color: gray;
+}
+
+.preview-block .invalid-preview {
+  background-color: red;
+}

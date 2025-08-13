@@ -1,0 +1,63 @@
+/* components/DraggableBlock/DraggableBlock.wxss */
+.block-container {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10rpx;
+  margin: 5rpx;
+  background-color: #f0f0f0;
+  border: 1rpx solid #333;
+  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.1);
+}
+
+.movable-area {
+  width: 100%;
+  height: 100%;
+}
+
+.movable-view {
+  width: 100%;
+  height: 100%;
+}
+
+.shape-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.shape-row {
+  display: flex;
+}
+
+.shape-cell {
+  width: 40rpx; /* Smaller size for unplaced blocks */
+  height: 40rpx;
+  box-sizing: border-box;
+}
+
+.shape-cell.filled {
+  background-color: var(--block-color, lightblue);
+  border: 1rpx solid black;
+}
+
+.controls {
+  margin-top: 10rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.control-btn {
+  font-size: 24rpx;
+  padding: 5rpx 10rpx;
+  margin: 5rpx;
+}
+
+.label {
+  font-size: 28rpx;
+  font-weight: bold;
+  margin-top: 5rpx;
+}
+
+/* Styles for placed blocks should be handled by the parent page (index.wxss)
+   to ensure correct sizing and positioning relative to the grid. */
