@@ -1,0 +1,93 @@
+<!--index.wxml-->
+<view
+  class="page-container"
+  catchtouchmove="handleTouchMove"
+  catchtouchend="handleTouchEnd"
+>
+  <view class="container">
+    <view class="title">日历拼图游戏</view>
+    <view class="grid-container" style="--cell-size: {{CELL_SIZE}}px; --grid-gap: {{GAP_SIZE}}px; grid-template-columns: repeat({{boardLayoutData[0].length}}, var(--cell-size));">
+      <!-- Grid Cells -->
+      <block wx:for="{{boardLayoutData}}" wx:for-item="row" wx:key="y">
+        <block wx:for="{{row}}" wx:for-item="cell" wx:key="x">
+          <view class="grid-cell {{'cell-' + cell.type}} {{cell.isUncovered ? 'uncover' : ''}}">
+            {{cell.value}}
+          </view>
+        </block>
+      </block>
+
+      <!-- Preview Block -->
+      <view
+        class="preview-block"
+        wx:if="{{previewBlock.isVisible}}"
+        style="left: {{previewBlock.x * CELL_SIZE}}px; top: {{previewBlock.y * CELL_SIZE}}px;"
+      >
+        <view class="shape-grid">
+          <block wx:for="{{previewBlock.shape}}" wx:for-item="row" wx:key="*this">
+            <view class="shape-row">
+              <block wx:for="{{row}}" wx:for-item="cell" wx:key="*this">
+                <view class="shape-cell {{cell ? 'filled' : ''}} {{previewBlock.isValid ? 'valid-preview' : 'invalid-preview'}}"></view>
+              </block>
+            </view>
+          </block>
+        </view>
+      </view>
+
+      <!-- Dropped Blocks -->
+      <view class="dropped-blocks-container">
+        <block wx:for="{{droppedBlocks}}" wx:for-item="block" wx:key="id">
+          <view
+            class="placed-block-wrapper"
+            style="left: {{block.x * CELL_SIZE}}px; top: {{block.y * CELL_SIZE}}px;"
+            data-id="{{block.id}}"
+            bindlongpress="handleLongPress"
+            catchtap="handleTap"
+          >
+            <DraggableBlock
+              id="{{block.id}}"
+              label="{{block.label}}"
+              color="{{block.color}}"
+              shape="{{block.shape}}"
+              isPlaced="{{true}}"
+              bind:shapechange="handleShapeChange"
+            />
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <!-- Block Palette -->
+    <view class="palette-container">
+      <block wx:for="{{blockTypes}}" wx:for-item="block" wx:key="id">
+        <view
+          data-id="{{block.id}}"
+          bindlongpress="handleLongPress"
+        >
+          <DraggableBlock
+            id="{{block.id}}"
+            label="{{block.label}}"
+            color="{{block.color}}"
+            shape="{{block.shape}}"
+            isPlaced="{{false}}"
+            bind:shapechange="handleShapeChange"
+          />
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- Ghost Block for Dragging -->
+  <view
+    class="ghost-block"
+    wx:if="{{draggingBlock.isDragging}}"
+    style="left: {{draggingBlock.x}}px; top: {{draggingBlock.y}}px;"
+  >
+    <DraggableBlock
+      id="{{draggingBlock.block.id}}"
+      label="{{draggingBlock.block.label}}"
+      color="{{draggingBlock.block.color}}"
+      shape="{{draggingBlock.block.shape}}"
+      isPlaced="{{true}}"
+    />
+  </view>
+</view>

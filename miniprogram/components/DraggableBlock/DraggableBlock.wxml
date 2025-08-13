@@ -1,0 +1,25 @@
+<!-- components/DraggableBlock/DraggableBlock.wxml -->
+<view
+  class="block-container"
+  style="--block-color: {{color}};"
+  bindlongpress="onLongPress"
+  catchtouchmove="noop"
+  catchtouchend="onDragEnd"
+  catchtap="onDoubleClick"
+>
+  <view class="shape-grid">
+    <block wx:for="{{currentShape}}" wx:for-item="row" wx:key="*this">
+      <view class="shape-row">
+        <block wx:for="{{row}}" wx:for-item="cell" wx:key="*this">
+          <view class="shape-cell {{cell ? 'filled' : ''}}"></view>
+        </block>
+      </view>
+    </block>
+  </view>
+
+  <view class="controls" wx:if="{{!isPlaced}}">
+    <button class="control-btn" bindtap="rotateShape">Rotate</button>
+    <button class="control-btn" bindtap="flipShape">Flip</button>
+    <view class="label">{{label}}</view>
+  </view>
+</view>
