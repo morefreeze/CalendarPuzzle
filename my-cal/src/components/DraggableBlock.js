@@ -19,12 +19,12 @@ const DraggableBlock = ({
   // Enhanced shape change tracking with component ID
   useEffect(() => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] DraggableBlock (ID: ${id}) received updated shape:`, JSON.stringify(shape));
+    console.debug(`[${timestamp}] DraggableBlock (ID: ${id}) received updated shape:`, JSON.stringify(shape));
   }, [shape, id]);
 
   // Debug state to track shape updates
   useEffect(() => {
-    console.log(`DraggableBlock (ID: ${id}) - component re-rendered with shape:`, JSON.stringify(shape));
+    console.debug(`DraggableBlock (ID: ${id}) - component re-rendered with shape:`, JSON.stringify(shape));
   });
   // 使用网格的CELL_SIZE或提供的自定义大小
   const CELL_SIZE = isPlaced ? GRID_CELL_SIZE : 20;
@@ -38,7 +38,7 @@ const DraggableBlock = ({
     if (onDragStart) {
       onDragStart();
     }
-    console.log(`[${timestamp}] DraggableBlock (ID: ${id}) - getItem called with shape:`, JSON.stringify(shape));
+    console.debug(`[${timestamp}] DraggableBlock (ID: ${id}) - getItem called with shape:`, JSON.stringify(shape));
     return { id, label, color, shape, cellSize: CELL_SIZE };
   }, [id, label, color, shape, CELL_SIZE, onDragStart]);
 

@@ -138,7 +138,7 @@ const CalendarGrid = () => {
     { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [0, 1, 0], [1, 1, 1]] },
     { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 0], [1, 1]] },
     { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]] },
-    { id: 'Z-block', label: 'Z', color: '#FF0000', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
+    { id: 'Z-block', label: 'Z', color: '#0000FF', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
     { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]] },
     { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]] },
     { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
@@ -149,11 +149,11 @@ const CalendarGrid = () => {
   const [, drop] = useDrop(() => ({
     accept: 'BLOCK',
     drop: (item, monitor) => {
-      console.log('Drop event triggered:', item);
+      console.debug('Drop event triggered:', item);
 
       // Use alternative calculation if needed
       let position = calculateDropPosition(item, monitor);
-      console.log('Calculated drop position:', position);
+      console.debug('Calculated drop position:', position);
 
       // 传递item.id作为excludeId，排除正在移动的方块自身
       const isPlacementValid = position && isValidPlacement(item, position, item.id);
@@ -181,11 +181,12 @@ const CalendarGrid = () => {
       } else {
         console.log('Placement invalid. Reasons:');
         if (!position) {
-          console.log('- Could not calculate drop position');
+          console.debug('- Could not calculate drop position');
         } else {
-          console.log('- Position is valid but placement rules not satisfied');
+          console.debug('- Position is valid but placement rules not satisfied');
         }
       }
+      console.log('drop preview cleared');
       setPreviewBlock(null);
     },
     hover: (item, monitor) => {
@@ -194,11 +195,29 @@ const CalendarGrid = () => {
       const clientOffset = monitor.getClientOffset();
       console.debug('Hover clientOffset:', clientOffset);
 
-      if (!monitor.isOver()) {
-        console.debug('Mouse not over grid, clearing preview');
-        if (previewBlock) setPreviewBlock(null);
+      // 当鼠标不在网格上方或clientOffset为null时，立即清除预览
+      if (!monitor.isOver() || !clientOffset) {
+        console.log('Mouse not over grid or clientOffset is null, clearing preview');
+        setPreviewBlock(null);
         return;
       }
+
+      // 获取网格元素的位置和尺寸
+      if (gridRef.current) {
+        const gridRect = gridRef.current.getBoundingClientRect();
+        // 检查clientOffset是否在网格范围内
+        if (
+          clientOffset.x < gridRect.left || 
+          clientOffset.x > gridRect.right || 
+          clientOffset.y < gridRect.top || 
+          clientOffset.y > gridRect.bottom
+        ) {
+          console.log('Mouse outside grid bounds, clearing preview');
+          setPreviewBlock(null);
+          return;
+        }
+      }
+
       const position = calculateDropPosition(item, monitor);
       console.debug('Calculated hover position:', position);
       if (position) {
@@ -209,13 +228,16 @@ const CalendarGrid = () => {
           console.debug('Updating preview block:', newPreview);
           setPreviewBlock(newPreview);
         }
+      } else {
+        // 如果无法计算位置，也清除预览
+        setPreviewBlock(null);
       }
     }
   }), [calculateDropPosition, previewBlock, isValidPlacement]);
 
   // 添加额外的调试日志
   useEffect(() => {
-    console.log('Block types updated:', blockTypes);
+    console.debug('Block types updated:', blockTypes);
   }, [blockTypes]);
 
 
@@ -414,6 +436,7 @@ const CalendarGrid = () => {
               setDroppedBlocks(prev => prev.filter(b => b.id !== block.id));
               // 添加回blockTypes
               setBlockTypes(prev => [...prev, block]);
+              setPreviewBlock(null);
             } else {
               console.log('Block moved to new position:', block.id);
               // 位置更新由drop处理函数完成
