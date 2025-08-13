@@ -107,7 +107,7 @@ const DraggableBlock = ({
       
       <div
         ref={drag}
-        style={{opacity: isPlaced && isDragging ? 0.3 : (isDragging ? 0.5 : 1),
+        style={{opacity: isPlaced && isDragging ? 0.3 : (isDragging ? 0.5 : (isPlaced ? 0.8 : 1)),
           cursor: 'move',
           position: 'relative',
           zIndex: 1
