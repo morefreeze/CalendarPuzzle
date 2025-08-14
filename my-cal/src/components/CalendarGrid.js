@@ -34,6 +34,66 @@ const initialBlockTypes = [
 ];
 
 const CalendarGrid = () => {
+  // 计时器状态
+  const [timer, setTimer] = useState(0);
+  const [gameId, setGameId] = useState('');
+  const timerRef = useRef(null);
+
+  // 生成基于方块类型和棋盘状态的唯一游戏ID
+  const generateGameId = (blockTypes, boardLayout) => {
+    // 对blockTypes进行排序以确保一致性
+    const sortedBlockTypes = [...blockTypes].sort((a, b) => a.id.localeCompare(b.id));
+    // 生成方块类型的字符串表示
+    const blocksStr = sortedBlockTypes.map(block => `${block.id}:${JSON.stringify(block.shape)}`).join('|');
+    // 生成棋盘布局的字符串表示
+    const boardStr = JSON.stringify(boardLayout);
+    // 使用简单的哈希算法生成唯一ID
+    let hash = 0;
+    const str = blocksStr + boardStr;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 转换为32位整数
+    }
+    return Math.abs(hash).toString(36);
+  };
+
+  // 初始化游戏ID和计时器
+  useEffect(() => {
+    // 生成游戏ID
+    const newGameId = generateGameId(initialBlockTypes, boardLayoutData);
+    setGameId(newGameId);
+
+    // 从localStorage获取保存的计时器值
+    const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
+    if (savedTimer) {
+      setTimer(parseInt(savedTimer, 10));
+    }
+
+    // 启动计时器
+    timerRef.current = setInterval(() => {
+      setTimer(prevTimer => {
+        const newTimer = prevTimer + 1;
+        // 保存计时器值到localStorage
+        localStorage.setItem(`calendarPuzzleTimer_${newGameId}`, newTimer.toString());
+        return newTimer;
+      });
+    }, 1000);
+
+    // 清除计时器
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
+
+  // 格式化时间显示
+  const formatTime = (totalSeconds) => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
   const [droppedBlocks, setDroppedBlocks] = useState([]);
   const [previewBlock, setPreviewBlock] = useState(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -274,45 +334,43 @@ const CalendarGrid = () => {
         keyDownTimes.delete(key);
 
         // 根据按键时长决定操作
-            const block = blockTypes.find(b => b.key.toLowerCase() === key);
+        const block = blockTypes.find(b => b.key.toLowerCase() === key);
 
-            if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
-              if (pressDuration >= LONG_PRESS_THRESHOLD) {
-                // 长按 - 翻转方块
-                console.log(`Long pressing block: ${block.id}, flipping...`);
-                const flippedShape = flipShape(previewBlock.shape);
-                const flippedBlock = {
-                  ...previewBlock,
-                  shape: flippedShape
-                };
+        if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
+          if (pressDuration >= LONG_PRESS_THRESHOLD) {
+            // 长按 - 翻转方块
+            console.log(`Long pressing block: ${block.id}, flipping...`);
+            const flippedShape = flipShape(previewBlock.shape);
+            const flippedBlock = {
+              ...previewBlock,
+              shape: flippedShape
+            };
 
-                // 检查翻转后的位置是否有效
-                const isValid = isValidPlacement(flippedBlock, { x: flippedBlock.x, y: flippedBlock.y });
+            // 检查翻转后的位置是否有效
+            const isValid = isValidPlacement(flippedBlock, { x: flippedBlock.x, y: flippedBlock.y });
 
-                setPreviewBlock({
-                  ...flippedBlock,
-                  isValid
-                });
-                console.log('Block flipped');
-              } else {
-                // 短按 - 旋转方块
-                console.log(`Short pressing block: ${block.id}, rotating...`);
-                const rotatedShape = rotateShape(previewBlock.shape);
-                const rotatedBlock = {
-                  ...previewBlock,
-                  shape: rotatedShape
-                };
+            setPreviewBlock({
+              ...flippedBlock,
+              isValid
+            });
+          } else {
+            // 短按 - 旋转方块
+            console.log(`Short pressing block: ${block.id}, rotating...`);
+            const rotatedShape = rotateShape(previewBlock.shape);
+            const rotatedBlock = {
+              ...previewBlock,
+              shape: rotatedShape
+            };
 
-                // 检查旋转后的位置是否有效
-                const isValid = isValidPlacement(rotatedBlock, { x: rotatedBlock.x, y: rotatedBlock.y });
+            // 检查旋转后的位置是否有效
+            const isValid = isValidPlacement(rotatedBlock, { x: rotatedBlock.x, y: rotatedBlock.y });
 
-                setPreviewBlock({
-                  ...rotatedBlock,
-                  isValid
-                });
-                console.log('Block rotated');
-              }
-            }
+            setPreviewBlock({
+              ...rotatedBlock,
+              isValid
+            });
+          }
+        }
       }
     };
 
@@ -561,6 +619,23 @@ const CalendarGrid = () => {
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* 显示计时器 */}
+      <div style={{
+        fontSize: '24px',
+        fontWeight: 'bold',
+        marginBottom: '10px',
+        color: '#333',
+        fontFamily: 'Arial, sans-serif'
+      }}>
+        Time: {formatTime(timer)}
+      </div>
+      <div style={{
+        fontSize: '14px',
+        color: '#666',
+        marginBottom: '20px'
+      }}>
+        Game ID: {gameId}
+      </div>
       <div
         ref={(el) => {
           drop(el);
