@@ -15,7 +15,7 @@ const boardLayoutData = [
   [{ type: 'day', value: 15 }, { type: 'day', value: 16 }, { type: 'day', value: 17 }, { type: 'day', value: 18 }, { type: 'day', value: 19 }, { type: 'day', value: 20 }, { type: 'day', value: 21 }],
   [{ type: 'day', value: 22 }, { type: 'day', value: 23 }, { type: 'day', value: 24 }, { type: 'day', value: 25 }, { type: 'day', value: 26 }, { type: 'day', value: 27 }, { type: 'day', value: 28 }],
   [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: 'Sun' }, { type: 'weekday', value: 'Mon' }, { type: 'weekday', value: 'Tue' }, { type: 'weekday', value: 'Wed' }],
-  [ { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
+  [{ type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
 ];
 
 // 定义所有方块类型，包括原始的和新增的
@@ -28,7 +28,7 @@ const initialBlockTypes = [
   { id: 'Z-block', label: 'Z', color: '#0000FF', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]], key: 'z' },
   { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]], key: 'n' },
   { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]], key: 'q' },
-  { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]], key: 'y' },
+  { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0], [1, 0, 0], [1, 1, 1]], key: 'y' },
   { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]], key: 'u' },
   { id: 'l-block', label: 'l', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]], key: 'e' },
 ];
@@ -81,16 +81,25 @@ const CalendarGrid = () => {
 
   // 第三个参数excludeId用于排除正在移动的方块自身
   const isValidPlacement = useCallback((block, newCoords, excludeId = null) => {
+    // 检查block和block.shape是否存在
+    if (!block || !block.shape || !Array.isArray(block.shape)) {
+      console.error('Invalid block or block.shape:', block);
+      return false;
+    }
+
     const blockCells = [];
     block.shape.forEach((row, rowIndex) => {
-      row.forEach((cell, colIndex) => {
-        if (cell === 1) {
-          blockCells.push({
-            x: newCoords.x + colIndex,
-            y: newCoords.y + rowIndex,
-          });
-        }
-      });
+      // 确保row是数组
+      if (Array.isArray(row)) {
+        row.forEach((cell, colIndex) => {
+          if (cell === 1) {
+            blockCells.push({
+              x: newCoords.x + colIndex,
+              y: newCoords.y + rowIndex,
+            });
+          }
+        });
+      }
     });
 
     for (const cell of blockCells) {
@@ -107,10 +116,10 @@ const CalendarGrid = () => {
     const allDroppedCells = droppedBlocksRef.current
       .filter(b => excludeId === null || b.id !== excludeId)
       .flatMap(b =>
-      b.shape.flatMap((row, rIdx) =>
-        row.map((c, cIdx) => (c === 1 ? { x: b.x + cIdx, y: b.y + rIdx } : null))
-      ).filter(Boolean)
-    );
+        b.shape.flatMap((row, rIdx) =>
+          row.map((c, cIdx) => (c === 1 ? { x: b.x + cIdx, y: b.y + rIdx } : null))
+        ).filter(Boolean)
+      );
 
     for (const blockCell of blockCells) {
       if (allDroppedCells.some(d => d.x === blockCell.x && d.y === blockCell.y)) {
@@ -164,30 +173,48 @@ const CalendarGrid = () => {
     return { x: gridX - blockCellOffsetX, y: gridY - blockCellOffsetY };
   }, []);
 
+  // 顺时针旋转90度
+  const rotateShape = (shape) => {
+    console.debug('Original shape for rotation:', shape);
+    const rows = shape.length;
+    const cols = shape[0].length;
+    const newShape = Array(cols).fill(0).map(() => Array(rows).fill(0));
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        newShape[col][rows - 1 - row] = shape[row][col];
+      }
+    }
+    console.debug('Rotated shape:', newShape);
+    return newShape;
+  };
+
+  // 水平翻转
+  const flipShape = (shape) => {
+    console.debug('Original shape for flipping:', shape);
+    const newShape = shape.map(row => [...row].reverse());
+    console.debug('Flipped shape:', newShape);
+    return newShape;
+  };
+
   // 使用模块级定义的初始方块类型
   const [blockTypes, setBlockTypes] = useState(initialBlockTypes);
 
-  // 使用现有的rotateShape函数旋转方块
-  const rotateBlock = (block) => {
-    // 如果方块没有shape属性或shape为空，则直接返回
-    if (!block || !block.shape || block.shape.length === 0) return block;
-
-    // 使用已有的rotateShape函数旋转形状
-    const newShape = rotateShape(block.shape);
-
-    // 返回旋转后的方块
-    return {
-      ...block,
-      shape: newShape
-    };
-  };
-
-  // 键盘事件处理 - 创建方块、旋转或替换正在拖动的方块
+  // 键盘事件处理 - 创建方块、旋转、翻转或替换正在拖动的方块
   useEffect(() => {
+    // 用于跟踪长按事件
+    const keyDownTimes = new Map();
+    const LONG_PRESS_THRESHOLD = 500; // 长按阈值，单位ms
+
     const handleKeyDown = (e) => {
       // 忽略输入框等可编辑元素中的按键
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
         return;
+      }
+
+      // 只记录按键第一次按下的时间
+      if (!keyDownTimes.has(e.key.toLowerCase())) {
+        keyDownTimes.set(e.key.toLowerCase(), Date.now());
+        console.log('Key down recorded:', e.key.toLowerCase());
       }
 
       // 查找对应的方块
@@ -198,20 +225,7 @@ const CalendarGrid = () => {
 
         // 检查是否正在拖动方块
         if (previewBlock && previewBlock.isDragging) {
-          if (previewBlock.id === block.id) {
-            // 如果是同一个方块，则旋转
-            console.log(`Rotating block: ${block.id}`);
-            const rotatedBlock = rotateBlock(previewBlock);
-
-            // 检查旋转后的位置是否有效
-            const isValid = isValidPlacement(rotatedBlock, {x: rotatedBlock.x, y: rotatedBlock.y});
-
-            setPreviewBlock({
-              ...rotatedBlock,
-              isValid
-            });
-            console.log('Block rotated');
-          } else {
+          if (previewBlock.id !== block.id) {
             // 如果是不同的方块，则替换
             console.log(`Replacing dragged block with: ${block.id}`);
 
@@ -246,19 +260,72 @@ const CalendarGrid = () => {
             };
 
             setPreviewBlock(newPreviewBlock);
-            console.log('Created preview block at position:', {x: newPreviewBlock.x, y: newPreviewBlock.y});
+            console.log('Created preview block at position:', { x: newPreviewBlock.x, y: newPreviewBlock.y });
           }
         }
       }
     };
 
+    const handleKeyUp = (e) => {
+      const key = e.key.toLowerCase();
+      if (keyDownTimes.has(key)) {
+        const pressDuration = Date.now() - keyDownTimes.get(key);
+        console.log('key press ', keyDownTimes.get(key), pressDuration);
+        keyDownTimes.delete(key);
+
+        // 根据按键时长决定操作
+            const block = blockTypes.find(b => b.key.toLowerCase() === key);
+
+            if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
+              if (pressDuration >= LONG_PRESS_THRESHOLD) {
+                // 长按 - 翻转方块
+                console.log(`Long pressing block: ${block.id}, flipping...`);
+                const flippedShape = flipShape(previewBlock.shape);
+                const flippedBlock = {
+                  ...previewBlock,
+                  shape: flippedShape
+                };
+
+                // 检查翻转后的位置是否有效
+                const isValid = isValidPlacement(flippedBlock, { x: flippedBlock.x, y: flippedBlock.y });
+
+                setPreviewBlock({
+                  ...flippedBlock,
+                  isValid
+                });
+                console.log('Block flipped');
+              } else {
+                // 短按 - 旋转方块
+                console.log(`Short pressing block: ${block.id}, rotating...`);
+                const rotatedShape = rotateShape(previewBlock.shape);
+                const rotatedBlock = {
+                  ...previewBlock,
+                  shape: rotatedShape
+                };
+
+                // 检查旋转后的位置是否有效
+                const isValid = isValidPlacement(rotatedBlock, { x: rotatedBlock.x, y: rotatedBlock.y });
+
+                setPreviewBlock({
+                  ...rotatedBlock,
+                  isValid
+                });
+                console.log('Block rotated');
+              }
+            }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [blockTypes, mousePosition, previewBlock, isValidPlacement]);
 
   // 移除了键盘方块创建时从可用方块列表中移除的逻辑
   // 现在按下按键只会创建预览方块，不会从blockTypes中移除方块类型
-  
 
   // 鼠标移动时更新预览方块位置
   useEffect(() => {
@@ -270,7 +337,7 @@ const CalendarGrid = () => {
       const newY = y - Math.floor(previewBlock.shape.length / 2);
 
       // 检查位置有效性
-      const isValid = isValidPlacement(previewBlock, {x: newX, y: newY});
+      const isValid = isValidPlacement(previewBlock, { x: newX, y: newY });
 
       if (previewBlock.x !== newX || previewBlock.y !== newY || previewBlock.isValid !== isValid) {
         setPreviewBlock(prev => ({
@@ -289,10 +356,10 @@ const CalendarGrid = () => {
       if (previewBlock && previewBlock.isDragging) {
         console.log('Mouse up, attempting to place block:', previewBlock.id);
 
-        const isPlacementValid = isValidPlacement(previewBlock, {x: previewBlock.x, y: previewBlock.y});
+        const isPlacementValid = isValidPlacement(previewBlock, { x: previewBlock.x, y: previewBlock.y });
 
         if (isPlacementValid) {
-          const newBlock = {...previewBlock};
+          const newBlock = { ...previewBlock };
           delete newBlock.isDragging;
           delete newBlock.isValid;
 
@@ -376,9 +443,9 @@ const CalendarGrid = () => {
         const gridRect = gridRef.current.getBoundingClientRect();
         // 检查clientOffset是否在网格范围内
         if (
-          clientOffset.x < gridRect.left || 
-          clientOffset.x > gridRect.right || 
-          clientOffset.y < gridRect.top || 
+          clientOffset.x < gridRect.left ||
+          clientOffset.x > gridRect.right ||
+          clientOffset.y < gridRect.top ||
           clientOffset.y > gridRect.bottom
         ) {
           console.log('Mouse outside grid bounds, clearing preview');
@@ -410,33 +477,9 @@ const CalendarGrid = () => {
   }, [blockTypes]);
 
 
-  // 顺时针旋转90度
-  const rotateShape = (shape) => {
-    console.debug('Original shape for rotation:', shape);
-    const rows = shape.length;
-    const cols = shape[0].length;
-    const newShape = Array(cols).fill(0).map(() => Array(rows).fill(0));
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        newShape[col][rows - 1 - row] = shape[row][col];
-      }
-    }
-    console.debug('Rotated shape:', newShape);
-    return newShape;
-  };
-
-  // 水平翻转
-  const flipShape = (shape) => {
-    console.debug('Original shape for flipping:', shape);
-    const newShape = shape.map(row => [...row].reverse());
-    console.debug('Flipped shape:', newShape);
-    return newShape;
-  };
-
   // 使用setTimeout模拟异步更新，测试useCallback的依赖追踪机制
   const handleRotate = (blockId) => {
-    console.log('--- Rotating block ---');
-    console.log('Block ID:', blockId);
+    console.log('--- Rotating block ---', blockId);
     // 添加小延迟模拟异步操作
     setTimeout(() => {
       setBlockTypes(prev => {
@@ -630,8 +673,8 @@ const CalendarGrid = () => {
           };
 
 
-  // 处理已放置方块拖动结束后的逻辑
-  const handleBlockDragEnd = (didDrop) => {
+          // 处理已放置方块拖动结束后的逻辑
+          const handleBlockDragEnd = (didDrop) => {
             // 如果方块没有被放置在有效位置，将其返回面板
             if (!didDrop) {
               console.log('Block dragged out of board, returning to panel:', block.id);
@@ -657,19 +700,19 @@ const CalendarGrid = () => {
 
           return (
             <DraggableBlock
-            key={`dropped-${block.id}`}
-            id={block.id}
-            label={block.label}
-            color={block.color}
-            shape={block.shape}
-            onRotate={() => handlePlacedBlockRotate(block.id)}
-            onFlip={() => handlePlacedBlockFlip(block.id)}
-            onDragStart={handleBlockDrag}
-            onDragEnd={handleBlockDragEnd}
-            onDoubleClick={handleDoubleClick}
-            isPlaced={true}
-            style={{ position: 'absolute', left: `${position.left}px`, top: `${position.top}px` }}
-          />
+              key={`dropped-${block.id}`}
+              id={block.id}
+              label={block.label}
+              color={block.color}
+              shape={block.shape}
+              onRotate={() => handlePlacedBlockRotate(block.id)}
+              onFlip={() => handlePlacedBlockFlip(block.id)}
+              onDragStart={handleBlockDrag}
+              onDragEnd={handleBlockDragEnd}
+              onDoubleClick={handleDoubleClick}
+              isPlaced={true}
+              style={{ position: 'absolute', left: `${position.left}px`, top: `${position.top}px` }}
+            />
           );
         })}
       </div>
