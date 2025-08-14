@@ -167,7 +167,22 @@ const CalendarGrid = () => {
   // 使用模块级定义的初始方块类型
   const [blockTypes, setBlockTypes] = useState(initialBlockTypes);
 
-  // 键盘事件处理 - 创建方块并进入拖动状态
+  // 使用现有的rotateShape函数旋转方块
+  const rotateBlock = (block) => {
+    // 如果方块没有shape属性或shape为空，则直接返回
+    if (!block || !block.shape || block.shape.length === 0) return block;
+
+    // 使用已有的rotateShape函数旋转形状
+    const newShape = rotateShape(block.shape);
+
+    // 返回旋转后的方块
+    return {
+      ...block,
+      shape: newShape
+    };
+  };
+
+  // 键盘事件处理 - 创建方块、旋转或替换正在拖动的方块
   useEffect(() => {
     const handleKeyDown = (e) => {
       // 忽略输入框等可编辑元素中的按键
@@ -180,31 +195,66 @@ const CalendarGrid = () => {
 
       if (block) {
         e.preventDefault();
-        console.log(`Keyboard shortcut pressed: ${e.key}, creating block: ${block.id}`);
 
-        // 计算鼠标位置对应的网格坐标
-        if (gridRef.current) {
-          const x = Math.floor(mousePosition.x / (CELL_SIZE + GAP_SIZE));
-          const y = Math.floor(mousePosition.y / (CELL_SIZE + GAP_SIZE));
+        // 检查是否正在拖动方块
+        if (previewBlock && previewBlock.isDragging) {
+          if (previewBlock.id === block.id) {
+            // 如果是同一个方块，则旋转
+            console.log(`Rotating block: ${block.id}`);
+            const rotatedBlock = rotateBlock(previewBlock);
 
-          // 创建预览方块并置于拖动状态
-          const newPreviewBlock = {
-            ...block,
-            x: x - Math.floor(block.shape[0].length / 2), // 居中对齐鼠标
-            y: y - Math.floor(block.shape.length / 2),
-            isValid: true,
-            isDragging: true
-          };
+            // 检查旋转后的位置是否有效
+            const isValid = isValidPlacement(rotatedBlock, {x: rotatedBlock.x, y: rotatedBlock.y});
 
-          setPreviewBlock(newPreviewBlock);
-          console.log('Created preview block at position:', {x: newPreviewBlock.x, y: newPreviewBlock.y});
+            setPreviewBlock({
+              ...rotatedBlock,
+              isValid
+            });
+            console.log('Block rotated');
+          } else {
+            // 如果是不同的方块，则替换
+            console.log(`Replacing dragged block with: ${block.id}`);
+
+            // 保持相同的位置
+            const newPreviewBlock = {
+              ...block,
+              x: previewBlock.x,
+              y: previewBlock.y,
+              isValid: true,
+              isDragging: true
+            };
+
+            setPreviewBlock(newPreviewBlock);
+            console.log('Block replaced');
+          }
+        } else {
+          // 如果没有正在拖动的方块，则创建新的预览方块
+          console.log(`Keyboard shortcut pressed: ${e.key}, creating block: ${block.id}`);
+
+          // 计算鼠标位置对应的网格坐标
+          if (gridRef.current) {
+            const x = Math.floor(mousePosition.x / (CELL_SIZE + GAP_SIZE));
+            const y = Math.floor(mousePosition.y / (CELL_SIZE + GAP_SIZE));
+
+            // 创建预览方块并置于拖动状态
+            const newPreviewBlock = {
+              ...block,
+              x: x - Math.floor(block.shape[0].length / 2), // 居中对齐鼠标
+              y: y - Math.floor(block.shape.length / 2),
+              isValid: true,
+              isDragging: true
+            };
+
+            setPreviewBlock(newPreviewBlock);
+            console.log('Created preview block at position:', {x: newPreviewBlock.x, y: newPreviewBlock.y});
+          }
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [blockTypes, mousePosition]);
+  }, [blockTypes, mousePosition, previewBlock, isValidPlacement]);
 
   // 移除了键盘方块创建时从可用方块列表中移除的逻辑
   // 现在按下按键只会创建预览方块，不会从blockTypes中移除方块类型
