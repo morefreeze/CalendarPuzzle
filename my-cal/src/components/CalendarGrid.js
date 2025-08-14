@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useDrop } from 'react-dnd';
 import GridCell from './GridCell';
 import DraggableBlock from './DraggableBlock';
@@ -18,12 +18,45 @@ const boardLayoutData = [
   [ { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
 ];
 
+// 定义所有方块类型，包括原始的和新增的
+const initialBlockTypes = [
+  { id: 'I-block', label: 'I', color: '#00FFFF', shape: [[1, 1, 1, 1]], key: 'i' },
+  // { id: 'O-block', label: 'O', color: '#FFFF00', shape: [[1, 1], [1, 1]], key: 'o' },
+  { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [0, 1, 0], [1, 1, 1]], key: 't' },
+  { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 0], [1, 1]], key: 'l' },
+  { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]], key: 's' },
+  { id: 'Z-block', label: 'Z', color: '#0000FF', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]], key: 'z' },
+  { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]], key: 'n' },
+  { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]], key: 'q' },
+  { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]], key: 'y' },
+  { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]], key: 'u' },
+  { id: 'l-block', label: 'l', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]], key: 'e' },
+];
+
 const CalendarGrid = () => {
   const [droppedBlocks, setDroppedBlocks] = useState([]);
   const [previewBlock, setPreviewBlock] = useState(null);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [keyboardBlock, setKeyboardBlock] = useState(null);
+  const dragRef = useRef(null);
   const gridRef = useRef(null);
   const droppedBlocksRef = useRef(droppedBlocks);
   droppedBlocksRef.current = droppedBlocks;
+
+  // 监听鼠标移动，更新鼠标位置
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (gridRef.current) {
+        const gridRect = gridRef.current.getBoundingClientRect();
+        const x = e.clientX - gridRect.left;
+        const y = e.clientY - gridRect.top;
+        setMousePosition({ x, y });
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   const uncoverableCells = useMemo(() => {
     const today = new Date();
@@ -131,20 +164,106 @@ const CalendarGrid = () => {
     return { x: gridX - blockCellOffsetX, y: gridY - blockCellOffsetY };
   }, []);
 
-  // 定义所有方块类型，包括原始的和新增的
-  const [blockTypes, setBlockTypes] = useState([
-    { id: 'I-block', label: 'I', color: '#00FFFF', shape: [[1, 1, 1, 1]] },
-    // { id: 'O-block', label: 'O', color: '#FFFF00', shape: [[1, 1], [1, 1]] },
-    { id: 'T-block', label: 'T', color: '#800080', shape: [[0, 1, 0], [0, 1, 0], [1, 1, 1]] },
-    { id: 'L-block', label: 'L', color: '#FFA500', shape: [[1, 0], [1, 0], [1, 0], [1, 1]] },
-    { id: 'S-block', label: 'S', color: '#00FF00', shape: [[0, 1, 1], [1, 1, 0]] },
-    { id: 'Z-block', label: 'Z', color: '#0000FF', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
-    { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]] },
-    { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]] },
-    { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
-    { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]] },
-    { id: 'l-block', label: 'l', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]] },
-  ]);
+  // 使用模块级定义的初始方块类型
+  const [blockTypes, setBlockTypes] = useState(initialBlockTypes);
+
+  // 键盘事件处理 - 创建方块并进入拖动状态
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 忽略输入框等可编辑元素中的按键
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+        return;
+      }
+
+      // 查找对应的方块
+      const block = blockTypes.find(b => b.key.toLowerCase() === e.key.toLowerCase());
+
+      if (block) {
+        e.preventDefault();
+        console.log(`Keyboard shortcut pressed: ${e.key}, creating block: ${block.id}`);
+
+        // 计算鼠标位置对应的网格坐标
+        if (gridRef.current) {
+          const x = Math.floor(mousePosition.x / (CELL_SIZE + GAP_SIZE));
+          const y = Math.floor(mousePosition.y / (CELL_SIZE + GAP_SIZE));
+
+          // 创建预览方块并置于拖动状态
+          const newPreviewBlock = {
+            ...block,
+            x: x - Math.floor(block.shape[0].length / 2), // 居中对齐鼠标
+            y: y - Math.floor(block.shape.length / 2),
+            isValid: true,
+            isDragging: true
+          };
+
+          setPreviewBlock(newPreviewBlock);
+          console.log('Created preview block at position:', {x: newPreviewBlock.x, y: newPreviewBlock.y});
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [blockTypes, mousePosition]);
+
+  // 移除了键盘方块创建时从可用方块列表中移除的逻辑
+  // 现在按下按键只会创建预览方块，不会从blockTypes中移除方块类型
+  
+
+  // 鼠标移动时更新预览方块位置
+  useEffect(() => {
+    if (previewBlock && previewBlock.isDragging) {
+      const x = Math.floor(mousePosition.x / (CELL_SIZE + GAP_SIZE));
+      const y = Math.floor(mousePosition.y / (CELL_SIZE + GAP_SIZE));
+
+      const newX = x - Math.floor(previewBlock.shape[0].length / 2);
+      const newY = y - Math.floor(previewBlock.shape.length / 2);
+
+      // 检查位置有效性
+      const isValid = isValidPlacement(previewBlock, {x: newX, y: newY});
+
+      if (previewBlock.x !== newX || previewBlock.y !== newY || previewBlock.isValid !== isValid) {
+        setPreviewBlock(prev => ({
+          ...prev,
+          x: newX,
+          y: newY,
+          isValid
+        }));
+      }
+    }
+  }, [mousePosition, previewBlock, isValidPlacement]);
+
+  // 鼠标释放时放置方块
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (previewBlock && previewBlock.isDragging) {
+        console.log('Mouse up, attempting to place block:', previewBlock.id);
+
+        const isPlacementValid = isValidPlacement(previewBlock, {x: previewBlock.x, y: previewBlock.y});
+
+        if (isPlacementValid) {
+          const newBlock = {...previewBlock};
+          delete newBlock.isDragging;
+          delete newBlock.isValid;
+
+          // 添加新方块
+          setDroppedBlocks(prev => [...prev, newBlock]);
+          console.log('Added new block from keyboard:', newBlock.id);
+
+          // 从blockTypes中移除已放置的方块类型
+          setBlockTypes(prev => prev.filter(block => block.id !== newBlock.id));
+          console.log('Removed block type from blockTypes:', newBlock.id);
+        } else {
+          console.log('Invalid placement, block not added');
+        }
+
+        setPreviewBlock(null);
+      }
+    };
+
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, [previewBlock, isValidPlacement]);
 
   const [, drop] = useDrop(() => ({
     accept: 'BLOCK',
@@ -339,6 +458,14 @@ const CalendarGrid = () => {
   });
 
 
+  const handleKeyboardBlockDragEnd = (didDrop) => {
+    if (!didDrop && keyboardBlock) {
+      console.log('Keyboard block not placed, returning to panel:', keyboardBlock.id);
+      // 将方块添加回可用列表
+      setBlockTypes(prev => [...prev, keyboardBlock]);
+    }
+    setKeyboardBlock(null);
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <div
@@ -371,6 +498,31 @@ const CalendarGrid = () => {
               />
             );
           })
+        )}
+
+        {/* 键盘触发的拖拽方块 */}
+        {keyboardBlock && (
+          <DraggableBlock
+            key={`keyboard-${keyboardBlock.id}`}
+            id={keyboardBlock.id}
+            label={keyboardBlock.label}
+            color={keyboardBlock.color}
+            shape={keyboardBlock.shape}
+            onDragEnd={handleKeyboardBlockDragEnd}
+            isPlaced={false}
+            // 使用回调ref确保正确传递到shape元素
+            ref={(el) => {
+              dragRef.current = el;
+            }}
+            style={{
+              position: 'absolute',
+              left: `${mousePosition.x}px`,
+              top: `${mousePosition.y}px`,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 10,
+              cursor: 'move'
+            }}
+          />
         )}
 
         {previewBlock && (() => {
@@ -427,8 +579,9 @@ const CalendarGrid = () => {
             console.log('Starting to drag placed block:', block.id);
           };
 
-          // 处理已放置方块拖动结束后的逻辑
-          const handleBlockDragEnd = (didDrop) => {
+
+  // 处理已放置方块拖动结束后的逻辑
+  const handleBlockDragEnd = (didDrop) => {
             // 如果方块没有被放置在有效位置，将其返回面板
             if (!didDrop) {
               console.log('Block dragged out of board, returning to panel:', block.id);
