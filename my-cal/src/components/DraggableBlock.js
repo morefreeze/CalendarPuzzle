@@ -1,7 +1,7 @@
 import { useDrag } from 'react-dnd';
 import { useCallback, useEffect } from 'react';
 import PropTypes from 'prop-types';
-import { CELL_BOARDER, CELL_SIZE as GRID_CELL_SIZE } from './CalendarGrid';
+import { CELL_BOARDER, CELL_SIZE as GRID_CELL_SIZE } from './InitBoard';
 
 const DraggableBlock = ({ 
   id, 

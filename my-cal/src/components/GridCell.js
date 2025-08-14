@@ -1,6 +1,6 @@
 import React from 'react';
 import { useDrop } from 'react-dnd';
-import { CELL_SIZE, CELL_BOARDER } from './CalendarGrid';
+import { CELL_SIZE, CELL_BOARDER } from './InitBoard';
 
 const GridCell = ({ label, section, x, y, canDrop = false }) => {
   const sectionColors = {
