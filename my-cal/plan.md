@@ -1,17 +1,16 @@
 # Calendar Puzzle Game - Feature Plan
 
 ## 1. Core Gameplay Enhancements
-- **Block Rotation Improvements**: Enhance the rotation logic to allow for more precise control and visual feedback
-- **Drag and Drop Refinement**: Add smooth animations and snapping effects when placing blocks
-- **Game Difficulty Levels**: Implement easy, medium, and hard difficulty settings with varying grid sizes and block complexity
-- **Time-based Challenges**: Add timed game modes where players must complete the puzzle within a specified time
+- P0: **Game Difficulty Levels**: Implement easy, medium, and hard difficulty settings with varying grid sizes and block complexity
+- P0: **Time-based Challenges**: Add timed game modes where players must complete the puzzle within a specified time
+- P0: **Winning Puzzle**: Check user if finish the puzzle correctly to win the game
+- P3: **Block Rotation Improvements**: Enhance the rotation logic to allow for more precise control and visual feedback
+- P2: **Drag and Drop Refinement**: Add smooth animations and snapping effects when placing blocks
 
 ## 2. User Experience Features
-- **Interactive Tutorial**: Create a step-by-step guide for new players to learn game mechanics
-- **Theme Customization**: Allow users to switch between different visual themes (light/dark, seasonal themes)
-- **Sound Effects & Music**: Add audio feedback for actions like placing blocks, completing levels, and game over
-- **Undo/Redo Functionality**: Enable players to undo mistakes or redo actions
-- **Progress Saving**: Implement local storage to save game progress and resume later
+- P1: **Interactive Tutorial**: Create a step-by-step guide for new players to learn game mechanics
+- P2: **Theme Customization**: Allow users to switch between different visual themes (light/dark, seasonal themes)
+- P3: **Sound Effects & Music**: Add audio feedback for actions like placing blocks, completing levels, and game over
 
 ## 3. Level and Content Systems
 - **Level Editor**: Allow users to create and share their own custom puzzles

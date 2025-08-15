@@ -14,6 +14,42 @@ import {
   LONG_PRESS_THRESHOLD
 } from './InitBoard';
 
+// 判断游戏是否胜利
+const checkGameWin = (droppedBlocks, uncoverableCells) => {
+  // 条件1: 所有方块都被使用
+  if (droppedBlocks.length !== initialBlockTypes.length) {
+    return false;
+  }
+
+  // 条件2: 检查是否所有可放置的格子都被覆盖
+  // 获取所有可放置的格子(非empty且非uncoverable)
+  const placeableCells = [];
+  boardLayoutData.forEach((row, y) => {
+    row.forEach((cell, x) => {
+      if (
+        cell.type !== 'empty' &&
+        !uncoverableCells.some(u => u.x === x && u.y === y)
+      ) {
+        placeableCells.push({ x, y });
+      }
+    });
+  });
+
+  // 获取所有已放置方块覆盖的格子
+  const coveredCells = droppedBlocks.flatMap(block =>
+    block.shape.flatMap((row, rIdx) =>
+      row.map((cell, cIdx) =>
+        cell === 1 ? { x: block.x + cIdx, y: block.y + rIdx } : null
+      )
+    ).filter(Boolean)
+  );
+
+  // 检查每个可放置的格子是否被覆盖
+  return placeableCells.every(cell =>
+    coveredCells.some(covered => covered.x === cell.x && covered.y === cell.y)
+  );
+}
+
 // 顺时针旋转90度
 const rotateShape = (shape) => {
   const rows = shape.length;
@@ -42,6 +78,7 @@ const PlayBoard = () => {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [keyboardBlock, setKeyboardBlock] = useState(null);
   const [blockTypes, setBlockTypes] = useState(initialBlockTypes);
+  const [isGameWon, setIsGameWon] = useState(false);
 
   const dragRef = useRef(null);
   const gridRef = useRef(null);
@@ -50,6 +87,17 @@ const PlayBoard = () => {
 
   // 不可覆盖的单元格
   const uncoverableCells = useMemo(() => getUncoverableCells(), []);
+
+  // 监听方块放置变化，检查是否胜利
+  useEffect(() => {
+    if (droppedBlocks.length > 0 && !isGameWon) {
+      const won = checkGameWin(droppedBlocks, uncoverableCells);
+      if (won) {
+        setIsGameWon(true);
+        console.log('游戏胜利!');
+      }
+    }
+  }, [droppedBlocks, isGameWon, uncoverableCells]);
 
   // 监听鼠标移动
   useEffect(() => {
@@ -154,11 +202,14 @@ const PlayBoard = () => {
         return;
       }
 
-      if (!keyDownTimes.has(e.key.toLowerCase())) {
-        keyDownTimes.set(e.key.toLowerCase(), Date.now());
+      const key = e.key?.toLowerCase();
+      if (!key) return;
+
+      if (!keyDownTimes.has(key)) {
+        keyDownTimes.set(key, Date.now());
       }
 
-      const block = blockTypes.find(b => b.key.toLowerCase() === e.key.toLowerCase());
+      const block = blockTypes.find(b => b.key?.toLowerCase() === key);
 
       if (block) {
         e.preventDefault();
@@ -194,12 +245,15 @@ const PlayBoard = () => {
     };
 
     const handleKeyUp = (e) => {
-      const key = e.key.toLowerCase();
-      if (keyDownTimes.has(key)) {
-        const pressDuration = Date.now() - keyDownTimes.get(key);
-        keyDownTimes.delete(key);
+      const key = e.key?.toLowerCase();
+      if (!key || !keyDownTimes.has(key)) {
+        return;
+      }
 
-        const block = blockTypes.find(b => b.key.toLowerCase() === key);
+      const pressDuration = Date.now() - keyDownTimes.get(key);
+      keyDownTimes.delete(key);
+
+      const block = blockTypes.find(b => b.key?.toLowerCase() === key);
 
         if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
           if (pressDuration >= LONG_PRESS_THRESHOLD) {
@@ -230,8 +284,7 @@ const PlayBoard = () => {
             });
           }
         }
-      }
-    };
+      };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -262,6 +315,89 @@ const PlayBoard = () => {
       }
     }
   }, [mousePosition, previewBlock, isValidPlacement]);
+
+  // 获取解决方案
+  const fetchSolution = async () => {
+    try {
+      // 构建并打印curl请求用于调试
+      const requestBody = JSON.stringify({
+        gameId,
+        droppedBlocks: droppedBlocks.map(block => ({
+          id: block.id,
+          x: block.x,
+          y: block.y,
+          shape: block.shape
+        })),
+        uncoverableCells
+      });
+
+      const curlCommand = `curl -X POST -H "Content-Type: application/json" -d '${requestBody}' http://localhost:5001/api/solution`;
+      console.log('完整的curl请求:');
+      console.log(curlCommand);
+
+      // 调用API端点获取解决方案
+      const response = await fetch('http://localhost:5001/api/solution', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          gameId,
+          // 发送当前游戏状态
+          droppedBlocks: droppedBlocks.map(block => ({
+            id: block.id,
+            x: block.x,
+            y: block.y,
+            shape: block.shape
+          })),
+          uncoverableCells
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API响应错误: ${response.status}`);
+      }
+
+      const solution = await response.json();
+      applySolution(solution);
+    } catch (err) {
+      console.error(`获取解决方案错误: ${err.message}`);
+      alert('获取解决方案失败，请确保Python服务器正在运行');
+    }
+  };
+
+  // 应用解决方案
+  const applySolution = (solution) => {
+    // 清空当前已放置的方块
+    setDroppedBlocks([]);
+
+    // 根据解决方案放置方块
+    const newDroppedBlocks = solution.blocks.map(block => {
+      // 找到对应的方块类型
+      const blockType = initialBlockTypes.find(b => b.label === block.label);
+      if (!blockType) return null;
+
+      return {
+        ...blockType,
+        x: block.x,
+        y: block.y,
+        shape: block.shape
+      };
+    }).filter(Boolean);
+
+    setDroppedBlocks(newDroppedBlocks);
+
+    // 更新剩余方块类型
+    const placedBlockIds = newDroppedBlocks.map(block => block.id);
+    const remainingBlocks = initialBlockTypes.filter(block => !placedBlockIds.includes(block.id));
+    setBlockTypes(remainingBlocks);
+
+    // 检查是否游戏胜利
+    const won = checkGameWin(newDroppedBlocks, uncoverableCells);
+    if (won) {
+      setIsGameWon(true);
+    }
+  };
 
   // 鼠标释放时放置方块
   useEffect(() => {
@@ -387,13 +523,40 @@ const PlayBoard = () => {
   // 渲染
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      {/* 显示计时器和游戏ID */}
+      {/* 显示计时器、游戏ID和胜利状态 */}
       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px', color: '#333', fontFamily: 'Arial, sans-serif' }}>
         Time: {formatTime(timer)}
       </div>
       <div style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
         Game ID: {gameId}
       </div>
+      <button
+        onClick={fetchSolution}
+        style={{
+          padding: '10px 20px',
+          fontSize: '16px',
+          backgroundColor: '#4CAF50',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          marginBottom: '20px'
+        }}
+      >
+        获取解决方案
+      </button>
+      {isGameWon && (
+        <div style={{ 
+          fontSize: '36px', 
+          fontWeight: 'bold', 
+          color: '#FF4500', 
+          marginBottom: '20px', 
+          textShadow: '2px 2px 4px rgba(0,0,0,0.3)', 
+          animation: 'pulse 1.5s infinite'
+        }}>
+          恭喜你，游戏胜利!
+        </div>
+      )}
 
       {/* 棋盘 */}
       <div

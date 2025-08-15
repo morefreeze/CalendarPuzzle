@@ -68,10 +68,6 @@ class Game(object):
         self.try_put(find_one_exit)
 
     def try_put(self, find_one_exit):
-        if False and len(self.board.remaining_shapes) == 6:
-            print(self.cnt)
-            print(self)
-            self.cnt = 0
         if len(self.board.remaining_shapes) == 0:
             print('solve!')
             print(self)
