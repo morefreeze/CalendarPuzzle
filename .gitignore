@@ -130,3 +130,4 @@ dmypy.json
 202?????
 pyvenv.cfg
 bin/*
+temp/*

@@ -70,7 +70,7 @@ const flipShape = (shape) => {
 
 const PlayBoard = () => {
   // 游戏初始化
-  const { timer, gameId } = useGameInitialization();
+  const { timer, gameId: initialGameId } = useGameInitialization();
 
   // 游戏状态
   const [droppedBlocks, setDroppedBlocks] = useState([]);
@@ -79,6 +79,10 @@ const PlayBoard = () => {
   const [keyboardBlock, setKeyboardBlock] = useState(null);
   const [blockTypes, setBlockTypes] = useState(initialBlockTypes);
   const [isGameWon, setIsGameWon] = useState(false);
+  const [solutionTime, setSolutionTime] = useState(null);
+  const [isFetchingSolution, setIsFetchingSolution] = useState(false);
+  const [solutionError, setSolutionError] = useState(null);
+  const [gameId, setGameId] = useState(initialGameId);
 
   const dragRef = useRef(null);
   const gridRef = useRef(null);
@@ -87,6 +91,59 @@ const PlayBoard = () => {
 
   // 不可覆盖的单元格
   const uncoverableCells = useMemo(() => getUncoverableCells(), []);
+
+  // 生成基于当前棋盘状态的游戏ID
+  const generateDynamicGameId = useCallback((currentDroppedBlocks, currentBlockTypes) => {
+    const sortedBlocks = [...currentDroppedBlocks].sort((a, b) => a.id.localeCompare(b.id));
+    const blocksStr = sortedBlocks.map(block => 
+      `${block.id}:${block.x},${block.y}:${JSON.stringify(block.shape)}`
+    ).join('|');
+    
+    const remainingBlocks = [...currentBlockTypes].sort((a, b) => a.id.localeCompare(b.id));
+    const remainingStr = remainingBlocks.map(block => `${block.id}:${JSON.stringify(block.shape)}`).join('|');
+    
+    const combinedStr = blocksStr + '|' + remainingStr;
+    
+    let hash = 0;
+    for (let i = 0; i < combinedStr.length; i++) {
+      const char = combinedStr.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash).toString(36);
+  }, []);
+
+  // 从localStorage加载游戏状态
+  useEffect(() => {
+    const savedState = localStorage.getItem(`calendarPuzzleState_${initialGameId}`);
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        setDroppedBlocks(parsed.droppedBlocks || []);
+        setBlockTypes(parsed.blockTypes || initialBlockTypes);
+        
+        // 重新计算基于加载状态的gameId
+        const newGameId = generateDynamicGameId(parsed.droppedBlocks || [], parsed.blockTypes || initialBlockTypes);
+        setGameId(newGameId);
+      } catch (error) {
+        console.error('Failed to load saved game state:', error);
+      }
+    }
+  }, [initialGameId, generateDynamicGameId]);
+
+  // 保存游戏状态到localStorage
+  useEffect(() => {
+    const gameState = {
+      droppedBlocks,
+      blockTypes,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(`calendarPuzzleState_${initialGameId}`, JSON.stringify(gameState));
+    
+    // 重新计算gameId基于当前状态
+    const newGameId = generateDynamicGameId(droppedBlocks, blockTypes);
+    setGameId(newGameId);
+  }, [droppedBlocks, blockTypes, initialGameId, generateDynamicGameId]);
 
   // 监听方块放置变化，检查是否胜利
   useEffect(() => {
@@ -98,6 +155,14 @@ const PlayBoard = () => {
       }
     }
   }, [droppedBlocks, isGameWon, uncoverableCells]);
+
+  // 清除游戏状态
+  const clearGameState = useCallback(() => {
+    localStorage.removeItem(`calendarPuzzleState_${initialGameId}`);
+    setDroppedBlocks([]);
+    setBlockTypes(initialBlockTypes);
+    setIsGameWon(false);
+  }, [initialGameId]);
 
   // 监听鼠标移动
   useEffect(() => {
@@ -318,6 +383,14 @@ const PlayBoard = () => {
 
   // 获取解决方案
   const fetchSolution = async () => {
+    // 重置之前的状态
+    setSolutionTime(null);
+    setSolutionError(null);
+    setIsFetchingSolution(true);
+    
+    // 开始计时
+    const startTime = Date.now();
+    
     try {
       // 构建并打印curl请求用于调试
       const requestBody = JSON.stringify({
@@ -354,28 +427,65 @@ const PlayBoard = () => {
         })
       });
 
+      // 计算耗时
+      const endTime = Date.now();
+      const elapsedTime = (endTime - startTime) / 1000;
+      setSolutionTime(elapsedTime);
+
+      if (response.status === 404) {
+        // 处理无解的情况
+        const errorData = await response.json();
+        setSolutionError('未找到解决方案，请尝试调整方块位置');
+        console.log('服务器返回无解信息:', errorData);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(`API响应错误: ${response.status}`);
       }
 
       const solution = await response.json();
+      // 验证返回的解决方案是否完整
+      const placedBlockIds = droppedBlocks.map(b => b.id);
+      console.log('placedBlockIds:', placedBlockIds);
+      const solutionBlockIds = solution.blocks.map(b => b.id);
+      console.log('solutionBlockIds:', solution.blocks, solutionBlockIds);
+      const missingBlocks = placedBlockIds.filter(id => !solutionBlockIds.includes(id));
+      console.log('Missing blocks:', missingBlocks);
+      if (missingBlocks.length > 0) {
+        setSolutionError('未找到完整解决方案，请尝试调整方块位置');
+        return;
+      }
+      
       applySolution(solution);
     } catch (err) {
       console.error(`获取解决方案错误: ${err.message}`);
-      alert('获取解决方案失败，请确保Python服务器正在运行');
+      setSolutionError(`获取解决方案失败: ${err.message}`);
+    } finally {
+      setIsFetchingSolution(false);
     }
   };
 
-  // 应用解决方案
+  // Apply solution to the board
   const applySolution = (solution) => {
-    // 清空当前已放置的方块
+    console.log('Starting to apply solution:', solution);
+    
+    // Clear current placed blocks
     setDroppedBlocks([]);
 
-    // 根据解决方案放置方块
+    // Place blocks according to solution
     const newDroppedBlocks = solution.blocks.map(block => {
-      // 找到对应的方块类型
+      console.log('Processing block:', block);
+      
+      // Find matching block type using label (case-sensitive for English letters)
       const blockType = initialBlockTypes.find(b => b.label === block.label);
-      if (!blockType) return null;
+      if (!blockType) {
+        console.warn(`Block type not found for label: "${block.label}"`);
+        console.log('Available labels:', initialBlockTypes.map(b => b.label));
+        return null;
+      }
+
+      console.log(`Found block type: ${blockType.id} for label ${block.label}`);
 
       return {
         ...blockType,
@@ -385,17 +495,22 @@ const PlayBoard = () => {
       };
     }).filter(Boolean);
 
+    console.log('New placed blocks:', newDroppedBlocks);
+    console.log('Initial block types:', initialBlockTypes);
+
     setDroppedBlocks(newDroppedBlocks);
 
-    // 更新剩余方块类型
+    // Update remaining block types
     const placedBlockIds = newDroppedBlocks.map(block => block.id);
     const remainingBlocks = initialBlockTypes.filter(block => !placedBlockIds.includes(block.id));
+    console.log('Remaining block types:', remainingBlocks);
     setBlockTypes(remainingBlocks);
 
-    // 检查是否游戏胜利
+    // Check for game victory
     const won = checkGameWin(newDroppedBlocks, uncoverableCells);
     if (won) {
       setIsGameWon(true);
+      console.log('Game won!');
     }
   };
 
@@ -526,24 +641,97 @@ const PlayBoard = () => {
       <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px', color: '#333', fontFamily: 'Arial, sans-serif' }}>
         Time: {formatTime(timer)}
       </div>
-      <div style={{ fontSize: '14px', color: '#666', marginBottom: '20px' }}>
-        Game ID: {gameId}
+      
+      {/* 游戏ID显示区域 */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '20px', 
+        marginBottom: '10px',
+        fontSize: '14px',
+        color: '#666'
+      }}>
+        <div>
+          初始游戏ID: {initialGameId}
+        </div>
+        <div>
+          当前游戏ID: {gameId}
+        </div>
       </div>
-      <button
-        onClick={fetchSolution}
-        style={{
-          padding: '10px 20px',
+      
+      {/* 显示当前棋盘状态信息 */}
+      <div style={{
+        fontSize: '12px',
+        color: '#888',
+        marginBottom: '20px',
+        textAlign: 'center'
+      }}>
+        已放置: {droppedBlocks.length} / {initialBlockTypes.length} 方块
+        {droppedBlocks.length === 0 && " (空板状态)"}
+      </div>
+      
+      {/* 控制按钮区域 */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button
+          onClick={fetchSolution}
+          disabled={isFetchingSolution}
+          style={{
+            padding: '10px 20px',
+            fontSize: '16px',
+            backgroundColor: isFetchingSolution ? '#cccccc' : '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isFetchingSolution ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isFetchingSolution ? '求解中...' : '获取解决方案'}
+        </button>
+        
+        <button
+          onClick={clearGameState}
+          style={{
+            padding: '10px 20px',
+            fontSize: '16px',
+            backgroundColor: '#f44336',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          重新开始
+        </button>
+      </div>
+      
+      {/* 显示求解耗时 */}
+      {solutionTime !== null && (
+        <div style={{
           fontSize: '16px',
-          backgroundColor: '#4CAF50',
-          color: 'white',
-          border: 'none',
+          color: '#2196F3',
+          marginBottom: '10px',
+          fontWeight: 'bold'
+        }}>
+          求解耗时: {solutionTime.toFixed(3)} 秒
+        </div>
+      )}
+      
+      {/* 显示错误消息 */}
+      {solutionError && (
+        <div style={{
+          fontSize: '16px',
+          color: '#f44336',
+          marginBottom: '20px',
+          padding: '10px',
+          backgroundColor: '#ffebee',
           borderRadius: '4px',
-          cursor: 'pointer',
-          marginBottom: '20px'
-        }}
-      >
-        获取解决方案
-      </button>
+          border: '1px solid #f44336',
+          maxWidth: '300px',
+          textAlign: 'center'
+        }}>
+          {solutionError}
+        </div>
+      )}
+      
       {isGameWon && (
         <div style={{
           fontSize: '36px',

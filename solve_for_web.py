@@ -115,18 +115,20 @@ def main(input_file, output_file):
             frontend_x, frontend_y = convert_coords_to_frontend(min_x, min_y)
 
             # 添加到解决方案
-            solution['blocks'].append({
-                'label': shape_label,
-                'x': frontend_x,
-                'y': frontend_y,
-                'shape': shape_matrix
-            })
+            if shape_label in SHAPE_MAPPING:
+                solution['blocks'].append({
+                    'id': SHAPE_MAPPING[shape_label],
+                    'label': shape_label,
+                    'x': frontend_x,
+                    'y': frontend_y,
+                    'shape': shape_matrix
+                })
 
         # 保存解决方案到临时文件
         with open(output_file, 'w') as f:
             json.dump(solution, f)
 
-        print(f'解决方案已保存到 {output_file}')
+        print(f'save solution to {output_file}')
 
     except Exception as e:
         print(f'错误: {str(e)}', file=sys.stderr)
