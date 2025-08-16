@@ -255,36 +255,36 @@ const PlayBoard = () => {
 
       const block = blockTypes.find(b => b.key?.toLowerCase() === key);
 
-        if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
-          if (pressDuration >= LONG_PRESS_THRESHOLD) {
-            const flippedShape = flipShape(previewBlock.shape);
-            const flippedBlock = {
-              ...previewBlock,
-              shape: flippedShape
-            };
+      if (block && previewBlock && previewBlock.isDragging && previewBlock.id === block.id) {
+        if (pressDuration >= LONG_PRESS_THRESHOLD) {
+          const flippedShape = flipShape(previewBlock.shape);
+          const flippedBlock = {
+            ...previewBlock,
+            shape: flippedShape
+          };
 
-            const isValid = isValidPlacement(flippedBlock, { x: flippedBlock.x, y: flippedBlock.y });
+          const isValid = isValidPlacement(flippedBlock, { x: flippedBlock.x, y: flippedBlock.y });
 
-            setPreviewBlock({
-              ...flippedBlock,
-              isValid
-            });
-          } else {
-            const rotatedShape = rotateShape(previewBlock.shape);
-            const rotatedBlock = {
-              ...previewBlock,
-              shape: rotatedShape
-            };
+          setPreviewBlock({
+            ...flippedBlock,
+            isValid
+          });
+        } else {
+          const rotatedShape = rotateShape(previewBlock.shape);
+          const rotatedBlock = {
+            ...previewBlock,
+            shape: rotatedShape
+          };
 
-            const isValid = isValidPlacement(rotatedBlock, { x: rotatedBlock.x, y: rotatedBlock.y });
+          const isValid = isValidPlacement(rotatedBlock, { x: rotatedBlock.x, y: rotatedBlock.y });
 
-            setPreviewBlock({
-              ...rotatedBlock,
-              isValid
-            });
-          }
+          setPreviewBlock({
+            ...rotatedBlock,
+            isValid
+          });
         }
-      };
+      }
+    };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -405,6 +405,7 @@ const PlayBoard = () => {
       if (previewBlock && previewBlock.isDragging) {
         const isPlacementValid = isValidPlacement(previewBlock, { x: previewBlock.x, y: previewBlock.y });
 
+        setPreviewBlock(null);
         if (isPlacementValid) {
           const newBlock = { ...previewBlock };
           delete newBlock.isDragging;
@@ -413,8 +414,6 @@ const PlayBoard = () => {
           setDroppedBlocks(prev => [...prev, newBlock]);
           setBlockTypes(prev => prev.filter(block => block.id !== newBlock.id));
         }
-
-        setPreviewBlock(null);
       }
     };
 
@@ -427,6 +426,7 @@ const PlayBoard = () => {
     accept: 'BLOCK',
     drop: (item, monitor) => {
       let position = calculateDropPosition(item, monitor);
+      setPreviewBlock(null);
       const isPlacementValid = position && isValidPlacement(item, position, item.id);
       if (isPlacementValid) {
         const newBlock = { ...item, ...position };
@@ -443,7 +443,6 @@ const PlayBoard = () => {
           setBlockTypes(prev => prev.filter(block => block.id !== item.id));
         }
       }
-      setPreviewBlock(null);
     },
     hover: (item, monitor) => {
       const clientOffset = monitor.getClientOffset();
@@ -480,8 +479,8 @@ const PlayBoard = () => {
   }), [calculateDropPosition, previewBlock, isValidPlacement]);
 
   // 方块操作函数
-  const handlePlacedBlockRotate = (blockId) => {
-    setDroppedBlocks(prev => {
+  const handleRotate = (blockId) => {
+    setBlockTypes(prev => {
       const updated = prev.map(b => {
         if (b.id === blockId) {
           const newShape = rotateShape(b.shape);
@@ -493,8 +492,8 @@ const PlayBoard = () => {
     });
   };
 
-  const handlePlacedBlockFlip = (blockId) => {
-    setDroppedBlocks(prev => {
+  const handleFlip = (blockId) => {
+    setBlockTypes(prev => {
       const updated = prev.map(b => {
         if (b.id === blockId) {
           const newShape = flipShape(b.shape);
@@ -546,12 +545,12 @@ const PlayBoard = () => {
         获取解决方案
       </button>
       {isGameWon && (
-        <div style={{ 
-          fontSize: '36px', 
-          fontWeight: 'bold', 
-          color: '#FF4500', 
-          marginBottom: '20px', 
-          textShadow: '2px 2px 4px rgba(0,0,0,0.3)', 
+        <div style={{
+          fontSize: '36px',
+          fontWeight: 'bold',
+          color: '#FF4500',
+          marginBottom: '20px',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
           animation: 'pulse 1.5s infinite'
         }}>
           恭喜你，游戏胜利!
@@ -685,8 +684,6 @@ const PlayBoard = () => {
               label={block.label}
               color={block.color}
               shape={block.shape}
-              onRotate={() => handlePlacedBlockRotate(block.id)}
-              onFlip={() => handlePlacedBlockFlip(block.id)}
               onDragEnd={handleBlockDragEnd}
               onDoubleClick={handleDoubleClick}
               isPlaced={true}
@@ -705,6 +702,8 @@ const PlayBoard = () => {
             label={block.label}
             color={block.color}
             shape={block.shape}
+            onRotate={() => handleRotate(block.id)}
+            onFlip={() => handleFlip(block.id)}
             isPlaced={false}
           />
         ))}
