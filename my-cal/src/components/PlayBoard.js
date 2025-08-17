@@ -159,9 +159,12 @@ const PlayBoard = () => {
   // 清除游戏状态
   const clearGameState = useCallback(() => {
     localStorage.removeItem(`calendarPuzzleState_${initialGameId}`);
+    localStorage.removeItem(`calendarPuzzleTimer_${initialGameId}`);
     setDroppedBlocks([]);
     setBlockTypes(initialBlockTypes);
     setIsGameWon(false);
+    // Reset timer by reloading the page to restart the timer
+    window.location.reload();
   }, [initialGameId]);
 
   // 监听鼠标移动

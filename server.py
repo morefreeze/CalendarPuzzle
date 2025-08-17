@@ -50,7 +50,19 @@ def generate_game_id(block_types, board_layout):
     for char in str_combined:
         hash_val = ((hash_val << 5) - hash_val) + ord(char)
         hash_val = hash_val & 0xFFFFFFFF  # 转换为32位整数
-    return str(abs(hash_val))
+    # 转换为36进制字符串，与JavaScript的toString(36)保持一致
+    def to_base36(n):
+        if n == 0:
+            return '0'
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+        result = ""
+        n = abs(n)
+        while n:
+            result = digits[n % 36] + result
+            n //= 36
+        return result
+    
+    return to_base36(hash_val)
 
 @app.route('/api/solution', methods=['POST'])
 def get_solution():
