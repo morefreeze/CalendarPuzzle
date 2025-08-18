@@ -5,6 +5,10 @@ import os
 import time  # 添加时间模块用于计时
 import logging  # 添加日志模块
 from solve_for_web import main
+from game_id import GameIDGeneratorV3
+from calendar_puzzle.board import Game as CalendarGame
+from calendar_puzzle.constants import DATE_BLOCK, INITIAL_BLOCK_TYPES, BLOCK_TYPE_MAPPING, BOARD_BLOCK
+
 
 # 配置日志
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -12,57 +16,103 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# 方块类型和棋盘布局数据（与webapp保持一致）
-INITIAL_BLOCK_TYPES = [
-    {'id': 'I-block', 'label': 'I', 'color': '#FF69B4', 'shape': [[1, 1, 1, 1, 1]]},
-    {'id': 'T-block', 'label': 'T', 'color': '#00BFFF', 'shape': [[1, 1, 1], [0, 1, 0]]},
-    {'id': 'L-block', 'label': 'L', 'color': '#FFD700', 'shape': [[1, 0, 0], [1, 0, 0], [1, 0, 0], [1, 1, 1]]},
-    {'id': 'S-block', 'label': 'S', 'color': '#32CD32', 'shape': [[0, 1, 1], [1, 1, 0]]},
-    {'id': 'Z-block', 'label': 'Z', 'color': '#FF4500', 'shape': [[1, 1, 0], [0, 1, 1]]},
-    {'id': 'N-block', 'label': 'N', 'color': '#8A2BE2', 'shape': [[1, 1, 1, 1], [0, 0, 0, 1]]},
-    {'id': 'Q-block', 'label': 'Q', 'color': '#A0522D', 'shape': [[1, 1], [1, 1]]},
-    {'id': 'Y-block', 'label': 'Y', 'color': '#9370DB', 'shape': [[1, 0, 0], [1, 0, 0], [1, 1, 1]]},
-    {'id': 'U-block', 'label': 'U', 'color': '#FF6347', 'shape': [[1, 0, 1], [1, 1, 1]]},
-    {'id': 'l-block', 'label': 'l', 'color': '#008000', 'shape': [[1, 0], [1, 0], [1, 1]]}
-]
+# 初始化GameID生成器
+id_generator = GameIDGeneratorV3()
 
-BOARD_LAYOUT_DATA = [
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}],
-    [{'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}, {'type': 'normal'}]
-]
-
-def generate_game_id(block_types, board_layout):
-    """生成与webapp相同的游戏ID"""
-    # 对block_types进行排序以确保一致性
-    sorted_block_types = sorted(block_types, key=lambda x: x['id'])
-    # 生成方块类型的字符串表示
-    blocks_str = '|'.join([f"{block['id']}:{json.dumps(block['shape'], separators=(',', ':'))}" for block in sorted_block_types])
-    # 生成棋盘布局的字符串表示
-    board_str = json.dumps(board_layout, separators=(',', ':'))
-    # 使用简单的哈希算法生成唯一ID
-    hash_val = 0
-    str_combined = blocks_str + board_str
-    for char in str_combined:
-        hash_val = ((hash_val << 5) - hash_val) + ord(char)
-        hash_val = hash_val & 0xFFFFFFFF  # 转换为32位整数
-    # 转换为36进制字符串，与JavaScript的toString(36)保持一致
-    def to_base36(n):
-        if n == 0:
-            return '0'
-        digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-        result = ""
-        n = abs(n)
-        while n:
-            result = digits[n % 36] + result
-            n //= 36
-        return result
+def get_board_with_date(day=None, month=None):
+    """使用CalendarGame生成标准棋盘布局
     
-    return to_base36(hash_val)
+    Args:
+        day: 日期(1-31)，默认使用当前日期
+        month: 月份(1-12)，默认使用当前月份
+    
+    Returns:
+        8x7棋盘数组，包含BLOCK标记的不可放置格子
+    """
+    import datetime
+    
+    if day is None or month is None:
+        dt = datetime.date.today()
+    else:
+        dt = datetime.date(datetime.date.today().year, month, day)
+    
+    game = CalendarGame(dt)
+    return game.board.b  # 返回8x7棋盘
+
+def generate_game_id(dropped_blocks, remaining_block_types, board_data=None, day=None, month=None):
+    """使用GameIDGeneratorV3生成游戏ID"""
+    try:
+        # 获取包含日期的棋盘
+        if board_data is None:
+            board_data = get_board_with_date(day, month)
+        
+        # 提取已放置方块
+        blocks = []
+        for block in dropped_blocks:
+            mapped_type = BLOCK_TYPE_MAPPING.get(block['id'], block['id'])
+            blocks.append({
+                'x': block['x'],
+                'y': block['y'],
+                'shape': block['shape'],
+                'id': mapped_type
+            })
+        
+        # 提取剩余方块类型（直接使用统一常量）
+        remaining_types = [block for block in INITIAL_BLOCK_TYPES if block['id'] in {b['id'] for b in remaining_block_types}]
+        
+        # 提取不可覆盖格子
+        uncoverable_cells = []
+        for y, row in enumerate(board_data):
+            for x, cell in enumerate(row):
+                if cell in [DATE_BLOCK, BOARD_BLOCK]:
+                    uncoverable_cells.append({'x': x, 'y': y})
+        
+        return id_generator.generate_game_id(blocks, remaining_types, uncoverable_cells)
+    except Exception as e:
+        logging.error(f"Error generating game ID: {str(e)}")
+        return None
+
+@app.route('/api/game-id', methods=['POST'])
+def generate_game_id_api():
+    """前端调用此接口生成Game ID"""
+    try:
+        data = request.json
+        dropped_blocks = data.get('droppedBlocks', [])
+        remaining_block_types = data.get('remainingBlockTypes')
+        
+        # 支持自定义日期
+        day = data.get('day')
+        month = data.get('month')
+        
+        # 使用CalendarGame生成标准棋盘
+        board_data = get_board_with_date(day, month)
+        
+        # 计算剩余方块类型（从初始方块中移除已放置的方块）
+        if remaining_block_types is None:
+            placed_block_ids = {block['id'] for block in dropped_blocks}
+            remaining_block_types = [block_type for block_type in INITIAL_BLOCK_TYPES if block_type['id'] not in placed_block_ids]
+        
+        # 生成Game ID
+        game_id = generate_game_id(dropped_blocks, remaining_block_types, board_data)
+        
+        if game_id is None:
+            return jsonify({
+                'error': 'Failed to generate game ID',
+                'success': False
+            }), 500
+        
+        return jsonify({
+            'gameId': game_id,
+            'boardLayout': board_data,  # 返回8x7棋盘布局
+            'dimensions': {'rows': 8, 'cols': 7},  # 告知前端实际尺寸
+            'success': True
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'success': False
+        }), 500
 
 @app.route('/api/solution', methods=['POST'])
 def get_solution():
@@ -71,10 +121,17 @@ def get_solution():
         data = request.json
         game_id = data.get('gameId')
         dropped_blocks = data.get('droppedBlocks', [])
-        uncoverable_cells = data.get('uncoverableCells', [])
+        # uncoverable_cells = data.get('uncoverableCells', [])
 
+        # 计算剩余方块类型（从初始方块中移除已放置的方块）
+        remaining_block_types = []
+        placed_block_ids = {block['id'] for block in dropped_blocks}
+        for block_type in INITIAL_BLOCK_TYPES:
+            if block_type['id'] not in placed_block_ids:
+                remaining_block_types.append(block_type)
+        
         # 验证gameId是否匹配
-        expected_game_id = generate_game_id(INITIAL_BLOCK_TYPES, BOARD_LAYOUT_DATA)
+        expected_game_id = generate_game_id(dropped_blocks, remaining_block_types, BOARD_LAYOUT_DATA)
         if game_id != expected_game_id:
             logging.warning(f"game_id mismatch: received '{game_id}', expected '{expected_game_id}'")
 
@@ -87,7 +144,7 @@ def get_solution():
         with open(temp_input, 'w') as f:
             json.dump({
                 'droppedBlocks': dropped_blocks,
-                'uncoverableCells': uncoverable_cells
+                # 'uncoverableCells': uncoverable_cells
             }, f)
 
         # 开始计时

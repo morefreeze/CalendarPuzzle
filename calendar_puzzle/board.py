@@ -9,8 +9,21 @@ init(autoreset=True)
 from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeY, ShapeI, ShapeL, Shapel,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
+from calendar_puzzle.constants import INITIAL_BLOCK_TYPES, BOARD_BLOCK, DATE_BLOCK, BOARD_ROWS, BOARD_COLS
 
-BLOCK = '*'
+# 从常量中创建Shape实例
+SHAPE_MAP = {
+    'U-block': ShapeU,
+    'Y-block': ShapeY,
+    'I-block': ShapeI,
+    'L-block': ShapeL,
+    'l-block': Shapel,
+    'Q-block': ShapeQ,
+    'S-block': ShapeS,
+    'N-block': ShapeN,
+    'T-block': ShapeT,
+    'Z-block': ShapeZ
+}
 
 COLOR_MAP = {
     'U': Fore.RED,
@@ -27,15 +40,17 @@ COLOR_MAP = {
     '#': Fore.LIGHTBLACK_EX
 }
 
+
 class Game(object):
     board = None
     shapes: List[Shape] = []  # [shape, ...]
-    n, m = 8, 7
+    n, m = BOARD_ROWS, BOARD_COLS
     visited = set()
 
     def __init__(self, dt=datetime.date.today()) -> None:
         super().__init__()
-        self.shapes = [ShapeU(), ShapeY(), ShapeI(), ShapeL(), Shapel(), ShapeQ(), ShapeS(), ShapeN(), ShapeT(), ShapeZ()]
+        # 从常量创建Shape实例
+        self.shapes = [SHAPE_MAP[block['id']]() for block in INITIAL_BLOCK_TYPES]
         # random.shuffle(self.shapes)
         self.board = Board(build_mx(self.n, self.m), self.shapes)
         self.mark_date(dt)
@@ -49,20 +64,20 @@ class Game(object):
         dt = self.dt if dt is None else dt
         weekday = dt.weekday()
         month, day = dt.month, dt.day
-        self.board.b[0][6] = '#'
-        self.board.b[1][6] = '#'
-        self.board.b[7][0] = '#'
-        self.board.b[7][1] = '#'
-        self.board.b[7][2] = '#'
-        self.board.b[7][3] = '#'
-        self.board.b[(month-1)//6][(month-1)%6] = BLOCK
-        self.board.b[2+(day-1)//7][(day-1)%7] = BLOCK
+        self.board.b[0][6] = BOARD_BLOCK
+        self.board.b[1][6] = BOARD_BLOCK
+        self.board.b[7][0] = BOARD_BLOCK
+        self.board.b[7][1] = BOARD_BLOCK
+        self.board.b[7][2] = BOARD_BLOCK
+        self.board.b[7][3] = BOARD_BLOCK
+        self.board.b[(month-1)//6][(month-1)%6] = DATE_BLOCK
+        self.board.b[2+(day-1)//7][(day-1)%7] = DATE_BLOCK
         if weekday == 6:
-            self.board.b[6][3] = BLOCK
+            self.board.b[6][3] = DATE_BLOCK
         elif 0 <= weekday <= 2:
-            self.board.b[6][4+weekday] = BLOCK
+            self.board.b[6][4+weekday] = DATE_BLOCK
         else:
-            self.board.b[7][1+weekday] = BLOCK
+            self.board.b[7][1+weekday] = DATE_BLOCK
 
     def solve(self, find_one_exit=True):
         self.try_put(find_one_exit)

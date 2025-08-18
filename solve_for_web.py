@@ -42,7 +42,8 @@ def main(input_file, output_file):
             game_state = json.load(f)
 
         # 初始化求解器
-        g = Game()
+        g = FasterGame()
+        # g = Game()
 
         # 设置不可覆盖的单元格
         uncoverable_cells = game_state.get('uncoverableCells', [])
