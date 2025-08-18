@@ -8,31 +8,25 @@ from board import Board
 from game_id import GameIDGeneratorV3
 from constants import INITIAL_BLOCK_TYPES
 
-def test_direct_format():
-    """Test using Board.b directly without format conversion"""
+def test_board_internal_construction():
+    """Test that generate_game_id uses Board internally without API change"""
     
-    # Create a simple game state
-    board = Board()
-    
-    # Place some blocks using Board's fit_put
-    block1 = INITIAL_BLOCK_TYPES[0]  # L-block
-    block2 = INITIAL_BLOCK_TYPES[1]  # T-block
-    
-    # Simulate placing blocks
+    # Test with legacy API (no Board parameter)
     dropped_blocks = [
-        {'id': block1['id'], 'x': 0, 'y': 0},
-        {'id': block2['id'], 'x': 3, 'y': 0}
+        {'id': 'I', 'x': 0, 'y': 0},
+        {'id': 'L', 'x': 3, 'y': 1}
     ]
     
-    # Mark some uncoverable cells
-    board.b[0][0] = '#'
-    board.b[0][1] = '#'
+    # Create custom board layout
+    board_layout = [[' ' for _ in range(7)] for _ in range(7)]
+    board_layout[0][0] = '#'
+    board_layout[1][1] = '#'
     
-    # Use from_board method
-    game_id = GameIDGeneratorV3.from_board(
-        board, 
-        dropped_blocks, 
-        [b for b in INITIAL_BLOCK_TYPES if b['id'] not in [block1['id'], block2['id']]]
+    # Use legacy API - should internally construct Board
+    game_id = GameIDGeneratorV3.generate_game_id(
+        dropped_blocks,
+        [b for b in INITIAL_BLOCK_TYPES if b['id'] not in ['I', 'L']],
+        board_layout
     )
     
     print(f"Generated game ID: {game_id}")
@@ -45,16 +39,17 @@ def test_direct_format():
     print(f"Remaining types: {[b['id'] for b in decoded_remaining]}")
     
     # Verify board state matches
-    print("\nOriginal board state:")
-    for row in board.b:
+    print("\nOriginal board layout:")
+    for row in board_layout:
         print(''.join(row))
     
     print("\nDecoded board state:")
     for row in decoded_board:
         print(''.join(row))
     
-    return decoded_board == board.b
+    return decoded_board == board_layout
 
 if __name__ == "__main__":
-    success = test_direct_format()
-    print(f"\nTest {'PASSED' if success else 'FAILED'}")
+    success = test_board_internal_construction()
+    
+    print(f"\nBoard internal construction test: {'PASSED' if success else 'FAILED'}")

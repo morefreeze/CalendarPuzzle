@@ -10,8 +10,12 @@ from calendar_puzzle.board import Game as CalendarGame
 from calendar_puzzle.constants import DATE_BLOCK, INITIAL_BLOCK_TYPES, BLOCK_TYPE_MAPPING, BOARD_BLOCK
 
 
-# 配置日志
-logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
+# 配置日志 - 包含文件名和行号便于调试
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -39,38 +43,7 @@ def get_board_with_date(day=None, month=None):
     game = CalendarGame(dt)
     return game.board.b  # 返回8x7棋盘
 
-def generate_game_id(dropped_blocks, remaining_block_types, board_data=None, day=None, month=None):
-    """使用GameIDGeneratorV3生成游戏ID"""
-    try:
-        # 获取包含日期的棋盘
-        if board_data is None:
-            board_data = get_board_with_date(day, month)
-        
-        # 提取已放置方块
-        blocks = []
-        for block in dropped_blocks:
-            mapped_type = BLOCK_TYPE_MAPPING.get(block['id'], block['id'])
-            blocks.append({
-                'x': block['x'],
-                'y': block['y'],
-                'shape': block['shape'],
-                'id': mapped_type
-            })
-        
-        # 提取剩余方块类型（直接使用统一常量）
-        remaining_types = [block for block in INITIAL_BLOCK_TYPES if block['id'] in {b['id'] for b in remaining_block_types}]
-        
-        # 提取不可覆盖格子
-        uncoverable_cells = []
-        for y, row in enumerate(board_data):
-            for x, cell in enumerate(row):
-                if cell in [DATE_BLOCK, BOARD_BLOCK]:
-                    uncoverable_cells.append({'x': x, 'y': y})
-        
-        return id_generator.generate_game_id(blocks, remaining_types, uncoverable_cells)
-    except Exception as e:
-        logging.error(f"Error generating game ID: {str(e)}")
-        return None
+
 
 @app.route('/api/game-id', methods=['POST'])
 def generate_game_id_api():
@@ -93,18 +66,25 @@ def generate_game_id_api():
             remaining_block_types = [block_type for block_type in INITIAL_BLOCK_TYPES if block_type['id'] not in placed_block_ids]
         
         # 生成Game ID
-        game_id = generate_game_id(dropped_blocks, remaining_block_types, board_data)
-        
-        if game_id is None:
+        try:
+            board_data, game_id = id_generator.generate_game_id(dropped_blocks, remaining_block_types, board_data)
+        except ValueError as e:
             return jsonify({
-                'error': 'Failed to generate game ID',
+                'error': f'Invalid input: {str(e)}',
+                'success': False
+            }), 400
+        except Exception as e:
+            logging.error(f"Unexpected error generating game ID: ", exc_info=e)
+            return jsonify({
+                'error': 'Internal server error',
                 'success': False
             }), 500
         
         return jsonify({
             'gameId': game_id,
-            'boardLayout': board_data,  # 返回8x7棋盘布局
-            'dimensions': {'rows': 8, 'cols': 7},  # 告知前端实际尺寸
+            'boardData': board_data,
+            'boardLayout': [''.join(map(str, row)) for row in board_data],
+            'dimensions': {'rows': len(board_data), 'cols': len(board_data[0])},  # 告知前端实际尺寸
             'success': True
         })
         

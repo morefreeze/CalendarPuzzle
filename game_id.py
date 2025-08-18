@@ -19,7 +19,8 @@ Usage:
 
 import sys
 import time
-import calendar_puzzle.board as board_module  # 添加Board模块引用
+from typing import Tuple
+from calendar_puzzle.board import Game, Board, SHAPE_MAP, build_mx
 from typing import List, Dict
 from calendar_puzzle.constants import INITIAL_BLOCK_TYPES, BOARD_WIDTH, BOARD_HEIGHT
 
@@ -186,22 +187,39 @@ class GameIDGeneratorV3:
     @staticmethod
     def generate_game_id(dropped_blocks: List[Dict], 
                         remaining_types: List[Dict] = None,
-                        board_layout: List[List[str]] = None) -> str:
-        """Generate game ID from Board.b format"""
+                        board_data: List[List[str]] = None) -> Tuple[List[List[str]], str]:
+        """Generate game ID from game state using Board instance internally
+        Args:
+        board_layout: 8x7 board layout, no block on the board, default is None
+        return:
+        board_layout: 8x7 board layout, with block on the board
+        game_id: game id
+        """
+        
+        # 构造Board实例作为唯一数据源
+        n, m = DEFAULT_BOARD_HEIGHT, DEFAULT_BOARD_WIDTH
+        if board_data is not None and len(board_data) > 0:
+            n, m = len(board_data), len(board_data[0])
         
         if remaining_types is None:
-            # Default: all blocks except dropped ones
             dropped_ids = {block['id'] for block in dropped_blocks}
             remaining_types = [block for block in DEFAULT_BLOCK_TYPES 
                              if block['id'] not in dropped_ids]
         
-        if board_layout is None:
-            # Default empty board
-            board_layout = [[' ' for _ in range(DEFAULT_BOARD_WIDTH)] 
-                           for _ in range(DEFAULT_BOARD_HEIGHT)]
+        remaining_shapes = [SHAPE_MAP[block['id']]() for block in remaining_types]
+        board = Board(build_mx(n, m), remaining_shapes)
+        # 如果提供了board_layout，同步到Board实例
+        if board_data is not None:
+            for y, row in enumerate(board_data):
+                for x, cell in enumerate(row):
+                    if y < len(board.b) and x < len(board.b[0]):
+                        board.b[y][x] = cell
         
-        compact_data = GameIDGeneratorV3._pack_game_state(
-            board_layout, dropped_blocks, remaining_types)
+        game = Game()
+        game.board = board
+        for block in dropped_blocks:
+            _, game.board.b = game.fit_put(block['x'], block['y'], SHAPE_MAP[block['id']]())
+        return game.board.b, hash(game.board)
         
         return GameIDGeneratorV3._encode_base54(compact_data)
     
@@ -260,7 +278,7 @@ def _run_basic_tests():
                    for _ in range(DEFAULT_BOARD_HEIGHT)]
     board_layout[3][3] = '#'
     board_layout[4][4] = '#'
-    uncoverable_id = GameIDGeneratorV3.generate_game_id([], board_layout=board_layout)
+    uncoverable_id = GameIDGeneratorV3.generate_game_id([], board_data=board_layout)
     print(f"Uncoverable cells ID: {uncoverable_id}")
     board_state, blocks, remaining_types = GameIDGeneratorV3.decode_game_id(uncoverable_id)
     assert board_state[3][3] == '#'
@@ -326,25 +344,29 @@ if __name__ == "__main__":
             
             # 创建测试场景
             test_blocks = [
-                {'id': 'I', 'x': 1, 'y': 2, 'shape': [[1,1,1,1]]},
-                {'id': 'L', 'x': 3, 'y': 0, 'shape': [[1,0], [1,0], [1,0], [1,1]]}
+                {'id': 'I', 'x': 1, 'y': 2},
+                {'id': 'L', 'x': 3, 'y': 0}
             ]
             
-            # 使用CalendarGame生成带日期的棋盘
-            game = board_module.Game(datetime.date.today())
+            # 使用Board生成带日期的棋盘
+            board = board_module.Board()
+            board.b[0][0] = '#'
+            board.b[1][1] = '#'
+            
             print("=== Debug Mode ===")
             print("Board state:")
-            print(game.board)
+            for row in board.b:
+                print(''.join(row))
             print()
             
-            # 直接使用Board.b格式
-            game_id = GameIDGeneratorV3.generate_game_id(test_blocks, board_layout=game.board.b)
+            # 生成Game ID
+            game_id = GameIDGeneratorV3.generate_game_id(test_blocks, board_data=board.b)
             print(f"Generated Game ID: {game_id}")
             
             # 解码并显示
             board_state, blocks, remaining_types = GameIDGeneratorV3.decode_game_id(game_id)
             print(f"Decoded blocks count: {len(blocks)}")
-            print(f"Remaining types: {[b['id'] for b in remaining_types]}")
+            print(f"Remaining types: {[t['id'] for t in remaining_types]}")
         else:
             print("Usage: python3 game_id.py [--quick|--perf|--debug]")
     else:
