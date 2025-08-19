@@ -20,20 +20,6 @@ SHAPE_MAPPING = {
     'l': 'l-block'
 }
 
-# 将求解器的形状格式转换为前端的形状格式
-def convert_shape_to_frontend(shape_matrix):
-    return [[1 if cell != ' ' else 0 for cell in row] for row in shape_matrix]
-
-# 将前端的坐标转换为求解器的坐标
-def convert_coords_to_solver(x, y):
-    # 这里可能需要根据实际情况调整坐标转换逻辑
-    return x, y
-
-# 将求解器的坐标转换为前端的坐标
-def convert_coords_to_frontend(x, y):
-    # 这里可能需要根据实际情况调整坐标转换逻辑
-    return x, y
-
 # 主函数
 def main(input_file, output_file):
     try:
@@ -44,12 +30,6 @@ def main(input_file, output_file):
         # 初始化求解器
         g = FasterGame()
         # g = Game()
-
-        # 设置不可覆盖的单元格
-        uncoverable_cells = game_state.get('uncoverableCells', [])
-        # 这里需要将前端的不可覆盖单元格格式转换为求解器需要的格式
-        # 假设求解器有一个方法来设置不可覆盖的单元格
-        # g.set_uncoverable_cells([(cell['x'], cell['y']) for cell in uncoverable_cells])
 
         # 设置当前已放置的方块
         dropped_blocks = game_state.get('droppedBlocks', [])
@@ -63,7 +43,7 @@ def main(input_file, output_file):
                     shape_matrix.append([' ' if cell == 0 else shape_label for cell in row])
                 shape = Shape(shape_matrix)
                 # 放置方块
-                x, y = convert_coords_to_solver(block['x'], block['y'])
+                x, y = block['x'], block['y']
                 # 前端x是横轴，y是纵轴，所以要换一下
                 # todo: fit_put并不会更新dlx的row
                 succ, new_b = g.fit_put(y, x, shape)
@@ -113,7 +93,7 @@ def main(input_file, output_file):
                 shape_matrix.append(row)
 
             # 转换为前端坐标
-            frontend_x, frontend_y = convert_coords_to_frontend(min_x, min_y)
+            frontend_x, frontend_y = min_x, min_y
 
             # 添加到解决方案
             if shape_label in SHAPE_MAPPING:
