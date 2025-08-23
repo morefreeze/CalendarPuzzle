@@ -15,9 +15,9 @@ SHAPE_MAPPING = {
     'Z': 'Z-block',
     'N': 'N-block',
     'Q': 'Q-block',
-    'Y': 'Y-block',
+    'Y': 'V-block',
     'U': 'U-block',
-    'l': 'l-block'
+    'l': 'J-block'
 }
 
 # 主函数

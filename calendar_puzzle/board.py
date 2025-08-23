@@ -6,7 +6,7 @@ from typing import List, Tuple
 from colorama import init, Fore
 init(autoreset=True)
 
-from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeY, ShapeI, ShapeL, Shapel,
+from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeV, ShapeI, ShapeL, Shapel,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
 from calendar_puzzle.constants import INITIAL_BLOCK_TYPES, BOARD_BLOCK, DATE_BLOCK, BOARD_ROWS, BOARD_COLS
@@ -14,10 +14,10 @@ from calendar_puzzle.constants import INITIAL_BLOCK_TYPES, BOARD_BLOCK, DATE_BLO
 # 从常量中创建Shape实例
 SHAPE_MAP = {
     'U-block': ShapeU,
-    'Y-block': ShapeY,
+    'V-block': ShapeV,
     'I-block': ShapeI,
     'L-block': ShapeL,
-    'l-block': Shapel,
+    'J-block': Shapel,
     'Q-block': ShapeQ,
     'S-block': ShapeS,
     'N-block': ShapeN,
@@ -47,8 +47,10 @@ class Game(object):
     n, m = BOARD_ROWS, BOARD_COLS
     visited = set()
 
-    def __init__(self, dt=datetime.date.today()) -> None:
+    def __init__(self, dt=None) -> None:
         super().__init__()
+        if dt is None:
+            dt = datetime.date.today()
         # 从常量创建Shape实例
         self.shapes = [SHAPE_MAP[block['id']]() for block in INITIAL_BLOCK_TYPES]
         # random.shuffle(self.shapes)

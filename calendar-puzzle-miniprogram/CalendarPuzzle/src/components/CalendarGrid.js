@@ -142,9 +142,9 @@ const CalendarGrid = () => {
     { id: 'Z-block', label: 'Z', color: '#FF0000', shape: [[1, 1, 0], [0, 1, 0], [0, 1, 1]] },
     { id: 'N-block', label: 'N', color: '#A52A2A', shape: [[1, 1, 1, 0], [0, 0, 1, 1]] },
     { id: 'Q-block', label: 'Q', color: '#FFC0CB', shape: [[1, 1, 0], [1, 1, 1]] },
-    { id: 'Y-block', label: 'Y', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
+    { id: 'V-block', label: 'V', color: '#9370DB', shape: [[1, 0, 0],[1, 0, 0], [1, 1, 1]] },
     { id: 'U-block', label: 'U', color: '#FF6347', shape: [[1, 0, 1], [1, 1, 1]] },
-    { id: 'l-block', label: 'l', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]] },
+    { id: 'J-block', label: 'J', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]] },
   ]);
 
   const [, drop] = useDrop(() => ({
@@ -373,26 +373,26 @@ const CalendarGrid = () => {
                   {row.map((cell, cellIndex) => (
                     cell ? (
                       <View
-                    key={cellIndex}
-                    style={{
-                      width: `${CELL_SIZE}px`,
-                      height: `${CELL_SIZE}px`,
-                      gap: `${GAP_SIZE}px`,
-                      backgroundColor: previewBlock.isValid ? previewBlock.color : 'red',
-                      border: `${CELL_BOARDER}px solid rgba(0,0,0,0.3)`,
-                      boxSizing: 'border-box'
-                    }}
+                        key={cellIndex}
+                        style={{
+                          width: `${CELL_SIZE}px`,
+                          height: `${CELL_SIZE}px`,
+                          gap: `${GAP_SIZE}px`,
+                          backgroundColor: previewBlock.isValid ? previewBlock.color : 'red',
+                          border: `${CELL_BOARDER}px solid rgba(0,0,0,0.3)`,
+                          boxSizing: 'border-box'
+                        }}
                       />
                     ) : (
                       <View
-                    key={cellIndex}
-                    style={{ width: `${CELL_SIZE}px`, height: `${CELL_SIZE}px` }}
+                        key={cellIndex}
+                        style={{ width: `${CELL_SIZE}px`, height: `${CELL_SIZE}px` }}
                       />
                     )
                   ))}
                 </View>
-        </View>      ))}
-            </div>
+              ))}
+            </View>
           );
         })()}
 
@@ -447,7 +447,7 @@ const CalendarGrid = () => {
           />
           );
         })}
-      </div>
+      </View>
 
       {/* 确保同一行中的方块容器大小相同 */}
       <View style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -463,7 +463,7 @@ const CalendarGrid = () => {
             onRotate={() => handleRotate(block.id)}
             onFlip={() => handleFlip(block.id)}
           />
-        ))}</View>
+        ))}
       </View>
     </View>
   );

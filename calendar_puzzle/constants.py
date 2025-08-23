@@ -12,9 +12,9 @@ INITIAL_BLOCK_TYPES = [
     {'id': 'Z-block', 'label': 'Z', 'color': '#FF0000', 'shape': [[1, 1, 0], [0, 1, 0], [0, 1, 1]]},
     {'id': 'N-block', 'label': 'N', 'color': '#A52A2A', 'shape': [[1, 1, 1, 0], [0, 0, 1, 1]]},
     {'id': 'Q-block', 'label': 'Q', 'color': '#FFC0CB', 'shape': [[1, 1, 0], [1, 1, 1]]},
-    {'id': 'Y-block', 'label': 'Y', 'color': '#9370DB', 'shape': [[1, 0, 0], [1, 0, 0], [1, 1, 1]]},
+    {'id': 'V-block', 'label': 'V', 'color': '#9370DB', 'shape': [[1, 0, 0], [1, 0, 0], [1, 1, 1]]},
     {'id': 'U-block', 'label': 'U', 'color': '#FF6347', 'shape': [[1, 0, 1], [1, 1, 1]]},
-    {'id': 'l-block', 'label': 'l', 'color': '#008000', 'shape': [[1, 0], [1, 0], [1, 1]]}
+    {'id': 'J-block', 'label': 'J', 'color': '#008000', 'shape': [[1, 0], [1, 0], [1, 1]]}
 ]
 
 # 方块类型映射（用于前后端通信）
@@ -26,9 +26,9 @@ BLOCK_TYPE_MAPPING = {
     'Z': 'Z-block',
     'N': 'N-block',
     'Q': 'Q-block',
-    'Y': 'Y-block',
+    'Y': 'V-block',
     'U': 'U-block',
-    'l': 'l-block'
+    'l': 'J-block'
 }
 
 # 棋盘布局常量

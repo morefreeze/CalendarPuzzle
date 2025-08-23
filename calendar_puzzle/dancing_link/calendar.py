@@ -13,7 +13,9 @@ from colorama import Fore
 class FasterGame(Game):
     # if build_shape again
     _modified = False
-    def __init__(self, dt=datetime.date.today()) -> None:
+    def __init__(self, dt=None) -> None:
+        if dt is None:
+            dt = datetime.date.today()
         super().__init__(dt)
         self.build_shape()
     
