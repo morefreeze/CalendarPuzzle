@@ -33,23 +33,29 @@ export const initialBlockTypes = [
   { id: 'J-block', label: 'J', color: '#008000', shape: [[1, 0], [1, 0], [1, 1]], key: 'j' },
 ];
 
-// 生成基于方块类型和棋盘状态的唯一游戏ID
-export const generateGameId = (blockTypes, boardLayout) => {
-  // 对blockTypes进行排序以确保一致性
-  const sortedBlockTypes = [...blockTypes].sort((a, b) => a.id.localeCompare(b.id));
-  // 生成方块类型的字符串表示
-  const blocksStr = sortedBlockTypes.map(block => `${block.id}:${JSON.stringify(block.shape)}`).join('|');
-  // 生成棋盘布局的字符串表示
-  const boardStr = JSON.stringify(boardLayout);
-  // 使用简单的哈希算法生成唯一ID
-  let hash = 0;
-  const str = blocksStr + boardStr;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // 转换为32位整数
+// 通过后端API获取游戏ID
+export const fetchGameId = async (blockTypes, boardLayout, day = null, month = null) => {
+  const payload = {
+    droppedBlocks: [], // 初始状态没有放置的方块
+    remainingBlockTypes: blockTypes,
+    ...(day && { day }),
+    ...(month && { month })
+  };
+  
+  const response = await fetch('http://localhost:5001/api/game-id', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload)
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch game ID: ${response.statusText}`);
   }
-  return Math.abs(hash).toString(36);
+  
+  const data = await response.json();
+  return data.gameId;
 };
 
 // 格式化时间显示
@@ -63,28 +69,47 @@ export const formatTime = (totalSeconds) => {
 export const useGameInitialization = () => {
   const [timer, setTimer] = useState(0);
   const [gameId, setGameId] = useState('');
+  const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
 
   useEffect(() => {
-    // 生成游戏ID
-    const newGameId = generateGameId(initialBlockTypes, boardLayoutData);
-    setGameId(newGameId);
+    const initializeGame = async () => {
+      try {
+        // 获取当前日期
+        const today = new Date();
+        const day = today.getDate();
+        const month = today.getMonth() + 1;
+        
+        // 从后端API获取游戏ID
+        const newGameId = await fetchGameId(initialBlockTypes, boardLayoutData, day, month);
+        setGameId(newGameId);
+        setLoading(false);
 
-    // 从localStorage获取保存的计时器值
-    const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
-    if (savedTimer) {
-      setTimer(parseInt(savedTimer, 10));
-    }
+        // 从localStorage获取保存的计时器值
+        const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
+        if (savedTimer) {
+          setTimer(parseInt(savedTimer, 10));
+        }
 
-    // 启动计时器
-    timerRef.current = setInterval(() => {
-      setTimer(prevTimer => {
-        const newTimer = prevTimer + 1;
-        // 保存计时器值到localStorage
-        localStorage.setItem(`calendarPuzzleTimer_${newGameId}`, newTimer.toString());
-        return newTimer;
-      });
-    }, 1000);
+        // 启动计时器
+        timerRef.current = setInterval(() => {
+          setTimer(prevTimer => {
+            const newTimer = prevTimer + 1;
+            // 保存计时器值到localStorage
+            localStorage.setItem(`calendarPuzzleTimer_${newGameId}`, newTimer.toString());
+            return newTimer;
+          });
+        }, 1000);
+      } catch (error) {
+        console.error('Failed to initialize game:', error);
+        // 降级到本地生成（用于离线场景）
+        const fallbackGameId = Math.abs(Date.now()).toString(36);
+        setGameId(fallbackGameId);
+        setLoading(false);
+      }
+    };
+
+    initializeGame();
 
     // 清除计时器
     return () => {
@@ -94,7 +119,7 @@ export const useGameInitialization = () => {
     };
   }, []);
 
-  return { timer, gameId };
+  return { timer, gameId, loading };
 };
 
 // 获取不可覆盖的单元格

@@ -92,25 +92,33 @@ const PlayBoard = () => {
   // 不可覆盖的单元格
   const uncoverableCells = useMemo(() => getUncoverableCells(), []);
 
-  // 生成基于当前棋盘状态的游戏ID
-  const generateDynamicGameId = useCallback((currentDroppedBlocks, currentBlockTypes) => {
-    const sortedBlocks = [...currentDroppedBlocks].sort((a, b) => a.id.localeCompare(b.id));
-    const blocksStr = sortedBlocks.map(block => 
-      `${block.id}:${block.x},${block.y}:${JSON.stringify(block.shape)}`
-    ).join('|');
+  // 通过后端API获取基于当前棋盘状态的游戏ID
+  const fetchDynamicGameId = useCallback(async (currentDroppedBlocks, currentBlockTypes) => {
+    const payload = {
+      droppedBlocks: currentDroppedBlocks,
+      remainingBlockTypes: currentBlockTypes
+    };
     
-    const remainingBlocks = [...currentBlockTypes].sort((a, b) => a.id.localeCompare(b.id));
-    const remainingStr = remainingBlocks.map(block => `${block.id}:${JSON.stringify(block.shape)}`).join('|');
-    
-    const combinedStr = blocksStr + '|' + remainingStr;
-    
-    let hash = 0;
-    for (let i = 0; i < combinedStr.length; i++) {
-      const char = combinedStr.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
+    try {
+      const response = await fetch('http://localhost:5001/api/game-id', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch game ID: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      return data.gameId;
+    } catch (error) {
+      console.error('Failed to fetch dynamic game ID:', error);
+      // 降级到本地生成（用于离线场景）
+      return Math.abs(Date.now()).toString(36);
     }
-    return Math.abs(hash).toString(36);
   }, []);
 
   // 从localStorage加载游戏状态
@@ -122,14 +130,15 @@ const PlayBoard = () => {
         setDroppedBlocks(parsed.droppedBlocks || []);
         setBlockTypes(parsed.blockTypes || initialBlockTypes);
         
-        // 重新计算基于加载状态的gameId
-        const newGameId = generateDynamicGameId(parsed.droppedBlocks || [], parsed.blockTypes || initialBlockTypes);
-        setGameId(newGameId);
+        // 异步获取基于加载状态的游戏ID
+        fetchDynamicGameId(parsed.droppedBlocks || [], parsed.blockTypes || initialBlockTypes)
+          .then(newGameId => setGameId(newGameId))
+          .catch(error => console.error('Failed to fetch game ID:', error));
       } catch (error) {
         console.error('Failed to load saved game state:', error);
       }
     }
-  }, [initialGameId, generateDynamicGameId]);
+  }, [initialGameId, fetchDynamicGameId]);
 
   // 保存游戏状态到localStorage
   useEffect(() => {
@@ -140,10 +149,11 @@ const PlayBoard = () => {
     };
     localStorage.setItem(`calendarPuzzleState_${initialGameId}`, JSON.stringify(gameState));
     
-    // 重新计算gameId基于当前状态
-    const newGameId = generateDynamicGameId(droppedBlocks, blockTypes);
-    setGameId(newGameId);
-  }, [droppedBlocks, blockTypes, initialGameId, generateDynamicGameId]);
+    // 异步获取基于当前状态的游戏ID
+    fetchDynamicGameId(droppedBlocks, blockTypes)
+      .then(newGameId => setGameId(newGameId))
+      .catch(error => console.error('Failed to fetch game ID:', error));
+  }, [droppedBlocks, blockTypes, initialGameId, fetchDynamicGameId]);
 
   // 监听方块放置变化，检查是否胜利
   useEffect(() => {
@@ -426,7 +436,12 @@ const PlayBoard = () => {
             y: block.y,
             shape: block.shape
           })),
-          uncoverableCells
+          uncoverableCells,
+          // 添加新的请求参数
+          blockTypes: initialBlockTypes.map(block => ({
+            id: block.id,
+            shape: block.shape
+          }))
         })
       });
 

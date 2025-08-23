@@ -66,14 +66,20 @@ def generate_game_id_api():
       - 如果不提供, 系统会自动从初始方块中移除已放置的方块
     - day (Number, 可选): 日期 (1-31), 默认为当前日期
     - month (Number, 可选): 月份 (1-12), 默认为当前月份
+    - gameId (String, 可选): 游戏ID，如果提供则忽略其他参数直接解码
+    - uncoverableCells (Array, 可选): 不可覆盖的单元格列表，向后兼容用
     
     响应数据:
     成功响应 (200 OK):
     {
-      "gameId": 2083123359786657970,        // 生成的游戏ID (整数哈希值)
+      "gameId": "abc123",                    // 生成的游戏ID (base54编码字符串)
+      "initialGameId": "xyz789",            // 初始游戏ID
+      "currentGameId": "abc123",            // 当前游戏ID
       "boardData": [[" "," "," "," "," "," "," "]...],  // 8x7棋盘数据
       "boardLayout": ["       ", "       ", ...],  // 棋盘的一维字符串表示
       "dimensions": {"rows": 8, "cols": 7},  // 棋盘尺寸信息
+      "droppedBlocks": [...],               // 已放置的方块列表
+      "remainingBlockTypes": [...],        // 剩余可用的方块类型
       "success": true
     }
     
@@ -97,41 +103,59 @@ def generate_game_id_api():
     """
     try:
         data = request.json
-        dropped_blocks = data.get('droppedBlocks', [])
-        remaining_block_types = data.get('remainingBlockTypes')
         
-        # 支持自定义日期
-        day = data.get('day')
-        month = data.get('month')
+        # 支持通过gameId直接解码
+        if 'gameId' in data:
+            try:
+                board_data, dropped_blocks, remaining_block_types = id_generator.decode_game_id(data['gameId'])
+                game_id = data['gameId']
+            except Exception as e:
+                return jsonify({
+                    'error': f'Invalid gameId: {str(e)}',
+                    'success': False
+                }), 400
+        else:
+            # 标准流程：根据游戏状态生成ID
+            dropped_blocks = data.get('droppedBlocks', [])
+            remaining_block_types = data.get('remainingBlockTypes')
+            
+            # 支持自定义日期
+            day = data.get('day')
+            month = data.get('month')
+            
+            # 使用CalendarGame生成标准棋盘
+            board_data = get_board_with_date(day, month)
+            
+            # 计算剩余方块类型（从初始方块中移除已放置的方块）
+            if remaining_block_types is None:
+                placed_block_ids = {block['id'] for block in dropped_blocks}
+                remaining_block_types = [block_type for block_type in INITIAL_BLOCK_TYPES if block_type['id'] not in placed_block_ids]
+            
+            # 生成Game ID
+            try:
+                board_data, game_id = id_generator.generate_game_id(dropped_blocks, remaining_block_types, board_data)
+            except ValueError as e:
+                return jsonify({
+                    'error': f'Invalid input: {str(e)}',
+                    'success': False
+                }), 400
+            except Exception as e:
+                logging.error(f"Unexpected error generating game ID: ", exc_info=e)
+                return jsonify({
+                    'error': 'Internal server error',
+                    'success': False
+                }), 500
         
-        # 使用CalendarGame生成标准棋盘
-        board_data = get_board_with_date(day, month)
-        
-        # 计算剩余方块类型（从初始方块中移除已放置的方块）
-        if remaining_block_types is None:
-            placed_block_ids = {block['id'] for block in dropped_blocks}
-            remaining_block_types = [block_type for block_type in INITIAL_BLOCK_TYPES if block_type['id'] not in placed_block_ids]
-        
-        # 生成Game ID
-        try:
-            board_data, game_id = id_generator.generate_game_id(dropped_blocks, remaining_block_types, board_data)
-        except ValueError as e:
-            return jsonify({
-                'error': f'Invalid input: {str(e)}',
-                'success': False
-            }), 400
-        except Exception as e:
-            logging.error(f"Unexpected error generating game ID: ", exc_info=e)
-            return jsonify({
-                'error': 'Internal server error',
-                'success': False
-            }), 500
-        
+        # 返回增强的响应格式
         return jsonify({
             'gameId': game_id,
+            'initialGameId': game_id,  # 为了向后兼容
+            'currentGameId': game_id,  # 为了向后兼容
             'boardData': board_data,
             'boardLayout': [''.join(map(str, row)) for row in board_data],
-            'dimensions': {'rows': len(board_data), 'cols': len(board_data[0])},  # 告知前端实际尺寸
+            'dimensions': {'rows': len(board_data), 'cols': len(board_data[0])},
+            'droppedBlocks': dropped_blocks,
+            'remainingBlockTypes': remaining_block_types,
             'success': True
         })
         
@@ -145,10 +169,14 @@ def generate_game_id_api():
 def get_solution():
     """求解给定游戏状态的解决方案
     
-    该接口接收与generate_game_id相同的参数，直接计算游戏ID并求解。
-    消除了手动计算剩余方块类型的重复逻辑。
+    该接口支持两种调用方式：
+    1. 通过gameId直接解码游戏状态并求解
+    2. 通过游戏状态参数(droppedBlocks, remainingBlockTypes等)生成游戏ID并求解
     
-    请求参数:
+    请求参数 (方式1 - 通过gameId):
+    - gameId (String): 游戏ID字符串
+    
+    请求参数 (方式2 - 通过游戏状态):
     - droppedBlocks (Array): 已放置的方块列表
       - 格式: [{"id": "I-block", "x": 0, "y": 0}, ...]
     - remainingBlockTypes (Array, 可选): 剩余可用的方块类型
@@ -166,6 +194,8 @@ def get_solution():
       "remainingBlockTypes": [],  // 解决后剩余方块为空数组
       "solveTime": 1.234,  // 求解耗时(秒)
       "gameId": "abc123...",  // 游戏ID字符串
+      "initialGameId": "abc123...",  // 初始游戏ID（与gameId相同，为了向后兼容）
+      "currentGameId": "abc123...",  // 当前游戏ID（与gameId相同，为了向后兼容）
       "success": true
     }
     
@@ -183,36 +213,49 @@ def get_solution():
     }
     """
     try:
-        # 获取前端发送的游戏状态 - 与generate_game_id相同的参数格式
+        # 获取前端发送的游戏状态
         data = request.json
-        dropped_blocks = data.get('droppedBlocks', [])
-        remaining_block_types = data.get('remainingBlockTypes')
         
-        # 支持自定义日期 - 与generate_game_id保持一致
-        day = data.get('day')
-        month = data.get('month')
-        
-        # 使用CalendarGame生成标准棋盘 - 与generate_game_id相同逻辑
-        board_data = get_board_with_date(day, month)
-        
-        # 计算游戏ID - 复用generate_game_id的完整逻辑
-        try:
-            board_data, game_id = id_generator.generate_game_id(
-                dropped_blocks, 
-                remaining_block_types, 
-                board_data
-            )
-        except ValueError as e:
-            return jsonify({
-                'error': f'Invalid input: {str(e)}',
-                'success': False
-            }), 400
-        except Exception as e:
-            logging.error(f"Error generating game ID: {str(e)}")
-            return jsonify({
-                'error': 'Failed to generate game ID',
-                'success': False
-            }), 500
+        # 支持通过gameId直接解码
+        if 'gameId' in data:
+            try:
+                board_data, dropped_blocks, remaining_block_types = id_generator.decode_game_id(data['gameId'])
+                game_id = data['gameId']
+            except Exception as e:
+                return jsonify({
+                    'error': f'Invalid gameId: {str(e)}',
+                    'success': False
+                }), 400
+        else:
+            # 标准流程：通过游戏状态参数生成游戏ID
+            dropped_blocks = data.get('droppedBlocks', [])
+            remaining_block_types = data.get('remainingBlockTypes')
+            
+            # 支持自定义日期
+            day = data.get('day')
+            month = data.get('month')
+            
+            # 使用CalendarGame生成标准棋盘
+            board_data = get_board_with_date(day, month)
+            
+            # 计算游戏ID
+            try:
+                board_data, game_id = id_generator.generate_game_id(
+                    dropped_blocks, 
+                    remaining_block_types, 
+                    board_data
+                )
+            except ValueError as e:
+                return jsonify({
+                    'error': f'Invalid input: {str(e)}',
+                    'success': False
+                }), 400
+            except Exception as e:
+                logging.error(f"Error generating game ID: {str(e)}")
+                return jsonify({
+                    'error': 'Failed to generate game ID',
+                    'success': False
+                }), 500
 
         # 将游戏状态保存到临时文件
         temp_dir = os.path.join(os.path.dirname(__file__), 'temp')
@@ -261,6 +304,8 @@ def get_solution():
         # 添加solveTime和gameId（solve_for_web.py可能不会包含这些）
         complete_solution['solveTime'] = solve_time
         complete_solution['gameId'] = game_id
+        complete_solution['initialGameId'] = game_id  # 为了向后兼容
+        complete_solution['currentGameId'] = game_id  # 为了向后兼容
 
         # 保存完整解决方案状态
         with open(temp_output, 'w') as f:
