@@ -6,7 +6,7 @@ from typing import List, Tuple
 from colorama import init, Fore
 init(autoreset=True)
 
-from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeV, ShapeI, ShapeL, Shapel,
+from calendar_puzzle.shape import (EMPTY_SHAPE, Shape, ShapeU, ShapeV, ShapeI, ShapeL, ShapeJ,
                                    ShapeQ, ShapeS, ShapeN, ShapeT, ShapeZ,
                                    build_mx)
 from calendar_puzzle.constants import INITIAL_BLOCK_TYPES, BOARD_BLOCK, DATE_BLOCK, BOARD_ROWS, BOARD_COLS
@@ -17,7 +17,7 @@ SHAPE_MAP = {
     'V-block': ShapeV,
     'I-block': ShapeI,
     'L-block': ShapeL,
-    'J-block': Shapel,
+    'J-block': ShapeJ,
     'Q-block': ShapeQ,
     'S-block': ShapeS,
     'N-block': ShapeN,
