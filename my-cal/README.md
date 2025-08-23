@@ -1,70 +1,314 @@
-# Getting Started with Create React App
+# Calendar Puzzle React Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+日历拼图的现代化React前端实现，提供直观、响应式的游戏体验。
 
-## Available Scripts
+## 🎮 功能特性
 
-In the project directory, you can run:
+### 核心功能
+- **拖拽交互**：支持鼠标和触摸设备的形状拖拽
+- **实时验证**：放置时即时检查有效性
+- **撤销重做**：完整的操作历史栈
+- **智能提示**：集成AI求解器提供解题建议
+- **响应式设计**：完美适配桌面和移动设备
 
-### `npm start`
+### 技术特性
+- **TypeScript**：类型安全的现代化开发
+- **React Hooks**：优雅的状态管理
+- **Canvas渲染**：高性能图形绘制
+- **Web Workers**：后台计算不阻塞主线程
+- **PWA支持**：可安装为桌面应用
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 🏗️ 项目结构
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```
+src/
+├── components/           # React组件
+│   ├── GameBoard.js      # 游戏主面板
+│   ├── ShapeSelector.js  # 形状选择器
+│   ├── CalendarGrid.js   # 日历网格组件
+│   ├── Shape.js          # 单个形状组件
+│   └── SolverPanel.js    # 求解器控制面板
+├── hooks/               # 自定义Hooks
+│   ├── useGameState.js  # 游戏状态管理
+│   ├── useSolver.js     # AI求解器集成
+│   └── useDragDrop.js   # 拖拽逻辑封装
+├── utils/               # 工具函数
+│   ├── shapeRenderer.js # 形状渲染工具
+│   ├── validator.js     # 位置验证逻辑
+│   └── constants.js     # 游戏常量
+├── styles/              # 样式文件
+│   ├── GameBoard.css
+│   ├── Shape.css
+│   └── App.css
+└── App.js              # 应用入口
+```
 
-### `npm test`
+## 🚀 快速开始
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### 安装依赖
+```bash
+npm install
+```
 
-### `npm run build`
+### 启动开发服务器
+```bash
+npm start
+```
+访问 http://localhost:3000 查看应用。
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### 构建生产版本
+```bash
+npm run build
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 🎯 核心组件详解
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### GameBoard - 游戏主面板
+管理整个游戏状态，协调各子组件的交互。
 
-### `npm run eject`
+```javascript
+const GameBoard = () => {
+  const {
+    board, shapes, selectedShape,
+    placeShape, removeShape, resetGame
+  } = useGameState();
+  
+  return (
+    <div className="game-board">
+      <CalendarGrid board={board} />
+      <ShapeSelector shapes={shapes} />
+      <SolverPanel />
+    </div>
+  );
+};
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### ShapeSelector - 形状选择器
+展示所有可用形状，支持拖拽选择。
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```javascript
+const ShapeSelector = ({ shapes }) => {
+  return (
+    <div className="shape-selector">
+      {shapes.map(shape => (
+        <Shape 
+          key={shape.id}
+          shape={shape}
+          draggable={true}
+          onDragStart={handleDragStart}
+        />
+      ))}
+    </div>
+  );
+};
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### CalendarGrid - 日历网格
+8x7的日历网格，显示当前日期标记和可放置区域。
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+```javascript
+const CalendarGrid = ({ board }) => {
+  return (
+    <div className="calendar-grid">
+      {board.map((row, i) => (
+        <div key={i} className="grid-row">
+          {row.map((cell, j) => (
+            <Cell 
+              key={`${i}-${j}`}
+              cell={cell}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+```
 
-## Learn More
+## 🎨 样式系统
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### CSS变量主题
+```css
+:root {
+  --primary-color: #1890ff;
+  --success-color: #52c41a;
+  --error-color: #ff4d4f;
+  --warning-color: #faad14;
+  
+  --cell-size: 40px;
+  --grid-gap: 2px;
+  --border-radius: 4px;
+}
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### 响应式断点
+```css
+@media (max-width: 768px) {
+  :root {
+    --cell-size: 30px;
+  }
+  
+  .game-board {
+    flex-direction: column;
+  }
+}
+```
 
-### Code Splitting
+## 🔧 开发指南
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### 状态管理
+使用React Context + useReducer管理复杂游戏状态：
 
-### Analyzing the Bundle Size
+```javascript
+const GameContext = createContext();
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+const gameReducer = (state, action) => {
+  switch (action.type) {
+    case 'PLACE_SHAPE':
+      return {
+        ...state,
+        board: updateBoard(state.board, action.payload),
+        shapes: state.shapes.filter(s => s.id !== action.payload.shapeId)
+      };
+    case 'RESET_GAME':
+      return initialState;
+    default:
+      return state;
+  }
+};
+```
 
-### Making a Progressive Web App
+### 拖拽实现
+使用HTML5 Drag and Drop API：
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```javascript
+const useDragDrop = () => {
+  const [draggedShape, setDraggedShape] = useState(null);
+  
+  const handleDragStart = (e, shape) => {
+    setDraggedShape(shape);
+    e.dataTransfer.setData('application/json', JSON.stringify(shape));
+  };
+  
+  const handleDrop = (e, position) => {
+    e.preventDefault();
+    const shape = JSON.parse(e.dataTransfer.getData('application/json'));
+    if (isValidPlacement(shape, position)) {
+      placeShape(shape, position);
+    }
+  };
+  
+  return { handleDragStart, handleDrop };
+};
+```
 
-### Advanced Configuration
+### AI求解器集成
+通过Web Workers在后台运行求解算法：
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```javascript
+// worker.js
+self.onmessage = function(e) {
+  const { board, shapes } = e.data;
+  const solution = solvePuzzle(board, shapes);
+  self.postMessage({ solution });
+};
 
-### Deployment
+// useSolver.js
+const useSolver = () => {
+  const [isSolving, setIsSolving] = useState(false);
+  
+  const solve = async (board, shapes) => {
+    setIsSolving(true);
+    const worker = new Worker('/solver-worker.js');
+    
+    worker.postMessage({ board, shapes });
+    
+    return new Promise((resolve) => {
+      worker.onmessage = (e) => {
+        setIsSolving(false);
+        resolve(e.data.solution);
+      };
+    });
+  };
+  
+  return { solve, isSolving };
+};
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## 📱 响应式设计
 
-### `npm run build` fails to minify
+### 桌面布局
+- 三栏布局：网格 | 形状选择器 | 控制面板
+- 固定网格大小，形状面板可滚动
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### 移动布局
+- 垂直堆叠：网格在上，形状选择器在下
+- 自适应网格大小，触摸优化
+
+### 断点策略
+```javascript
+const ResponsiveGame = () => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+  
+  return isMobile ? <MobileLayout /> : <DesktopLayout />;
+};
+```
+
+## 🧪 测试
+
+### 单元测试
+```bash
+npm test
+```
+
+### 端到端测试
+```bash
+npm run test:e2e
+```
+
+### 性能测试
+```bash
+npm run test:performance
+```
+
+## 🚀 部署
+
+### 静态部署
+```bash
+npm run build
+# 将build/目录部署到任何静态托管服务
+```
+
+### Docker部署
+```dockerfile
+FROM node:16-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+## 📄 环境变量
+
+```bash
+# .env
+REACT_APP_API_URL=http://localhost:5000
+REACT_APP_ENABLE_ANALYTICS=true
+```
+
+## 🤝 贡献指南
+
+1. Fork项目
+2. 创建特性分支：`git checkout -b feature/amazing-feature`
+3. 提交更改：`git commit -m 'Add amazing feature'`
+4. 推送到分支：`git push origin feature/amazing-feature`
+5. 创建Pull Request
+
+## 📄 许可证
+
+MIT License - 查看 [LICENSE](../LICENSE) 文件了解详情。
