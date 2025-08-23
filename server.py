@@ -159,20 +159,27 @@ def get_solution():
     响应数据:
     成功 (200):
     {
-      "blocks": [...],      // 解决方案的方块放置信息
-      "solveTime": 1.234,   // 求解耗时(秒)
-      ...                   // 其他求解器返回的字段
+      "boardData": [[" "," "," "," "," "," "," "]...],  // 8x7棋盘数据
+      "boardLayout": ["       ", "       ", ...],  // 棋盘的一维字符串表示
+      "dimensions": {"rows": 8, "cols": 7},  // 棋盘尺寸信息
+      "droppedBlocks": [...],  // 解决方案中的方块放置信息
+      "remainingBlockTypes": [],  // 解决后剩余方块为空数组
+      "solveTime": 1.234,  // 求解耗时(秒)
+      "gameId": "abc123...",  // 游戏ID字符串
+      "success": true
     }
     
     失败 (404):
     {
       "error": "no solution found",
-      "solveTime": 0.123
+      "solveTime": 0.123,
+      "success": false
     }
     
     错误 (500):
     {
-      "error": "具体错误信息"
+      "error": "具体错误信息",
+      "success": false
     }
     """
     try:
@@ -213,11 +220,18 @@ def get_solution():
         temp_input = os.path.join(temp_dir, f'{game_id}_input.json')
         temp_output = os.path.join(temp_dir, f'{game_id}_output.json')
 
+        # 构造完整的游戏状态
+        game_state = {
+            'boardData': board_data,
+            'boardLayout': [''.join(map(str, row)) for row in board_data],
+            'dimensions': {'rows': len(board_data), 'cols': len(board_data[0])},
+            'droppedBlocks': dropped_blocks,
+            'remainingBlockTypes': remaining_block_types
+        }
+
+        # 保存完整游戏状态
         with open(temp_input, 'w') as f:
-            json.dump({
-                'droppedBlocks': dropped_blocks,
-                'remainingBlockTypes': remaining_block_types
-            }, f)
+            json.dump(game_state, f, indent=2)
 
         # 开始计时
         start_time = time.time()
@@ -233,21 +247,26 @@ def get_solution():
         end_time = time.time()
         solve_time = round(end_time - start_time, 3)
 
-        # 读取求解结果
+        # 读取求解结果（solve_for_web.py现在直接输出完整格式）
         with open(temp_output, 'r') as f:
-            solution = json.load(f)
+            complete_solution = json.load(f)
 
         # 检查解决方案
-        if not solution or 'blocks' not in solution or not solution['blocks']:
+        if not complete_solution or 'droppedBlocks' not in complete_solution or not complete_solution['droppedBlocks']:
             return jsonify({
                 'error': 'no solution found',
                 'solveTime': solve_time
             }), 404
 
-        # 添加求解时间
-        solution['solveTime'] = solve_time
+        # 添加solveTime和gameId（solve_for_web.py可能不会包含这些）
+        complete_solution['solveTime'] = solve_time
+        complete_solution['gameId'] = game_id
 
-        return jsonify(solution)
+        # 保存完整解决方案状态
+        with open(temp_output, 'w') as f:
+            json.dump(complete_solution, f, indent=2)
+
+        return jsonify(complete_solution)
 
     except Exception as e:
         logging.error(f"Unexpected error in get_solution: {str(e)}")

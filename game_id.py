@@ -10,11 +10,6 @@ Features:
 - 10 bits per placed block (4b type + 3b x + 3b y)
 - Supports up to 10 blocks total
 - Round-trip encoding/decoding
-
-Usage:
-    python3 game_id.py              # Run all tests
-    python3 game_id.py --quick      # Quick single test
-    python3 game_id.py --perf        # Performance benchmark
 """
 
 import sys

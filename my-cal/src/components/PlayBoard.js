@@ -451,8 +451,16 @@ const PlayBoard = () => {
       // 验证返回的解决方案是否完整
       const placedBlockIds = droppedBlocks.map(b => b.id);
       console.log('placedBlockIds:', placedBlockIds);
-      const solutionBlockIds = solution.blocks.map(b => b.id);
-      console.log('solutionBlockIds:', solution.blocks, solutionBlockIds);
+      
+      // 处理新的响应格式
+      const solutionBlocks = solution.droppedBlocks || solution.blocks;
+      if (!solutionBlocks) {
+        setSolutionError('无效的解决方案格式');
+        return;
+      }
+      
+      const solutionBlockIds = solutionBlocks.map(b => b.id);
+      console.log('solutionBlockIds:', solutionBlocks, solutionBlockIds);
       const missingBlocks = placedBlockIds.filter(id => !solutionBlockIds.includes(id));
       console.log('Missing blocks:', missingBlocks);
       if (missingBlocks.length > 0) {
@@ -460,7 +468,7 @@ const PlayBoard = () => {
         return;
       }
       
-      applySolution(solution);
+      applySolution({ ...solution, blocks: solutionBlocks });
     } catch (err) {
       console.error(`获取解决方案错误: ${err.message}`);
       setSolutionError(`获取解决方案失败: ${err.message}`);
@@ -476,19 +484,23 @@ const PlayBoard = () => {
     // Clear current placed blocks
     setDroppedBlocks([]);
 
+    // 处理新的响应格式 - 优先使用droppedBlocks，回退到blocks
+    const solutionBlocks = solution.droppedBlocks;
+    
     // Place blocks according to solution
-    const newDroppedBlocks = solution.blocks.map(block => {
+    const newDroppedBlocks = solutionBlocks.map(block => {
       console.log('Processing block:', block);
       
-      // Find matching block type using label (case-sensitive for English letters)
-      const blockType = initialBlockTypes.find(b => b.label === block.label);
+      // 处理新的响应格式 - 使用label或id字段
+      const blockLabel = block.label || block.id.split('-')[0];
+      const blockType = initialBlockTypes.find(b => b.label === blockLabel || b.id === block.id);
       if (!blockType) {
-        console.warn(`Block type not found for label: "${block.label}"`);
+        console.warn(`Block type not found for label: "${blockLabel}"`);
         console.log('Available labels:', initialBlockTypes.map(b => b.label));
         return null;
       }
 
-      console.log(`Found block type: ${blockType.id} for label ${block.label}`);
+      console.log(`Found block type: ${blockType.id} for label ${blockLabel}`);
 
       return {
         ...blockType,

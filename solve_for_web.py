@@ -15,9 +15,9 @@ SHAPE_MAPPING = {
     'Z': 'Z-block',
     'N': 'N-block',
     'Q': 'Q-block',
-    'Y': 'V-block',
+    'V': 'V-block',
     'U': 'U-block',
-    'l': 'J-block'
+    'J': 'J-block'
 }
 
 # 主函数
@@ -57,15 +57,19 @@ def main(input_file, output_file):
         # 求解
         g.solve(find_one_exit=True)
 
-        # 格式化解决方案
-        solution = {
-            'blocks': []
-        }
-
         # 直接使用g.board而不是转换为numpy数组
         board = g.board.b
         rows = len(board)
         cols = len(board[0]) if rows > 0 else 0
+
+        # 构建完整的解决方案格式，与server.py的新格式保持一致
+        solution = {
+            'boardData': board,
+            'boardLayout': [''.join(map(str, row)) for row in board],
+            'dimensions': {'rows': rows, 'cols': cols},
+            'droppedBlocks': [],
+            'remainingBlockTypes': []  # 解决后剩余块为空
+        }
 
         # 记录每个形状的位置
         shape_positions = {}
@@ -97,7 +101,7 @@ def main(input_file, output_file):
 
             # 添加到解决方案
             if shape_label in SHAPE_MAPPING:
-                solution['blocks'].append({
+                solution['droppedBlocks'].append({
                     'id': SHAPE_MAPPING[shape_label],
                     'label': shape_label,
                     'x': frontend_x,
