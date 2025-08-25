@@ -657,12 +657,58 @@ const PlayBoard = () => {
   });
 
   // 键盘方块拖动结束处理
-  const handleKeyboardBlockDragEnd = (didDrop) => {
+  const handleKeyboardBlockDragEnd = useCallback((didDrop) => {
     if (!didDrop && keyboardBlock) {
       setBlockTypes(prev => [...prev, keyboardBlock]);
     }
     setKeyboardBlock(null);
-  };
+  }, [keyboardBlock]);
+
+  // 添加防抖状态
+  const [lastDoubleClickTime, setLastDoubleClickTime] = useState(0);
+  const DOUBLE_CLICK_DEBOUNCE = 500; // 500ms防抖
+
+  // 处理双击事件 - 将方块返回面板（带防抖）
+  const handleDoubleClick = useCallback((blockId) => {
+    const now = Date.now();
+    
+    // 防抖检查：如果在500ms内重复点击，直接返回
+    if (now - lastDoubleClickTime < DOUBLE_CLICK_DEBOUNCE) {
+      console.log('Double click ignored due to debounce:', blockId);
+      return;
+    }
+    
+    setLastDoubleClickTime(now);
+    console.log('Double clicked block, returning to panel:', blockId, 'at', now);
+    
+    // 使用单次状态更新确保原子性
+    setDroppedBlocks(prevDropped => {
+      const blockIndex = prevDropped.findIndex(b => b.id === blockId);
+      if (blockIndex === -1) {
+        console.log('Block not found in droppedBlocks:', blockId);
+        return prevDropped;
+      }
+      
+      const blockToReturn = prevDropped[blockIndex];
+      console.log('Found block to return:', blockToReturn.id);
+      
+      // 关键：使用setState的函数式更新，避免竞态条件
+      setBlockTypes(prevTypes => {
+        const exists = prevTypes.some(b => b.id === blockId);
+        if (!exists) {
+          console.log('Adding block back to panel:', blockToReturn.id);
+          return [...prevTypes, blockToReturn];
+        }
+        console.log('Block already exists in panel:', blockId);
+        return prevTypes;
+      });
+      
+      // 从droppedBlocks中移除
+      const newDropped = prevDropped.filter(b => b.id !== blockId);
+      console.log('Remaining dropped blocks:', newDropped.length);
+      return newDropped;
+    });
+  }, [lastDoubleClickTime]);
 
   // 渲染
   return (
@@ -890,11 +936,6 @@ const PlayBoard = () => {
             }
           };
 
-          const handleDoubleClick = (blockId) => {
-            setDroppedBlocks(prev => prev.filter(b => b.id !== blockId));
-            setBlockTypes(prev => [...prev, block]);
-          };
-
           return (
             <DraggableBlock
               key={`dropped-${block.id}`}
@@ -903,7 +944,7 @@ const PlayBoard = () => {
               color={block.color}
               shape={block.shape}
               onDragEnd={handleBlockDragEnd}
-              onDoubleClick={handleDoubleClick}
+              onDoubleClick={() => handleDoubleClick(block.id)}
               isPlaced={true}
               style={{ position: 'absolute', left: `${position.left}px`, top: `${position.top}px` }}
             />

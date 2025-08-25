@@ -1,5 +1,5 @@
 import { useDrag } from 'react-dnd';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { CELL_BOARDER, CELL_SIZE as GRID_CELL_SIZE } from './InitBoard';
 
@@ -26,6 +26,11 @@ const DraggableBlock = ({
   useEffect(() => {
     console.debug(`DraggableBlock (ID: ${id}) - component re-rendered with shape:`, JSON.stringify(shape));
   });
+  
+  // 防抖状态
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const CLICK_DEBOUNCE = 300; // 300ms防抖
+  
   // 使用网格的CELL_SIZE或提供的自定义大小
   const CELL_SIZE = isPlaced ? GRID_CELL_SIZE : 20;
   const GAP_SIZE = 3;
@@ -61,6 +66,25 @@ const DraggableBlock = ({
     })
   // 明确添加shape到依赖数组，确保shape变化时重新创建拖动配置
   }), [getItem, onDragEnd]);
+
+  // 防抖的双击处理
+  const handleDoubleClickWithDebounce = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const now = Date.now();
+    if (now - lastClickTime < CLICK_DEBOUNCE) {
+      console.log('DraggableBlock: Double click ignored due to debounce');
+      return;
+    }
+    
+    setLastClickTime(now);
+    console.log('DraggableBlock: Double click processed for', id);
+    
+    if (isPlaced && onDoubleClick) {
+      onDoubleClick(id);
+    }
+  }, [isPlaced, onDoubleClick, id, lastClickTime]);
 
   const renderBlockShape = () => {
     return shape.map((row, rowIndex) => (
@@ -112,7 +136,7 @@ const DraggableBlock = ({
           position: 'relative',
           zIndex: 1
         }}
-        onDoubleClick={() => isPlaced && onDoubleClick && onDoubleClick(id)}
+        onDoubleClick={handleDoubleClickWithDebounce}
       >
         {renderBlockShape()}
       </div>
