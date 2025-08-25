@@ -131,3 +131,5 @@ dmypy.json
 pyvenv.cfg
 bin/*
 temp/*
+ssl/nginx.crt
+ssl/nginx.key

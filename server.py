@@ -217,8 +217,9 @@ def get_solution():
         data = request.json
         
         # 支持通过gameId直接解码
-        if 'gameId' in data:
+        if False and 'gameId' in data:
             try:
+                # fixit: decode_game_id 转换后的布局和生成的不一致
                 board_data, dropped_blocks, remaining_block_types = id_generator.decode_game_id(data['gameId'])
                 game_id = data['gameId']
             except Exception as e:
@@ -347,5 +348,5 @@ def root():
     })
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=False)

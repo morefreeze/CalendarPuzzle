@@ -45,7 +45,6 @@ def main(input_file, output_file):
                 # 放置方块
                 x, y = block['x'], block['y']
                 # 前端x是横轴，y是纵轴，所以要换一下
-                # todo: fit_put并不会更新dlx的row
                 succ, new_b = g.fit_put(y, x, shape)
                 g.board.remaining_shapes = [s for s in g.board.remaining_shapes if s.name != shape_label]
 
