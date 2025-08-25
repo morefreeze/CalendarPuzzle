@@ -86,6 +86,8 @@ CalendarPuzzle/
 
 ### 安装运行
 
+#### 方案1：本地开发环境
+
 ```bash
 # 克隆项目
 git clone https://github.com/your-username/CalendarPuzzle.git
@@ -94,13 +96,64 @@ cd CalendarPuzzle
 # 安装Python依赖
 pip install -r requirements.txt
 
-# 启动后端API
+# 启动后端API服务
 python server.py
 
 # 启动React前端
 cd my-cal
 npm install
 npm start
+```
+
+#### 方案2：Docker一键部署（推荐）
+
+```bash
+# 克隆项目
+git clone https://github.com/your-username/CalendarPuzzle.git
+cd CalendarPuzzle
+
+# 使用Docker Compose启动所有服务
+# 前端：http://localhost:3000
+# 后端：http://localhost:5000
+docker-compose up -d
+
+# 验证部署
+curl http://localhost:5000/api/health
+curl http://localhost:3000/api/health
+```
+
+#### 方案3：一键部署脚本（最简单）
+
+```bash
+# 使部署脚本可执行
+chmod +x deploy.sh
+
+# 启动开发环境（本地运行）
+./deploy.sh dev
+
+# 启动测试环境（Docker）
+./deploy.sh test
+
+# 启动生产环境（Docker + Nginx）
+./deploy.sh prod
+
+# 其他命令
+./deploy.sh stop   # 停止所有服务
+./deploy.sh logs   # 查看日志
+./deploy.sh clean  # 清理环境
+```
+
+### 方案4：手动生产环境部署
+
+```bash
+# 生产环境启动
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# 使用Nginx反向代理
+sudo apt-get install nginx
+sudo cp nginx.conf /etc/nginx/sites-available/calendar-puzzle
+sudo ln -s /etc/nginx/sites-available/calendar-puzzle /etc/nginx/sites-enabled/
+sudo nginx -s reload
 ```
 
 ### 使用示例

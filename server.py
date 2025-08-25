@@ -317,5 +317,35 @@ def get_solution():
         logging.error(f"Unexpected error in get_solution: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查端点
+    
+    用于负载均衡器和容器健康检查
+    
+    Returns:
+        JSON: 健康状态信息
+    """
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': time.time(),
+        'service': 'calendar-puzzle-api',
+        'version': '1.0.0'
+    })
+
+@app.route('/', methods=['GET'])
+def root():
+    """根路径，返回API文档"""
+    return jsonify({
+        'message': 'Calendar Puzzle API Server',
+        'endpoints': {
+            'health': '/api/health',
+            'game_id': '/api/game-id',
+            'solution': '/api/solution'
+        },
+        'documentation': 'See README.md for full API documentation'
+    })
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

@@ -275,22 +275,142 @@ npm run test:performance
 
 ## 🚀 部署
 
-### 静态部署
+### 本地开发部署
+
+需要同时启动后端API服务和前端React应用：
+
 ```bash
-npm run build
-# 将build/目录部署到任何静态托管服务
+# 启动Python API服务（端口5000）
+python server.py
+
+# 启动React前端（端口3000）
+cd my-cal
+npm start
 ```
 
-### Docker部署
+### 生产部署
+
+#### 方案1：Docker Compose（推荐）
+
+创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+services:
+  backend:
+    build: 
+      context: ..
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - PORT=5000
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000
+```
+
+#### 方案2：独立Docker容器
+
+**后端容器** (`../Dockerfile.backend`):
 ```dockerfile
-FROM node:16-alpine
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["python", "server.py"]
+```
+
+**前端容器** (`Dockerfile.frontend`):
+```dockerfile
+FROM node:16-alpine as build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
+
+FROM nginx:alpine
+COPY --from=build /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+#### 方案3：单服务器部署
+
+在同一台服务器上部署前后端：
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+cd my-cal && npm install && npm run build
+
+# 启动服务（使用进程管理器）
+# 后端
+python server.py &
+# 前端静态服务
+npx serve -s build -l 3000 &
+```
+
+### 环境配置
+
+创建 `.env.production`：
+```bash
+# API配置
+REACT_APP_API_URL=http://your-domain.com:5000
+
+# 性能优化
+REACT_APP_ENABLE_ANALYTICS=true
+REACT_APP_CACHE_DURATION=3600
+
+# 调试开关
+REACT_APP_DEBUG=false
+```
+
+### Nginx反向代理配置
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location /api/ {
+        proxy_pass http://localhost:5000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location / {
+        root /path/to/my-cal/build;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+### 健康检查
+
+```bash
+# 检查后端API
+curl http://localhost:5000/api/health
+
+# 检查前端页面
+curl -I http://localhost:3000
+
+# 检查完整链路
+curl http://localhost:3000/api/solve -X POST -H "Content-Type: application/json" -d '{"date": "2024-01-01"}'
 ```
 
 ## 📄 环境变量
