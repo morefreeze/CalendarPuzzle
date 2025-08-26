@@ -13,6 +13,7 @@ import {
   getUncoverableCells,
   LONG_PRESS_THRESHOLD
 } from './InitBoard';
+import { logAction, logDebug, logError, logWarn } from '../utils/logger';
 
 // 判断游戏是否胜利
 const checkGameWin = (droppedBlocks, uncoverableCells) => {
@@ -115,7 +116,7 @@ const PlayBoard = () => {
       const data = await response.json();
       return data.gameId;
     } catch (error) {
-      console.error('Failed to fetch dynamic game ID:', error);
+      logError('Failed to fetch dynamic game ID:', error);
       // 降级到本地生成（用于离线场景）
       return Math.abs(Date.now()).toString(36);
     }
@@ -133,9 +134,9 @@ const PlayBoard = () => {
         // 异步获取基于加载状态的游戏ID
         fetchDynamicGameId(parsed.droppedBlocks || [], parsed.blockTypes || initialBlockTypes)
           .then(newGameId => setGameId(newGameId))
-          .catch(error => console.error('Failed to fetch game ID:', error));
+          .catch(error => logError('Failed to fetch game ID:', error));
       } catch (error) {
-        console.error('Failed to load saved game state:', error);
+        logError('Failed to load saved game state:', error);
       }
     }
   }, [initialGameId, fetchDynamicGameId]);
@@ -152,7 +153,7 @@ const PlayBoard = () => {
     // 异步获取基于当前状态的游戏ID
     fetchDynamicGameId(droppedBlocks, blockTypes)
       .then(newGameId => setGameId(newGameId))
-      .catch(error => console.error('Failed to fetch game ID:', error));
+      .catch(error => logError('Failed to fetch game ID:', error));
   }, [droppedBlocks, blockTypes, initialGameId, fetchDynamicGameId]);
 
   // 监听方块放置变化，检查是否胜利
@@ -161,7 +162,7 @@ const PlayBoard = () => {
       const won = checkGameWin(droppedBlocks, uncoverableCells);
       if (won) {
         setIsGameWon(true);
-        console.log('游戏胜利!');
+        logAction('Game won! Victory achieved');
       }
     }
   }, [droppedBlocks, isGameWon, uncoverableCells]);
@@ -273,6 +274,8 @@ const PlayBoard = () => {
 
   // 键盘事件处理
   useEffect(() => {
+    logDebug('Keyboard effect re-running, blockTypes:', blockTypes.map(b => b.id));
+    
     const keyDownTimes = new Map();
 
     const handleKeyDown = (e) => {
@@ -287,8 +290,12 @@ const PlayBoard = () => {
         keyDownTimes.set(key, Date.now());
       }
 
+      logDebug('All available blockTypes:', blockTypes.map(b => ({id: b.id, key: b.key, lowerKey: b.key?.toLowerCase()})));
+        logDebug('Searching for key:', key);
+      
       const block = blockTypes.find(b => b.key?.toLowerCase() === key);
-
+      logDebug('Key pressed:', key, 'found block:', block?.id, 'available blocks:', blockTypes.map(b => `${b.id}:${b.key}`));
+      
       if (block) {
         e.preventDefault();
 
@@ -418,8 +425,7 @@ const PlayBoard = () => {
       });
 
       const curlCommand = `curl -X POST -H "Content-Type: application/json" -d '${requestBody}' http://localhost:5001/api/solution`;
-      console.log('完整的curl请求:');
-      console.log(curlCommand);
+      logDebug('完整的curl请求:', curlCommand);
 
       // 调用API端点获取解决方案
       const response = await fetch('http://localhost:5001/api/solution', {
@@ -454,7 +460,7 @@ const PlayBoard = () => {
         // 处理无解的情况
         const errorData = await response.json();
         setSolutionError('未找到解决方案，请尝试调整方块位置');
-        console.log('服务器返回无解信息:', errorData);
+        logDebug('服务器返回无解信息:', errorData);
         return;
       }
 
@@ -465,7 +471,7 @@ const PlayBoard = () => {
       const solution = await response.json();
       // 验证返回的解决方案是否完整
       const placedBlockIds = droppedBlocks.map(b => b.id);
-      console.log('placedBlockIds:', placedBlockIds);
+      logDebug('placedBlockIds:', placedBlockIds);
       
       // 处理新的响应格式
       const solutionBlocks = solution.droppedBlocks || solution.blocks;
@@ -475,9 +481,9 @@ const PlayBoard = () => {
       }
       
       const solutionBlockIds = solutionBlocks.map(b => b.id);
-      console.log('solutionBlockIds:', solutionBlocks, solutionBlockIds);
+      logDebug('solutionBlockIds:', solutionBlocks, solutionBlockIds);
       const missingBlocks = placedBlockIds.filter(id => !solutionBlockIds.includes(id));
-      console.log('Missing blocks:', missingBlocks);
+      logDebug('Missing blocks:', missingBlocks);
       if (missingBlocks.length > 0) {
         setSolutionError('未找到完整解决方案，请尝试调整方块位置');
         return;
@@ -485,7 +491,7 @@ const PlayBoard = () => {
       
       applySolution({ ...solution, blocks: solutionBlocks });
     } catch (err) {
-      console.error(`获取解决方案错误: ${err.message}`);
+      logError(`获取解决方案错误: ${err.message}`);
       setSolutionError(`获取解决方案失败: ${err.message}`);
     } finally {
       setIsFetchingSolution(false);
@@ -494,7 +500,7 @@ const PlayBoard = () => {
 
   // Apply solution to the board
   const applySolution = (solution) => {
-    console.log('Starting to apply solution:', solution);
+    logAction('Starting to apply solution:', solution);
     
     // Clear current placed blocks
     setDroppedBlocks([]);
@@ -504,18 +510,18 @@ const PlayBoard = () => {
     
     // Place blocks according to solution
     const newDroppedBlocks = solutionBlocks.map(block => {
-      console.log('Processing block:', block);
+      logDebug('Processing block:', block);
       
       // 处理新的响应格式 - 使用label或id字段
       const blockLabel = block.label || block.id.split('-')[0];
       const blockType = initialBlockTypes.find(b => b.label === blockLabel || b.id === block.id);
       if (!blockType) {
-        console.warn(`Block type not found for label: "${blockLabel}"`);
-        console.log('Available labels:', initialBlockTypes.map(b => b.label));
+        logWarn(`Block type not found for label: "${blockLabel}"`);
+        logDebug('Available labels:', initialBlockTypes.map(b => b.label));
         return null;
       }
 
-      console.log(`Found block type: ${blockType.id} for label ${blockLabel}`);
+      logDebug(`Found block type: ${blockType.id} for label ${blockLabel}`);
 
       return {
         ...blockType,
@@ -525,22 +531,22 @@ const PlayBoard = () => {
       };
     }).filter(Boolean);
 
-    console.log('New placed blocks:', newDroppedBlocks);
-    console.log('Initial block types:', initialBlockTypes);
+    logDebug('New placed blocks:', newDroppedBlocks);
+    logDebug('Initial block types:', initialBlockTypes);
 
     setDroppedBlocks(newDroppedBlocks);
 
     // Update remaining block types
     const placedBlockIds = newDroppedBlocks.map(block => block.id);
     const remainingBlocks = initialBlockTypes.filter(block => !placedBlockIds.includes(block.id));
-    console.log('Remaining block types:', remainingBlocks);
+    logDebug('Remaining block types:', remainingBlocks);
     setBlockTypes(remainingBlocks);
 
     // Check for game victory
     const won = checkGameWin(newDroppedBlocks, uncoverableCells);
     if (won) {
       setIsGameWon(true);
-      console.log('Game won!');
+      logAction('Game won!');
     }
   };
 
@@ -659,7 +665,14 @@ const PlayBoard = () => {
   // 键盘方块拖动结束处理
   const handleKeyboardBlockDragEnd = useCallback((didDrop) => {
     if (!didDrop && keyboardBlock) {
-      setBlockTypes(prev => [...prev, keyboardBlock]);
+      // 从initialBlockTypes中找到完整的方块定义
+      const originalBlock = initialBlockTypes.find(b => b.id === keyboardBlock.id);
+      if (originalBlock) {
+        setBlockTypes(prev => [...prev, originalBlock]);
+      } else {
+        // 降级处理：使用keyboardBlock本身
+        setBlockTypes(prev => [...prev, keyboardBlock]);
+      }
     }
     setKeyboardBlock(null);
   }, [keyboardBlock]);
@@ -672,40 +685,46 @@ const PlayBoard = () => {
   const handleDoubleClick = useCallback((blockId) => {
     const now = Date.now();
     
-    // 防抖检查：如果在500ms内重复点击，直接返回
     if (now - lastDoubleClickTime < DOUBLE_CLICK_DEBOUNCE) {
-      console.log('Double click ignored due to debounce:', blockId);
+      logDebug('Double click ignored due to debounce:', blockId);
       return;
     }
     
     setLastDoubleClickTime(now);
-    console.log('Double clicked block, returning to panel:', blockId, 'at', now);
+    logAction('Double clicked block, returning to panel:', blockId, 'at', now);
     
-    // 使用单次状态更新确保原子性
+    // 原子性状态更新：一次性处理两个状态的变更
     setDroppedBlocks(prevDropped => {
       const blockIndex = prevDropped.findIndex(b => b.id === blockId);
       if (blockIndex === -1) {
-        console.log('Block not found in droppedBlocks:', blockId);
+        logDebug('Block not found in droppedBlocks:', blockId);
         return prevDropped;
       }
       
       const blockToReturn = prevDropped[blockIndex];
-      console.log('Found block to return:', blockToReturn.id);
+      logDebug('Found block to return:', blockToReturn.id);
       
-      // 关键：使用setState的函数式更新，避免竞态条件
+      // 从initialBlockTypes中找到完整的方块定义，确保包含key属性
+      const originalBlock = initialBlockTypes.find(b => b.id === blockId);
+      if (!originalBlock) {
+        logError('Original block definition not found for:', blockId);
+        return prevDropped;
+      }
+      
+      // 立即更新blockTypes，使用完整的原始定义
       setBlockTypes(prevTypes => {
-        const exists = prevTypes.some(b => b.id === blockId);
-        if (!exists) {
-          console.log('Adding block back to panel:', blockToReturn.id);
-          return [...prevTypes, blockToReturn];
+        const existingIds = new Set(prevTypes.map(b => b.id));
+        if (!existingIds.has(blockId)) {
+          logAction('Adding block back to panel:', originalBlock.id, 'with key:', originalBlock.key);
+          return [...prevTypes, originalBlock];
         }
-        console.log('Block already exists in panel:', blockId);
+        logDebug('Block already exists in panel:', blockId);
         return prevTypes;
       });
       
       // 从droppedBlocks中移除
       const newDropped = prevDropped.filter(b => b.id !== blockId);
-      console.log('Remaining dropped blocks:', newDropped.length);
+      logDebug('Remaining dropped blocks:', newDropped.length);
       return newDropped;
     });
   }, [lastDoubleClickTime]);
