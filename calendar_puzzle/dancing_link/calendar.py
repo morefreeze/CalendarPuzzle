@@ -118,7 +118,8 @@ class FasterGame(Game):
                 colored_output.append(f"{color}{char}{Fore.RESET}")
             print(''.join(colored_output))
             if find_one_exit:
-                return
+                return True
+        return False
     
 
 int2board: dict[int, list[list]] = dict()

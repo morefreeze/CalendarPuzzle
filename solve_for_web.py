@@ -54,59 +54,71 @@ def main(input_file, output_file):
                     print(f"Failed to place shape at position ({x}, {y})", file=sys.stderr)
 
         # 求解
-        g.solve(find_one_exit=True)
+        solution_found = g.solve(find_one_exit=True)
 
-        # 直接使用g.board而不是转换为numpy数组
-        board = g.board.b
-        rows = len(board)
-        cols = len(board[0]) if rows > 0 else 0
+        # 检查是否找到解决方案
+        if not solution_found:
+            # 无解情况：返回空解决方案
+            solution = {
+                'boardData': [],
+                'boardLayout': [],
+                'dimensions': {'rows': 0, 'cols': 0},
+                'droppedBlocks': [],
+                'remainingBlockTypes': []  # 解决后剩余块为空
+            }
+        else:
+            # 找到解决方案的情况
+            # 直接使用g.board而不是转换为numpy数组
+            board = g.board.b
+            rows = len(board)
+            cols = len(board[0]) if rows > 0 else 0
 
-        # 构建完整的解决方案格式，与server.py的新格式保持一致
-        solution = {
-            'boardData': board,
-            'boardLayout': [''.join(map(str, row)) for row in board],
-            'dimensions': {'rows': rows, 'cols': cols},
-            'droppedBlocks': [],
-            'remainingBlockTypes': []  # 解决后剩余块为空
-        }
+            # 构建完整的解决方案格式，与server.py的新格式保持一致
+            solution = {
+                'boardData': board,
+                'boardLayout': [''.join(map(str, row)) for row in board],
+                'dimensions': {'rows': rows, 'cols': cols},
+                'droppedBlocks': [],
+                'remainingBlockTypes': []  # 解决后剩余块为空
+            }
 
-        # 记录每个形状的位置
-        shape_positions = {}
-        for y in range(rows):
-            for x in range(cols):
-                shape_label = board[y][x]
-                if shape_label != ' ':
-                    if shape_label not in shape_positions:
-                        shape_positions[shape_label] = []
-                    shape_positions[shape_label].append((x, y))
+            # 记录每个形状的位置
+            shape_positions = {}
+            for y in range(rows):
+                for x in range(cols):
+                    shape_label = board[y][x]
+                    if shape_label != ' ':
+                        if shape_label not in shape_positions:
+                            shape_positions[shape_label] = []
+                        shape_positions[shape_label].append((x, y))
 
-        # 处理每个形状
-        for shape_label, positions in shape_positions.items():
-            # 计算形状的边界框
-            xs, ys = zip(*positions)
-            min_x, max_x = min(xs), max(xs)
-            min_y, max_y = min(ys), max(ys)
+            # 处理每个形状
+            for shape_label, positions in shape_positions.items():
+                # 计算形状的边界框
+                xs, ys = zip(*positions)
+                min_x, max_x = min(xs), max(xs)
+                min_y, max_y = min(ys), max(ys)
 
-            # 创建形状矩阵
-            shape_matrix = []
-            for y in range(min_y, max_y + 1):
-                row = []
-                for x in range(min_x, max_x + 1):
-                    row.append(1 if (x, y) in positions else 0)
-                shape_matrix.append(row)
+                # 创建形状矩阵
+                shape_matrix = []
+                for y in range(min_y, max_y + 1):
+                    row = []
+                    for x in range(min_x, max_x + 1):
+                        row.append(1 if (x, y) in positions else 0)
+                    shape_matrix.append(row)
 
-            # 转换为前端坐标
-            frontend_x, frontend_y = min_x, min_y
+                # 转换为前端坐标
+                frontend_x, frontend_y = min_x, min_y
 
-            # 添加到解决方案
-            if shape_label in SHAPE_MAPPING:
-                solution['droppedBlocks'].append({
-                    'id': SHAPE_MAPPING[shape_label],
-                    'label': shape_label,
-                    'x': frontend_x,
-                    'y': frontend_y,
-                    'shape': shape_matrix
-                })
+                # 添加到解决方案
+                if shape_label in SHAPE_MAPPING:
+                    solution['droppedBlocks'].append({
+                        'id': SHAPE_MAPPING[shape_label],
+                        'label': shape_label,
+                        'x': frontend_x,
+                        'y': frontend_y,
+                        'shape': shape_matrix
+                    })
 
         # 保存解决方案到临时文件
         with open(output_file, 'w') as f:

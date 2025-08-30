@@ -299,7 +299,9 @@ def get_solution():
         if not complete_solution or 'droppedBlocks' not in complete_solution or not complete_solution['droppedBlocks']:
             return jsonify({
                 'error': 'no solution found',
-                'solveTime': solve_time
+                'message': '当前方块配置无解',
+                'solveTime': solve_time,
+                'suggestion': '请尝试移除某些方块或调整方块位置'
             }), 404
 
         # 添加solveTime和gameId（solve_for_web.py可能不会包含这些）

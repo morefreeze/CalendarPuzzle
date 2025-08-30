@@ -459,7 +459,7 @@ const PlayBoard = () => {
       if (response.status === 404) {
         // 处理无解的情况
         const errorData = await response.json();
-        setSolutionError('未找到解决方案，请尝试调整方块位置');
+        setSolutionError(`当前配置无解！求解耗时 ${errorData.solveTime?.toFixed(3) || 'N/A'} 秒。${errorData.suggestion || '请尝试调整方块位置'}`);
         logDebug('服务器返回无解信息:', errorData);
         return;
       }
