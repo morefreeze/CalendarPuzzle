@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 // 常量定义
 export const CELL_SIZE = 70;
@@ -71,9 +71,84 @@ export const useGameInitialization = () => {
   const [gameId, setGameId] = useState('');
   const [loading, setLoading] = useState(true);
   const timerRef = useRef(null);
+  const isGameWonRef = useRef(false);
+  const isInitializedRef = useRef(false); // 防止重复初始化
+
+  // 判断游戏是否胜利
+  const checkGameWin = (droppedBlocks, uncoverableCells) => {
+    // 条件1: 所有方块都被使用
+    if (droppedBlocks.length !== initialBlockTypes.length) {
+      return false;
+    }
+
+    // 条件2: 检查是否所有可放置的格子都被覆盖
+    // 获取所有可放置的格子(非empty且非uncoverable)
+    const placeableCells = [];
+    boardLayoutData.forEach((row, y) => {
+      row.forEach((cell, x) => {
+        if (
+          cell.type !== 'empty' &&
+          !uncoverableCells.some(u => u.x === x && u.y === y)
+        ) {
+          placeableCells.push({ x, y });
+        }
+      });
+    });
+
+    // 获取所有已放置方块覆盖的格子
+    const coveredCells = droppedBlocks.flatMap(block =>
+      block.shape.flatMap((row, rIdx) =>
+        row.map((cell, cIdx) =>
+          cell === 1 ? { x: block.x + cIdx, y: block.y + rIdx } : null
+        )
+      ).filter(Boolean)
+    );
+
+    // 检查每个可放置的格子是否被覆盖
+    return placeableCells.every(cell =>
+      coveredCells.some(covered => covered.x === cell.x && covered.y === cell.y)
+    );
+  };
+
+  // 从localStorage获取游戏胜利状态
+  const checkGameWon = useCallback(() => {
+    if (!gameId) return false;
+    
+    const savedState = localStorage.getItem(`calendarPuzzleState_${gameId}`);
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        const droppedBlocks = parsed.droppedBlocks || [];
+        const uncoverableCells = getUncoverableCells();
+        
+        // 检查是否胜利
+        const won = checkGameWin(droppedBlocks, uncoverableCells);
+        isGameWonRef.current = won;
+        return won;
+      } catch (error) {
+        console.error('Failed to check game won status:', error);
+      }
+    }
+    return false;
+  }, [gameId]);
+
+  // 停止计时器
+  const stopTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
+    // 防止重复初始化
+    if (isInitializedRef.current) {
+      return;
+    }
+
     const initializeGame = async () => {
+      if (isInitializedRef.current) return;
+      
       try {
         // 获取当前日期
         const today = new Date();
@@ -83,7 +158,19 @@ export const useGameInitialization = () => {
         // 从后端API获取游戏ID
         const newGameId = await fetchGameId(initialBlockTypes, boardLayoutData, day, month);
         setGameId(newGameId);
-        setLoading(false);
+        isInitializedRef.current = true;
+
+        // 检查是否已胜利
+        const alreadyWon = checkGameWon();
+        if (alreadyWon) {
+          // 如果已胜利，从localStorage获取最终时间
+          const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
+          if (savedTimer) {
+            setTimer(parseInt(savedTimer, 10));
+          }
+          setLoading(false);
+          return; // 不再启动计时器
+        }
 
         // 从localStorage获取保存的计时器值
         const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
@@ -91,11 +178,36 @@ export const useGameInitialization = () => {
           setTimer(parseInt(savedTimer, 10));
         }
 
-        // 启动计时器
+        setLoading(false);
+
+        // 启动计时器，检查胜利状态
         timerRef.current = setInterval(() => {
           setTimer(prevTimer => {
+            // 实时检查游戏状态
+            const currentState = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
+            if (currentState && newGameId) {
+              try {
+                // 从localStorage获取最新状态
+                const gameState = localStorage.getItem(`calendarPuzzleState_${newGameId}`);
+                if (gameState) {
+                  const parsed = JSON.parse(gameState);
+                  const droppedBlocks = parsed.droppedBlocks || [];
+                  const uncoverableCells = getUncoverableCells();
+                  
+                  // 如果游戏已胜利，停止计时器
+                  const won = checkGameWin(droppedBlocks, uncoverableCells);
+                  if (won) {
+                    isGameWonRef.current = true;
+                    stopTimer();
+                    return prevTimer; // 保持当前时间
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to check game status:', error);
+              }
+            }
+            
             const newTimer = prevTimer + 1;
-            // 保存计时器值到localStorage
             localStorage.setItem(`calendarPuzzleTimer_${newGameId}`, newTimer.toString());
             return newTimer;
           });
@@ -105,6 +217,7 @@ export const useGameInitialization = () => {
         // 降级到本地生成（用于离线场景）
         const fallbackGameId = Math.abs(Date.now()).toString(36);
         setGameId(fallbackGameId);
+        isInitializedRef.current = true;
         setLoading(false);
       }
     };
@@ -113,11 +226,9 @@ export const useGameInitialization = () => {
 
     // 清除计时器
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      stopTimer();
     };
-  }, []);
+  }, [checkGameWon, stopTimer]);
 
   return { timer, gameId, loading };
 };
