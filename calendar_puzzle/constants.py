@@ -35,6 +35,7 @@ BLOCK_TYPE_MAPPING = {
 BOARD_BLOCK = '#'
 DATE_BLOCK = '*'
 EMPTY_CELL = ' '
+DIGGED_CELL = '@'
 
 # 棋盘尺寸
 BOARD_ROWS = 8

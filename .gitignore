@@ -133,3 +133,4 @@ bin/*
 temp/*
 ssl/nginx.crt
 ssl/nginx.key
+.vscode/settings.json

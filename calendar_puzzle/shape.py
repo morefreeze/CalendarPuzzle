@@ -194,3 +194,15 @@ class ShapeZ(Shape):
         ]
         super().__init__(grid)
 
+AllShapes = [
+    ShapeU(),
+    ShapeV(),
+    ShapeI(),
+    ShapeL(),
+    ShapeJ(),
+    ShapeQ(),
+    ShapeS(),
+    ShapeN(),
+    ShapeT(),
+    ShapeZ(),
+]
