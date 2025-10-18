@@ -1,3 +1,4 @@
+ARG DOCKER_REGISTRY=
 FROM python:3.9-slim
 
 # Set pip index URL for faster downloads in China
