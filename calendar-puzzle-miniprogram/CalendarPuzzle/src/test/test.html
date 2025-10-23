@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日历拼图测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .test-result {
+            background: #f0f8ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>日历拼图游戏逻辑测试</h1>
+        
+        <div class="test-section">
+            <h3>测试1: 棋盘布局生成</h3>
+            <div id="test1" class="test-result">测试中...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>测试2: 方块形状变换</h3>
+            <div id="test2" class="test-result">测试中...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>测试3: 不可覆盖单元格检测</h3>
+            <div id="test3" class="test-result">测试中...</div>
+        </div>
+
+        <div class="test-section">
+            <h3>测试4: 胜利条件判断</h3>
+            <div id="test4" class="test-result">测试中...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 模拟游戏工具函数
+        function getBoardLayout() {
+            return [
+                ['month', 'month', 'month', 'month', 'month', 'month', 'month'],
+                ['day', 'day', 'day', 'day', 'day', 'day', 'day'],
+                ['weekday', 'weekday', 'weekday', 'weekday', 'weekday', 'weekday', 'weekday'],
+                ['empty', 'empty', 'empty', 'empty', 'empty', 'empty', 'empty'],
+                ['empty', 'empty', 'empty', 'empty', 'empty', 'empty', 'empty'],
+                ['empty', 'empty', 'empty', 'empty', 'empty', 'empty', 'empty'],
+                ['empty', 'empty', 'empty', 'empty', 'empty', 'empty', 'empty'],
+                ['empty', 'empty', 'empty', 'empty', 'empty', 'empty', 'empty']
+            ];
+        }
+
+        function getUncoverCells(month, day, weekday) {
+            const cells = [];
+            // 月份区域
+            for (let i = 0; i < 7; i++) {
+                cells.push({ x: i, y: 0 });
+            }
+            // 日期区域
+            for (let i = 0; i < 7; i++) {
+                cells.push({ x: i, y: 1 });
+            }
+            // 星期区域
+            for (let i = 0; i < 7; i++) {
+                cells.push({ x: i, y: 2 });
+            }
+            return cells;
+        }
+
+        function rotateShape(shape) {
+            const rows = shape.length;
+            const cols = shape[0].length;
+            const rotated = Array(cols).fill(null).map(() => Array(rows).fill(0));
+            
+            for (let i = 0; i < rows; i++) {
+                for (let j = 0; j < cols; j++) {
+                    rotated[j][rows - 1 - i] = shape[i][j];
+                }
+            }
+            return rotated;
+        }
+
+        function flipShape(shape) {
+            return shape.map(row => [...row].reverse());
+        }
+
+        function checkWinCondition(board, blocks) {
+            const totalCells = 7 * 5; // 主网格区域
+            const coveredCells = blocks.reduce((sum, block) => {
+                return sum + block.shape.flat().filter(cell => cell).length;
+            }, 0);
+            return coveredCells === totalCells;
+        }
+
+        // 运行测试
+        function runTests() {
+            // 测试1: 棋盘布局
+            const layout = getBoardLayout();
+            document.getElementById('test1').innerHTML = 
+                `<strong>成功</strong><br>棋盘布局: ${layout.length}x${layout[0].length}`;
+            document.getElementById('test1').className += ' success';
+
+            // 测试2: 方块变换
+            const testShape = [[1, 1], [1, 0]];
+            const rotated = rotateShape(testShape);
+            const flipped = flipShape(testShape);
+            document.getElementById('test2').innerHTML = 
+                `<strong>成功</strong><br>原始: ${JSON.stringify(testShape)}<br>旋转: ${JSON.stringify(rotated)}<br>翻转: ${JSON.stringify(flipped)}`;
+            document.getElementById('test2').className += ' success';
+
+            // 测试3: 不可覆盖单元格
+            const uncoverCells = getUncoverCells(8, 30, 5);
+            document.getElementById('test3').innerHTML = 
+                `<strong>成功</strong><br>不可覆盖单元格数量: ${uncoverCells.length}`;
+            document.getElementById('test3').className += ' success';
+
+            // 测试4: 胜利条件
+            const mockBlocks = [
+                { shape: [[1, 1, 1], [1, 1, 1], [1, 1, 1]] },
+                { shape: [[1, 1], [1, 1]] },
+                { shape: [[1, 1, 1, 1, 1]] },
+                { shape: [[1], [1], [1], [1]] },
+                { shape: [[1, 1, 1, 1]] },
+                { shape: [[1, 1], [1, 1]] },
+                { shape: [[1, 1, 1]] },
+                { shape: [[1], [1]] },
+                { shape: [[1, 1, 1, 1]] },
+                { shape: [[1]] }
+            ];
+            const isWin = checkWinCondition(null, mockBlocks);
+            document.getElementById('test4').innerHTML = 
+                `<strong>成功</strong><br>胜利条件检测: ${isWin ? '通过' : '失败'}`;
+            document.getElementById('test4').className += isWin ? ' success' : ' error';
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

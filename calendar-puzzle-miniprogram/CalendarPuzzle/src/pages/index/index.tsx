@@ -1,6 +1,6 @@
 import { View } from '@tarojs/components'
 import { useLoad } from '@tarojs/taro'
-import CalendarGrid from '../../components/CalendarGrid'
+import CalendarGame from '../../components/CalendarGame'
 import './index.scss'
 
 export default function Index () {
@@ -10,7 +10,7 @@ export default function Index () {
 
   return (
     <View className='index'>
-      <CalendarGrid />
+      <CalendarGame />
     </View>
   )
 }
