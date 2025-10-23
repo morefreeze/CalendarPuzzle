@@ -296,7 +296,7 @@ def get_solution():
             complete_solution = json.load(f)
 
         # 检查解决方案
-        if not complete_solution or 'droppedBlocks' not in complete_solution or not complete_solution['droppedBlocks']:
+        if not complete_solution or 'droppedBlocks' not in complete_solution:
             return jsonify({
                 'error': 'no solution found',
                 'message': '当前方块配置无解',

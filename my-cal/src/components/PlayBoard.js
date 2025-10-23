@@ -443,8 +443,8 @@ const PlayBoard = () => {
             shape: block.shape
           })),
           uncoverableCells,
-          // 添加新的请求参数
-          blockTypes: initialBlockTypes.map(block => ({
+          // 添加新的请求参数 - 使用服务器期望的参数名
+          remainingBlockTypes: initialBlockTypes.map(block => ({
             id: block.id,
             shape: block.shape
           }))
