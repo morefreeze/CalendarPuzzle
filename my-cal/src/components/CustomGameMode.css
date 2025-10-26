@@ -138,6 +138,34 @@
   line-height: 1.4;
 }
 
+/* 布局类型选择器样式 */
+.layout-type-selector {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.layout-type-btn {
+  padding: 10px 20px;
+  border: 2px solid #007bff;
+  background: white;
+  color: #007bff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.layout-type-btn:hover {
+  background: #007bff;
+  color: white;
+}
+
+.layout-type-btn.active {
+  background: #007bff;
+  color: white;
+}
+
 /* 布局预览样式 */
 .layout-preview-container {
   margin-top: 20px;

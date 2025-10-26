@@ -320,6 +320,158 @@ def get_solution():
         logging.error(f"Unexpected error in get_solution: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/custom-config', methods=['POST'])
+def create_custom_game():
+    """创建自定义游戏配置
+    
+    该接口接收前端发送的自定义游戏配置，生成游戏ID并返回
+    
+    请求参数:
+    - boardSize (Object): 棋盘尺寸
+      - rows (Number): 行数 (6-12)
+      - cols (Number): 列数 (6-12)
+    - selectedBlockTypes (Array): 选中的方块类型ID列表
+    - customLayout (Object): 自定义布局配置
+      - type (String): 布局类型 ('blank', 'calendar', 'symmetric', 'random')
+    - difficulty (String): 难度级别 ('easy', 'medium', 'hard')
+    - dateInfo (Object, 可选): 日期信息
+    
+    响应数据:
+    成功 (200):
+    {
+      "gameId": "abc123...",                    // 生成的游戏ID
+      "boardData": [[" "," "," "," "," "," "," "]...],  // 8x7棋盘数据
+      "boardLayout": ["       ", "       ", ...],  // 棋盘的一维字符串表示
+      "dimensions": {"rows": 8, "cols": 7},  // 棋盘尺寸信息
+      "droppedBlocks": [],                    // 已放置的方块（自定义游戏为空）
+      "remainingBlockTypes": [...],           // 可用的方块类型
+      "success": true
+    }
+    
+    错误 (400):
+    {
+      "error": "Invalid input: [具体错误信息]",
+      "success": false
+    }
+    
+    错误 (500):
+    {
+      "error": "Internal server error",
+      "success": false
+    }
+    """
+    try:
+        data = request.json
+        
+        # 验证必需参数
+        if not data.get('boardSize') or not data['boardSize'].get('rows') or not data['boardSize'].get('cols'):
+            return jsonify({
+                'error': 'Board size must be specified',
+                'success': False
+            }), 400
+            
+        rows = data['boardSize']['rows']
+        cols = data['boardSize']['cols']
+        
+        # 验证棋盘尺寸
+        if rows < 6 or rows > 12 or cols < 6 or cols > 12:
+            return jsonify({
+                'error': 'Board size must be between 6x6 and 12x12',
+                'success': False
+            }), 400
+            
+        # 验证方块类型
+        selected_block_types = data.get('selectedBlockTypes', [])
+        if not selected_block_types or len(selected_block_types) == 0:
+            return jsonify({
+                'error': 'At least one block type must be selected',
+                'success': False
+            }), 400
+            
+        # 验证布局类型
+        layout_type = data.get('customLayout', {}).get('type', 'blank')
+        if layout_type not in ['blank', 'calendar', 'symmetric', 'random']:
+            return jsonify({
+                'error': 'Invalid layout type',
+                'success': False
+            }), 400
+            
+        # 验证难度级别
+        difficulty = data.get('difficulty', 'medium')
+        if difficulty not in ['easy', 'medium', 'hard']:
+            return jsonify({
+                'error': 'Invalid difficulty level',
+                'success': False
+            }), 400
+        
+        # 根据布局类型生成棋盘
+        if layout_type == 'blank':
+            # 空白棋盘
+            board_data = [[' ' for _ in range(cols)] for _ in range(rows)]
+        elif layout_type == 'calendar':
+            # 日历布局：角落放置日期块
+            board_data = [[' ' for _ in range(cols)] for _ in range(rows)]
+            board_data[0][0] = DATE_BLOCK  # 左上角
+            board_data[rows-1][cols-1] = DATE_BLOCK  # 右下角
+        elif layout_type == 'symmetric':
+            # 对称布局：边界放置障碍物
+            board_data = [[' ' for _ in range(cols)] for _ in range(rows)]
+            for i in range(rows):
+                board_data[i][0] = BOARD_BLOCK  # 左边界
+                board_data[i][cols-1] = BOARD_BLOCK  # 右边界
+            for j in range(cols):
+                board_data[0][j] = BOARD_BLOCK  # 上边界
+                board_data[rows-1][j] = BOARD_BLOCK  # 下边界
+        else:  # random
+            # 随机布局：随机放置一些障碍物
+            import random
+            board_data = [[' ' for _ in range(cols)] for _ in range(rows)]
+            num_obstacles = min(rows * cols // 8, 10)  # 最多10个障碍物，不超过棋盘1/8
+            for _ in range(num_obstacles):
+                row = random.randint(0, rows-1)
+                col = random.randint(0, cols-1)
+                board_data[row][col] = BOARD_BLOCK
+        
+        # 构建剩余方块类型列表
+        remaining_block_types = []
+        for block_id in selected_block_types:
+            # 从预定义的方块类型中查找
+            block_info = next((bt for bt in INITIAL_BLOCK_TYPES if bt['id'] == block_id), None)
+            if block_info:
+                remaining_block_types.append(block_info)
+        
+        # 生成游戏ID
+        try:
+            board_data, game_id = GameIDGeneratorV3.generate_game_id(
+                [], 
+                remaining_block_types, 
+                board_data
+            )
+        except Exception as e:
+            logging.error(f"Error generating custom game ID: {str(e)}")
+            return jsonify({
+                'error': 'Failed to generate custom game ID',
+                'success': False
+            }), 500
+        
+        # 返回成功响应
+        return jsonify({
+            'gameId': game_id,
+            'boardData': board_data,
+            'boardLayout': [''.join(map(str, row)) for row in board_data],
+            'dimensions': {'rows': rows, 'cols': cols},
+            'droppedBlocks': [],  # 自定义游戏没有预放置方块
+            'remainingBlockTypes': remaining_block_types,
+            'success': True
+        })
+        
+    except Exception as e:
+        logging.error(f"Unexpected error in create_custom_game: {str(e)}")
+        return jsonify({
+            'error': 'Internal server error',
+            'success': False
+        }), 500
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查端点

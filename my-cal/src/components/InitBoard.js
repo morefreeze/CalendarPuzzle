@@ -7,8 +7,8 @@ export const GAP_SIZE = 0;
 
 export const LONG_PRESS_THRESHOLD = 500; // 长按阈值，单位ms
 
-// 棋盘布局数据
-export const boardLayoutData = [
+// 棋盘布局数据 - 默认为标准日历布局
+export let boardLayoutData = [
   [{ type: 'month', value: 'Jan' }, { type: 'month', value: 'Feb' }, { type: 'month', value: 'Mar' }, { type: 'month', value: 'Apr' }, { type: 'month', value: 'May' }, { type: 'month', value: 'Jun' }, { type: 'empty', value: null }],
   [{ type: 'month', value: 'Jul' }, { type: 'month', value: 'Aug' }, { type: 'month', value: 'Sep' }, { type: 'month', value: 'Oct' }, { type: 'month', value: 'Nov' }, { type: 'month', value: 'Dec' }, { type: 'empty', value: null }],
   [{ type: 'day', value: 1 }, { type: 'day', value: 2 }, { type: 'day', value: 3 }, { type: 'day', value: 4 }, { type: 'day', value: 5 }, { type: 'day', value: 6 }, { type: 'day', value: 7 }],
@@ -18,6 +18,13 @@ export const boardLayoutData = [
   [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: 'Sun' }, { type: 'weekday', value: 'Mon' }, { type: 'weekday', value: 'Tue' }, { type: 'weekday', value: 'Wed' }],
   [{ type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
 ];
+
+// 设置自定义棋盘布局数据
+export const setCustomBoardLayout = (customBoardLayout) => {
+  if (customBoardLayout && Array.isArray(customBoardLayout)) {
+    boardLayoutData = customBoardLayout;
+  }
+};
 
 // 定义所有方块类型
 export const initialBlockTypes = [
@@ -99,6 +106,11 @@ export const useGameInitialization = (customGameData = null) => {
           const newGameId = customGameData.gameId;
           setGameId(newGameId);
           setLoading(false);
+
+          // 设置自定义棋盘布局
+          if (customGameData.boardLayout) {
+            setCustomBoardLayout(customGameData.boardLayout);
+          }
 
           // 从localStorage获取保存的计时器值
           const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);

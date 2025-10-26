@@ -6,11 +6,10 @@ import {
   CELL_SIZE,
   CELL_BOARDER,
   GAP_SIZE,
-  boardLayoutData,
+  boardLayoutData as defaultBoardLayout,
   initialBlockTypes,
   formatTime,
   useGameInitialization,
-  getUncoverableCells,
   LONG_PRESS_THRESHOLD
 } from './InitBoard';
 import { logAction, logDebug, logError, logWarn } from '../utils/logger';
@@ -94,7 +93,30 @@ const PlayBoard = ({ customGameData }) => {
   droppedBlocksRef.current = droppedBlocks;
 
   // 不可覆盖的单元格
-  const uncoverableCells = useMemo(() => getUncoverableCells(), []);
+  const [uncoverableCells, setUncoverableCells] = useState([]);
+  const [currentBoardLayout, setCurrentBoardLayout] = useState(defaultBoardLayout);
+
+  // 获取不可覆盖的单元格
+  const getUncoverableCells = useCallback((boardLayout) => {
+    const today = new Date();
+    const currentMonth = today.getMonth() + 1; // 0-11 -> 1-12
+    const currentDay = today.getDate();
+    const currentWeekday = today.getDay(); // 0-6 (Sunday-Saturday)
+
+    const uncoverable = [];
+    boardLayout.forEach((row, y) => {
+      row.forEach((cell, x) => {
+        if (cell.type === 'month' && cell.value === currentMonth) {
+          uncoverable.push({ x, y });
+        } else if (cell.type === 'day' && cell.value === currentDay) {
+          uncoverable.push({ x, y });
+        } else if (cell.type === 'weekday' && cell.value === currentWeekday) {
+          uncoverable.push({ x, y });
+        }
+      });
+    });
+    return uncoverable;
+  }, []);
 
   // 通过后端API获取基于当前棋盘状态的游戏ID
   const fetchDynamicGameId = useCallback(async (currentDroppedBlocks, currentBlockTypes) => {
@@ -127,6 +149,11 @@ const PlayBoard = ({ customGameData }) => {
 
   // 从localStorage加载游戏状态
   useEffect(() => {
+    // 如果有自定义游戏数据，设置自定义棋盘布局
+    if (customGameData && customGameData.boardLayout) {
+      setCurrentBoardLayout(customGameData.boardLayout);
+    }
+    
     const savedState = localStorage.getItem(`calendarPuzzleState_${initialGameId}`);
     if (savedState) {
       try {
@@ -142,7 +169,11 @@ const PlayBoard = ({ customGameData }) => {
         logError('Failed to load saved game state:', error);
       }
     }
-  }, [initialGameId, fetchDynamicGameId]);
+    
+    // 设置不可覆盖的单元格
+    const uncoverable = getUncoverableCells(currentBoardLayout);
+    setUncoverableCells(uncoverable);
+  }, [initialGameId, fetchDynamicGameId, customGameData, currentBoardLayout, getUncoverableCells]);
 
   // 保存游戏状态到localStorage
   useEffect(() => {
@@ -219,9 +250,9 @@ const PlayBoard = ({ customGameData }) => {
     // 检查边界和空单元格
     for (const cell of blockCells) {
       if (
-        cell.y < 0 || cell.y >= boardLayoutData.length ||
-        cell.x < 0 || cell.x >= boardLayoutData[0].length ||
-        boardLayoutData[cell.y][cell.x].type === 'empty'
+        cell.y < 0 || cell.y >= currentBoardLayout.length ||
+        cell.x < 0 || cell.x >= currentBoardLayout[0].length ||
+        currentBoardLayout[cell.y][cell.x].type === 'empty'
       ) {
         return false;
       }
@@ -246,7 +277,7 @@ const PlayBoard = ({ customGameData }) => {
     }
 
     return true;
-  }, [uncoverableCells, droppedBlocksRef]);
+  }, [uncoverableCells, droppedBlocksRef, currentBoardLayout]);
 
   // 计算放置位置
   const calculateDropPosition = useCallback((item, monitor) => {
@@ -665,6 +696,8 @@ const PlayBoard = ({ customGameData }) => {
     top: block.y * (CELL_SIZE + GAP_SIZE),
   });
 
+  // 获取不可覆盖的单元格（使用已有的函数）
+
   // 键盘方块拖动结束处理
   const handleKeyboardBlockDragEnd = useCallback((didDrop) => {
     if (!didDrop && keyboardBlock) {
@@ -851,7 +884,7 @@ const PlayBoard = ({ customGameData }) => {
         }}
         style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${boardLayoutData[0].length}, ${CELL_SIZE}px)`,
+          gridTemplateColumns: `repeat(${currentBoardLayout[0].length}, ${CELL_SIZE}px)`,
           gap: `${GAP_SIZE}px`,
           marginBottom: '20px',
           position: 'relative',
@@ -860,7 +893,7 @@ const PlayBoard = ({ customGameData }) => {
         }}
       >
         {/* 网格单元格 */}
-        {boardLayoutData.flatMap((row, y) =>
+        {currentBoardLayout.flatMap((row, y) =>
           row.map((cell, x) => {
             const canDrop = cell.type !== 'empty';
             const isUncovered = uncoverableCells.some(c => c.x === x && c.y === y);

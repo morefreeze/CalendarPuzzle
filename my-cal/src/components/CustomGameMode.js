@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import CustomConfig from './CustomConfig';
 import './CustomGameMode.css';
+import CustomBoardEditor from './CustomBoardEditor';
 
 const CustomGameMode = ({ onCustomGameCreated }) => {
   const [config, setConfig] = useState({
     boardSize: { rows: 8, cols: 7 },
     selectedBlockTypes: [],
     customLayout: { type: 'calendar' },
-    difficulty: 'medium'
+    difficulty: 'medium',
+    customBoard: [] // 自定义棋盘配置
   });
+  const [showBoardEditor, setShowBoardEditor] = useState(false); // 显示棋盘编辑器
 
   const [templates, setTemplates] = useState([]);
   const [difficultyLevels, setDifficultyLevels] = useState([]);
@@ -39,11 +42,7 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
         selectedBlockTypes: blockTypes.slice(0, 6).map(block => block.id)
       }));
     }
-  }, []);
-
-  const fetchCustomTemplates = async () => {
-    // 这个方法现在不需要了，因为我们在useEffect中直接使用本地数据
-  };
+  }, [config.selectedBlockTypes.length]); // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const handleBoardSizeChange = (dimension, value) => {
     const newValue = Math.max(boardSizeLimits[`min${dimension === 'rows' ? 'Rows' : 'Cols'}`], 
@@ -72,10 +71,17 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
   };
 
   const handleLayoutChange = (layoutType) => {
-    setConfig(prevConfig => ({
-      ...prevConfig,
+    setConfig(prev => ({
+      ...prev,
       customLayout: { type: layoutType }
     }));
+    
+    // 如果是自定义布局模式，显示棋盘编辑器
+    if (layoutType === 'custom') {
+      setShowBoardEditor(true);
+    } else {
+      setShowBoardEditor(false);
+    }
   };
 
   const handleDifficultyChange = (difficulty) => {
@@ -89,10 +95,27 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
     }
   };
 
+  // 处理棋盘变化
+  const handleBoardChange = (board) => {
+    setConfig(prev => ({ ...prev, customBoard: board }));
+  };
+
   const createCustomGame = async () => {
     if (config.selectedBlockTypes.length === 0) {
       setError('Please select at least one block type');
       return;
+    }
+
+    // 如果是自定义布局，验证棋盘配置
+    if (config.customLayout.type === 'custom' && config.customBoard.length > 0) {
+      const selectedCells = config.customBoard.flat().filter(cell => cell).length;
+      const totalCells = config.boardSize.rows * config.boardSize.cols;
+      const requiredCells = totalCells - 3; // 减去3个日期格子
+      
+      if (selectedCells !== requiredCells) {
+        setError(`Selected cells (${selectedCells}) must equal required cells (${requiredCells})`);
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -104,7 +127,8 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
         boardSize: config.boardSize,
         blockTypes: config.selectedBlockTypes,
         layoutType: config.customLayout.type,
-        difficulty: config.difficulty
+        difficulty: config.difficulty,
+        customBoard: config.customBoard
       });
       
       // 验证配置
@@ -124,9 +148,26 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
       const data = await response.json();
       
       if (data.success) {
+        // 转换后端返回的boardLayout数据为前端需要的格式
+        const gameData = {
+          ...data,
+          boardLayout: data.boardLayout ? data.boardLayout.map(row => {
+            return row.split('').map(cell => {
+              if (cell === ' ') {
+                return { type: 'empty', value: null };
+              } else {
+                return { type: 'custom', value: cell };
+              }
+            });
+          }) : null
+        };
+        
         if (onCustomGameCreated) {
-          onCustomGameCreated(data);
+          onCustomGameCreated(gameData);
         }
+        // 显示成功消息
+        alert('自定义游戏创建成功！');
+        console.log('自定义游戏数据已发送:', gameData);
       } else {
         setError(data.error || 'Failed to create custom game');
       }
@@ -233,24 +274,52 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
         </div>
       </div>
 
+      {/* 方块类型选择 - 移到棋盘上方 */}
+      <div className="config-section">
+        <h3>选择方块类型</h3>
+        <div className="block-type-grid">
+          {blockTypes.map(blockType => (
+            <div key={blockType.id} className="block-type-option">
+              <input
+                type="checkbox"
+                id={`block-${blockType.id}`}
+                checked={config.selectedBlockTypes.includes(blockType.id)}
+                onChange={() => handleBlockTypeToggle(blockType.id)}
+              />
+              <label htmlFor={`block-${blockType.id}`}>
+                <div className="block-shape-preview">
+                  <div className="block-shape-text">{blockType.shape}</div>
+                </div>
+                <div className="block-shape-name">{blockType.name}</div>
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 自定义棋盘编辑器 */}
+      {showBoardEditor && (
+        <div className="config-section">
+          <CustomBoardEditor
+            boardSize={config.boardSize}
+            onBoardChange={handleBoardChange}
+            selectedBlocks={config.selectedBlockTypes}
+          />
+        </div>
+      )}
+
       {/* 布局类型 */}
       <div className="config-section">
-        <h3>Layout Type</h3>
-        <div className="layout-types">
+        <h3>布局类型</h3>
+        <div className="layout-type-selector">
           {templates.map(template => (
-            <div key={template.id} className="layout-option">
-              <label>
-                <input
-                  type="radio"
-                  name="layout"
-                  value={template.id}
-                  checked={config.customLayout.type === template.id}
-                  onChange={() => handleLayoutChange(template.id)}
-                />
-                <span>{template.name}</span>
-              </label>
-              <p className="layout-description">{template.description}</p>
-            </div>
+            <button
+              key={template.id}
+              className={`layout-type-btn ${config.customLayout.type === template.id ? 'active' : ''}`}
+              onClick={() => handleLayoutChange(template.id)}
+            >
+              {template.name}
+            </button>
           ))}
         </div>
         
@@ -258,29 +327,6 @@ const CustomGameMode = ({ onCustomGameCreated }) => {
         <div className="layout-preview-container">
           <h4>Preview</h4>
           {renderLayoutPreview()}
-        </div>
-      </div>
-
-      {/* 方块类型选择 */}
-      <div className="config-section">
-        <h3>Available Block Types ({config.selectedBlockTypes.length} selected)</h3>
-        <div className="block-types-grid">
-          {blockTypes.map(blockType => (
-            <div key={blockType.id} className="block-type-option">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={config.selectedBlockTypes.includes(blockType.id)}
-                  onChange={() => handleBlockTypeToggle(blockType.id)}
-                />
-                <span>{blockType.name}</span>
-              </label>
-              <div className="block-shape-preview">
-                {/* 这里可以添加方块形状的预览 */}
-                <span className="block-shape-text">{blockType.id}</span>
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 
