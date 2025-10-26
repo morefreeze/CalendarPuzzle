@@ -2,7 +2,7 @@ import React from 'react';
 import { useDrop } from 'react-dnd';
 import { CELL_SIZE, CELL_BOARDER } from './InitBoard';
 
-const GridCell = ({ label, section, x, y, canDrop = false }) => {
+const GridCell = ({ label, section, x, y, canDrop = false, isTodayCover = false }) => {
   const sectionColors = {
     'months': '#FFB6C1',
     'days': '#90EE90',
@@ -29,9 +29,12 @@ const GridCell = ({ label, section, x, y, canDrop = false }) => {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: sectionColors[section] || '#FFFFFF',
+    backgroundColor: isTodayCover ? '#FFD700' : (sectionColors[section] || '#FFFFFF'),
     opacity: isOver && canDropHere ? 0.5 : 1,
-    cursor: canDrop ? 'pointer' : 'default'
+    cursor: canDrop ? 'pointer' : 'default',
+    fontWeight: isTodayCover ? 'bold' : 'normal',
+    color: isTodayCover ? '#000' : 'inherit',
+    textShadow: isTodayCover ? '1px 1px 2px rgba(0,0,0,0.3)' : 'none'
   };
 
   return (

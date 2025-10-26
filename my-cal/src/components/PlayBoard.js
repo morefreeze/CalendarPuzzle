@@ -12,10 +12,11 @@ import {
   useGameInitialization,
   LONG_PRESS_THRESHOLD
 } from './InitBoard';
+import { generateOrderedCustomBoard, getTodayCoverCells } from './CustomBoardGenerator';
 import { logAction, logDebug, logError, logWarn } from '../utils/logger';
 
 // 判断游戏是否胜利
-const checkGameWin = (droppedBlocks, uncoverableCells) => {
+const checkGameWin = (droppedBlocks, uncoverableCells, boardLayout) => {
   // 条件1: 所有方块都被使用
   if (droppedBlocks.length !== initialBlockTypes.length) {
     return false;
@@ -24,7 +25,7 @@ const checkGameWin = (droppedBlocks, uncoverableCells) => {
   // 条件2: 检查是否所有可放置的格子都被覆盖
   // 获取所有可放置的格子(非empty且非uncoverable)
   const placeableCells = [];
-  boardLayoutData.forEach((row, y) => {
+  boardLayout.forEach((row, y) => {
     row.forEach((cell, x) => {
       if (
         cell.type !== 'empty' &&
@@ -95,6 +96,8 @@ const PlayBoard = ({ customGameData }) => {
   // 不可覆盖的单元格
   const [uncoverableCells, setUncoverableCells] = useState([]);
   const [currentBoardLayout, setCurrentBoardLayout] = useState(defaultBoardLayout);
+  const [todayCoverCells, setTodayCoverCells] = useState([]);
+  const [isCustomOrderedMode, setIsCustomOrderedMode] = useState(false);
 
   // 获取不可覆盖的单元格
   const getUncoverableCells = useCallback((boardLayout) => {
@@ -149,9 +152,21 @@ const PlayBoard = ({ customGameData }) => {
 
   // 从localStorage加载游戏状态
   useEffect(() => {
+    // 检查是否是自定义有序模式
+    const isOrderedMode = customGameData && customGameData.isOrdered;
+    setIsCustomOrderedMode(isOrderedMode);
+    
     // 如果有自定义游戏数据，设置自定义棋盘布局
     if (customGameData && customGameData.boardLayout) {
       setCurrentBoardLayout(customGameData.boardLayout);
+    } else if (isOrderedMode) {
+      // 生成有序自定义棋盘
+      const orderedBoard = generateOrderedCustomBoard();
+      setCurrentBoardLayout(orderedBoard);
+      
+      // 获取当天需要遮盖的单元格
+      const coverCells = getTodayCoverCells(orderedBoard);
+      setTodayCoverCells(coverCells);
     }
     
     const savedState = localStorage.getItem(`calendarPuzzleState_${initialGameId}`);
@@ -193,7 +208,7 @@ const PlayBoard = ({ customGameData }) => {
   // 监听方块放置变化，检查是否胜利
   useEffect(() => {
     if (droppedBlocks.length > 0 && !isGameWon) {
-      const won = checkGameWin(droppedBlocks, uncoverableCells);
+      const won = checkGameWin(droppedBlocks, uncoverableCells, currentBoardLayout);
       if (won) {
         setIsGameWon(true);
         logAction('Game won! Victory achieved');
@@ -577,7 +592,7 @@ const PlayBoard = ({ customGameData }) => {
     setBlockTypes(remainingBlocks);
 
     // Check for game victory
-    const won = checkGameWin(newDroppedBlocks, uncoverableCells);
+    const won = checkGameWin(newDroppedBlocks, uncoverableCells, currentBoardLayout);
     if (won) {
       setIsGameWon(true);
       logAction('Game won!');
@@ -834,6 +849,51 @@ const PlayBoard = ({ customGameData }) => {
         </button>
       </div>
       
+      {/* 自定义有序模式控制 */}
+      {customGameData && (
+        <div style={{
+          marginBottom: '15px',
+          padding: '10px',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px',
+          border: '1px solid #ddd'
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <input
+              type="checkbox"
+              checked={isCustomOrderedMode}
+              onChange={(e) => {
+                setIsCustomOrderedMode(e.target.checked);
+                if (e.target.checked) {
+                  // 生成有序棋盘
+                  const orderedBoard = generateOrderedCustomBoard();
+                  setCurrentBoardLayout(orderedBoard);
+                  const coverCells = getTodayCoverCells(orderedBoard);
+                  setTodayCoverCells(coverCells);
+                  // 重置游戏状态
+                  setDroppedBlocks([]);
+                  setBlockTypes(initialBlockTypes);
+                } else {
+                  // 恢复默认布局
+                  setCurrentBoardLayout(defaultBoardLayout);
+                  setTodayCoverCells([]);
+                }
+              }}
+            />
+            <span style={{ fontWeight: 'bold' }}>有序模式（按顺序显示月份、日期、星期）</span>
+          </label>
+          {isCustomOrderedMode && todayCoverCells.length > 0 && (
+            <div style={{
+              marginTop: '8px',
+              fontSize: '14px',
+              color: '#666'
+            }}>
+              今天需要遮盖的单元格: {todayCoverCells.length} 个
+            </div>
+          )}
+        </div>
+      )}
+      
       {/* 显示求解耗时 */}
       {solutionTime !== null && (
         <div style={{
@@ -897,6 +957,7 @@ const PlayBoard = ({ customGameData }) => {
           row.map((cell, x) => {
             const canDrop = cell.type !== 'empty';
             const isUncovered = uncoverableCells.some(c => c.x === x && c.y === y);
+            const isTodayCover = todayCoverCells.some(c => c.x === x && c.y === y);
             return (
               <GridCell
                 key={`${y}-${x}`}
@@ -905,6 +966,7 @@ const PlayBoard = ({ customGameData }) => {
                 x={x}
                 y={y}
                 canDrop={canDrop}
+                isTodayCover={isTodayCover}
               />
             );
           })

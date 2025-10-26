@@ -3,6 +3,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { useState } from 'react';
 import CalendarGrid from './components/CalendarGrid';
 import CustomGameMode from './components/CustomGameMode';
+import { createCustomOrderedGameData } from './components/InitBoard';
 import './App.css';
 
 function App() {
@@ -12,6 +13,12 @@ function App() {
   const handleCustomGameCreated = (gameData) => {
     setCustomGameData(gameData);
     setCurrentMode('standard'); // 创建完成后返回标准模式
+  };
+
+  const handleCreateOrderedGame = () => {
+    const orderedGameData = createCustomOrderedGameData();
+    setCustomGameData(orderedGameData);
+    setCurrentMode('standard');
   };
 
   return (
@@ -32,6 +39,12 @@ function App() {
             onClick={() => setCurrentMode('custom')}
           >
             自定义模式
+          </button>
+          <button 
+            className="ordered-mode-button"
+            onClick={handleCreateOrderedGame}
+          >
+            有序模式（显示月份、日期、星期）
           </button>
         </div>
 

@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { logAction, logDebug, logError } from '../utils/logger';
+import { generateOrderedCustomBoard, getTodayCoverCells } from './CustomBoardGenerator';
 
 // 常量定义
 export const CELL_SIZE = 70;
@@ -196,4 +198,20 @@ export const getUncoverableCells = () => {
     });
   });
   return coords;
+};
+
+// 创建自定义有序游戏数据
+export const createCustomOrderedGameData = (selectedDate = null) => {
+  const orderedBoard = generateOrderedCustomBoard(selectedDate);
+  const today = selectedDate || new Date();
+  
+  return {
+    isOrdered: true,
+    boardLayout: orderedBoard,
+    gameId: `ordered-${today.getTime()}`,
+    boardData: {
+      dimensions: { width: 7, height: 8 },
+      cells: orderedBoard.flat()
+    }
+  };
 };

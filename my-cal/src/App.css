@@ -46,6 +46,19 @@
   border-color: #0056b3;
 }
 
+.ordered-mode-button {
+  background: linear-gradient(45deg, #FF6B6B, #4ECDC4) !important;
+  border-color: #FF6B6B !important;
+  color: white !important;
+  font-weight: bold !important;
+}
+
+.ordered-mode-button:hover {
+  background: linear-gradient(45deg, #FF5252, #26A69A) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3) !important;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;
