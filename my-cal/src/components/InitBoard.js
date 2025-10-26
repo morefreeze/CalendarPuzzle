@@ -34,7 +34,26 @@ export const initialBlockTypes = [
 ];
 
 // 通过后端API获取游戏ID
-export const fetchGameId = async (blockTypes, boardLayout, day = null, month = null) => {
+export const fetchGameId = async (blockTypes, boardLayout, day = null, month = null, customGameData = null) => {
+  // 如果有自定义游戏数据，使用自定义配置
+  if (customGameData) {
+    const response = await fetch('http://localhost:5001/api/custom-config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(customGameData)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to create custom game: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data.gameId;
+  }
+  
+  // 标准游戏逻辑
   const payload = {
     droppedBlocks: [], // 初始状态没有放置的方块
     remainingBlockTypes: blockTypes,
@@ -66,7 +85,7 @@ export const formatTime = (totalSeconds) => {
 };
 
 // 初始化游戏ID和计时器的钩子
-export const useGameInitialization = () => {
+export const useGameInitialization = (customGameData = null) => {
   const [timer, setTimer] = useState(0);
   const [gameId, setGameId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -75,7 +94,30 @@ export const useGameInitialization = () => {
   useEffect(() => {
     const initializeGame = async () => {
       try {
-        // 获取当前日期
+        // 如果有自定义游戏数据，使用它
+        if (customGameData) {
+          const newGameId = customGameData.gameId;
+          setGameId(newGameId);
+          setLoading(false);
+
+          // 从localStorage获取保存的计时器值
+          const savedTimer = localStorage.getItem(`calendarPuzzleTimer_${newGameId}`);
+          if (savedTimer) {
+            setTimer(parseInt(savedTimer, 10));
+          }
+
+          // 启动计时器
+          timerRef.current = setInterval(() => {
+            setTimer(prevTimer => {
+              const newTimer = prevTimer + 1;
+              localStorage.setItem(`calendarPuzzleTimer_${newGameId}`, newTimer.toString());
+              return newTimer;
+            });
+          }, 1000);
+          return;
+        }
+
+        // 标准游戏初始化逻辑
         const today = new Date();
         const day = today.getDate();
         const month = today.getMonth() + 1;
@@ -117,7 +159,7 @@ export const useGameInitialization = () => {
         clearInterval(timerRef.current);
       }
     };
-  }, []);
+  }, [customGameData]);
 
   return { timer, gameId, loading };
 };

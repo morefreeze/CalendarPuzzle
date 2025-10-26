@@ -69,9 +69,12 @@ const flipShape = (shape) => {
   return shape.map(row => [...row].reverse());
 };
 
-const PlayBoard = () => {
+const PlayBoard = ({ customGameData }) => {
   // 游戏初始化
-  const { timer, gameId: initialGameId } = useGameInitialization();
+  const { timer, gameId: initialGameId } = useGameInitialization(customGameData);
+
+  // 如果有自定义游戏数据，使用它
+  const effectiveGameData = customGameData || { gameId: initialGameId };
 
   // 游戏状态
   const [droppedBlocks, setDroppedBlocks] = useState([]);
@@ -83,7 +86,7 @@ const PlayBoard = () => {
   const [solutionTime, setSolutionTime] = useState(null);
   const [isFetchingSolution, setIsFetchingSolution] = useState(false);
   const [solutionError, setSolutionError] = useState(null);
-  const [gameId, setGameId] = useState(initialGameId);
+  const [gameId, setGameId] = useState(effectiveGameData.gameId);
 
   const dragRef = useRef(null);
   const gridRef = useRef(null);

@@ -5,6 +5,47 @@
   min-height: 100vh;
 }
 
+/* 模式切换器样式 */
+.mode-switcher {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin: 20px 0;
+  padding: 10px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.mode-switcher button {
+  padding: 10px 20px;
+  border: 2px solid #007bff;
+  background: white;
+  color: #007bff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.mode-switcher button:hover {
+  background: #e7f3ff;
+  transform: translateY(-1px);
+}
+
+.mode-switcher button.active {
+  background: #007bff;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.mode-switcher button.active:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;

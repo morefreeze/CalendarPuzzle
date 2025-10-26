@@ -1,9 +1,9 @@
 import PlayBoard from './PlayBoard';
 
-const CalendarGrid = () => {
+const CalendarGrid = ({ customGameData }) => {
   return (
     <div className="calendar-grid-container">
-      <PlayBoard />
+      <PlayBoard customGameData={customGameData} />
     </div>
   );
 };

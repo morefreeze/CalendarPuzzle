@@ -1,0 +1,312 @@
+.custom-game-mode {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.custom-game-mode h2 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+  font-size: 24px;
+}
+
+.custom-game-mode h3 {
+  color: #495057;
+  margin-bottom: 15px;
+  font-size: 18px;
+}
+
+.custom-game-mode h4 {
+  color: #6c757d;
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.config-section {
+  background: white;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  border: 1px solid #f5c6cb;
+}
+
+/* 难度选择样式 */
+.difficulty-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.difficulty-btn {
+  padding: 10px 20px;
+  border: 2px solid #007bff;
+  background: white;
+  color: #007bff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.difficulty-btn:hover {
+  background: #007bff;
+  color: white;
+}
+
+.difficulty-btn.active {
+  background: #007bff;
+  color: white;
+}
+
+/* 棋盘尺寸控制 */
+.board-size-controls {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.size-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.size-control label {
+  font-weight: 500;
+  color: #495057;
+  min-width: 60px;
+}
+
+.size-control input {
+  width: 80px;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.size-control input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* 布局类型样式 */
+.layout-types {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.layout-option {
+  padding: 15px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #f8f9fa;
+}
+
+.layout-option label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #495057;
+}
+
+.layout-option input[type="radio"] {
+  margin: 0;
+}
+
+.layout-description {
+  margin: 5px 0 0 25px;
+  color: #6c757d;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* 布局预览样式 */
+.layout-preview-container {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #dee2e6;
+}
+
+.layout-preview {
+  display: grid;
+  gap: 1px;
+  background: #dee2e6;
+  padding: 1px;
+  border-radius: 4px;
+  margin-top: 10px;
+  width: fit-content;
+}
+
+.preview-cell {
+  background: white;
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.preview-cell.blocked {
+  background: #495057;
+}
+
+/* 方块类型选择样式 */
+.block-types-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.block-type-option {
+  padding: 15px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: white;
+  transition: border-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.block-type-option:hover {
+  border-color: #007bff;
+}
+
+.block-type-option label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #495057;
+  flex: 1;
+}
+
+.block-type-option input[type="checkbox"] {
+  margin: 0;
+}
+
+.block-shape-preview {
+  margin-left: auto;
+}
+
+.block-shape-text {
+  font-size: 12px;
+  color: #666;
+  font-family: monospace;
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #dee2e6;
+}
+
+.block-shape-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px dashed #dee2e6;
+  min-height: 40px;
+}
+
+.block-shape-text {
+  color: #6c757d;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 创建游戏按钮样式 */
+.config-actions {
+  text-align: center;
+  margin-top: 30px;
+}
+
+.create-game-btn {
+  background: linear-gradient(135deg, #28a745, #20c997);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(40, 167, 69, 0.3);
+}
+
+.create-game-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(40, 167, 69, 0.4);
+}
+
+.create-game-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .custom-game-mode {
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  .board-size-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+  
+  .block-types-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .difficulty-buttons {
+    justify-content: center;
+  }
+  
+  .layout-preview {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .custom-game-mode h2 {
+    font-size: 20px;
+  }
+  
+  .config-section {
+    padding: 15px;
+  }
+  
+  .difficulty-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+  
+  .create-game-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+}
