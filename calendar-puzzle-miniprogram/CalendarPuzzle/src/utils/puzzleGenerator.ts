@@ -394,3 +394,29 @@ export function generatePuzzle(difficulty: Difficulty, date?: Date): GeneratedPu
     solvedBoard,
   };
 }
+
+// Extract the solution orientation of a block from the solved board
+export function getHintShape(solvedBoard: string[][], blockLabel: string): number[][] | null {
+  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+  for (let r = 0; r < solvedBoard.length; r++) {
+    for (let c = 0; c < solvedBoard[r].length; c++) {
+      if (solvedBoard[r][c] === blockLabel) {
+        minR = Math.min(minR, r);
+        minC = Math.min(minC, c);
+        maxR = Math.max(maxR, r);
+        maxC = Math.max(maxC, c);
+      }
+    }
+  }
+  if (maxR === -1) return null;
+
+  const shape: number[][] = [];
+  for (let r = minR; r <= maxR; r++) {
+    const row: number[] = [];
+    for (let c = minC; c <= maxC; c++) {
+      row.push(solvedBoard[r][c] === blockLabel ? 1 : 0);
+    }
+    shape.push(row);
+  }
+  return shape;
+}

@@ -329,6 +329,27 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+// Hint button
+.btn-hint {
+  background-color: #FF9800;
+}
+
+.btn-hint-active {
+  background-color: #E65100;
+  border: 4rpx solid #FFD54F;
+}
+
+// Palette hint-mode highlights
+.palette-item-hint-target {
+  border: 4rpx solid #FF9800;
+  background-color: #FFF3E0;
+}
+
+.palette-item-hinted {
+  border: 4rpx solid #4CAF50;
+  background-color: #E8F5E9;
+}
+
 // Back button
 .btn-back {
   background-color: #757575;

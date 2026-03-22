@@ -12,7 +12,7 @@ import {
   flipShape
 } from './InitBoard';
 import { BlockType, PlacedBlock, UncoverableCell } from '../types/game';
-import { generatePuzzle, DIFFICULTY_CONFIG, type Difficulty, type GeneratedPuzzle } from '../utils/puzzleGenerator';
+import { generatePuzzle, getHintShape, DIFFICULTY_CONFIG, type Difficulty, type GeneratedPuzzle } from '../utils/puzzleGenerator';
 import './SimpleBoard.scss';
 
 const CELL_RPX = 90;
@@ -28,6 +28,8 @@ const SimpleBoard = () => {
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [puzzle, setPuzzle] = useState<GeneratedPuzzle | null>(null);
+  const [hintMode, setHintMode] = useState(false);
+  const [hintedBlocks, setHintedBlocks] = useState<Set<string>>(new Set());
 
   // Drag state
   const [draggingBlock, setDraggingBlock] = useState<BlockType | null>(null);
@@ -177,8 +179,12 @@ const SimpleBoard = () => {
     if (!block) return;
 
     if (!hasDraggedRef.current) {
-      setSelectedBlock(block);
-      setMessage(`已选择: ${block.label}`);
+      if (hintMode) {
+        applyHint(block);
+      } else {
+        setSelectedBlock(block);
+        setMessage(`已选择: ${block.label}`);
+      }
       draggingBlockRef.current = null;
       setDraggingBlock(null);
       return;
@@ -261,19 +267,27 @@ const SimpleBoard = () => {
 
   const handleRotateSelected = useCallback(() => {
     if (!selectedBlock) return;
+    if (hintedBlocks.has(selectedBlock.id)) {
+      setMessage('该方块方向已锁定');
+      return;
+    }
     setSelectedBlock(prev => prev ? { ...prev, shape: rotateShape(prev.shape) } : null);
     setBlockTypes(prev => prev.map(b =>
       b.id === selectedBlock.id ? { ...b, shape: rotateShape(b.shape) } : b
     ));
-  }, [selectedBlock]);
+  }, [selectedBlock, hintedBlocks]);
 
   const handleFlipSelected = useCallback(() => {
     if (!selectedBlock) return;
+    if (hintedBlocks.has(selectedBlock.id)) {
+      setMessage('该方块方向已锁定');
+      return;
+    }
     setSelectedBlock(prev => prev ? { ...prev, shape: flipShape(prev.shape) } : null);
     setBlockTypes(prev => prev.map(b =>
       b.id === selectedBlock.id ? { ...b, shape: flipShape(b.shape) } : b
     ));
-  }, [selectedBlock]);
+  }, [selectedBlock, hintedBlocks]);
 
   const handleRemoveBlock = useCallback((blockId: string) => {
     if (isPrePlacedBlock(blockId)) return;
@@ -302,13 +316,44 @@ const SimpleBoard = () => {
     setMessage('');
     setDifficulty(null);
     setPuzzle(null);
+    setHintMode(false);
+    setHintedBlocks(new Set());
   }, []);
 
   const restartSameDifficulty = useCallback(() => {
     if (difficulty) {
+      setHintMode(false);
+      setHintedBlocks(new Set());
       handleSelectDifficulty(difficulty);
     }
   }, [difficulty, handleSelectDifficulty]);
+
+  const toggleHintMode = useCallback(() => {
+    setHintMode(prev => {
+      if (!prev) {
+        setMessage('提示模式：选择一个方块查看正确方向');
+      } else {
+        setMessage('');
+      }
+      return !prev;
+    });
+  }, []);
+
+  const applyHint = useCallback((block: BlockType) => {
+    if (!puzzle) return;
+    const hintShape = getHintShape(puzzle.solvedBoard, block.label);
+    if (!hintShape) return;
+
+    setBlockTypes(prev => prev.map(b =>
+      b.id === block.id ? { ...b, shape: hintShape } : b
+    ));
+    if (selectedBlock?.id === block.id) {
+      setSelectedBlock(prev => prev ? { ...prev, shape: hintShape } : null);
+    }
+    setHintedBlocks(prev => new Set(prev).add(block.id));
+    setHintMode(false);
+    setMessage(`已提示 ${block.label} 的正确方向`);
+  }, [puzzle, selectedBlock]);
 
   // --- Difficulty selection screen ---
   if (!difficulty) {
@@ -379,6 +424,12 @@ const SimpleBoard = () => {
           onClick={handleFlipSelected}
         >
           <Text>翻转</Text>
+        </View>
+        <View
+          className={`btn ${hintMode ? 'btn-hint-active' : 'btn-hint'}`}
+          onClick={toggleHintMode}
+        >
+          <Text>提示</Text>
         </View>
         <View className='btn btn-reset' onClick={restartSameDifficulty}>
           <Text>换题</Text>
@@ -464,17 +515,23 @@ const SimpleBoard = () => {
           </Text>
 
           <View className='palette-list'>
-            {blockTypes.map((block: BlockType) => (
+            {blockTypes.map((block: BlockType) => {
+              const isHinted = hintedBlocks.has(block.id);
+              let itemClass = 'palette-item';
+              if (selectedBlock?.id === block.id) itemClass += ' palette-item-selected';
+              if (hintMode && !isHinted) itemClass += ' palette-item-hint-target';
+              if (isHinted) itemClass += ' palette-item-hinted';
+              return (
               <View
                 key={block.id}
-                className={`palette-item ${selectedBlock?.id === block.id ? 'palette-item-selected' : ''}`}
+                className={itemClass}
                 catchMove
                 onTouchStart={(e) => handlePaletteTouchStart(block, e)}
                 onTouchMove={handlePaletteTouchMove}
                 onTouchEnd={handlePaletteTouchEnd}
               >
                 <Text className='palette-item-label'>
-                  {block.label}
+                  {isHinted ? `${block.label} ✓` : block.label}
                 </Text>
                 {block.shape.map((row, rIdx) => (
                   <View className='palette-shape-row' key={`pal-row-${rIdx}`}>
@@ -488,7 +545,8 @@ const SimpleBoard = () => {
                   </View>
                 ))}
               </View>
-            ))}
+              );
+            })}
           </View>
         </>
       )}
