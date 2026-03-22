@@ -15,10 +15,10 @@ const EMPTY_CELL = ' ';
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
 export const DIFFICULTY_CONFIG: Record<Difficulty, { label: string; digCount: number }> = {
-  easy:   { label: '简单', digCount: 2 },
-  medium: { label: '中等', digCount: 4 },
-  hard:   { label: '困难', digCount: 6 },
-  expert: { label: '专家', digCount: 8 },
+  easy:   { label: '黑铁', digCount: 3 },
+  medium: { label: '白银', digCount: 5 },
+  hard:   { label: '黄金', digCount: 7 },
+  expert: { label: '钻石', digCount: 9 },
 };
 
 // --- Shape definitions (character grids, matching Python) ---

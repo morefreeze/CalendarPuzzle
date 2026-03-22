@@ -13,6 +13,7 @@ import {
 } from './InitBoard';
 import { BlockType, PlacedBlock, UncoverableCell } from '../types/game';
 import { generatePuzzle, getHintShape, DIFFICULTY_CONFIG, type Difficulty, type GeneratedPuzzle } from '../utils/puzzleGenerator';
+import { getStamina, consumeStamina, getRecoverSeconds, MAX_STAMINA_VALUE } from '../utils/stamina';
 import './SimpleBoard.scss';
 
 const CELL_RPX = 90;
@@ -30,6 +31,8 @@ const SimpleBoard = () => {
   const [puzzle, setPuzzle] = useState<GeneratedPuzzle | null>(null);
   const [hintMode, setHintMode] = useState(false);
   const [hintedBlocks, setHintedBlocks] = useState<Set<string>>(new Set());
+  const [stamina, setStamina] = useState(() => getStamina());
+  const [recoverSeconds, setRecoverSeconds] = useState(() => getRecoverSeconds());
 
   // Drag state
   const [draggingBlock, setDraggingBlock] = useState<BlockType | null>(null);
@@ -76,6 +79,15 @@ const SimpleBoard = () => {
     return () => clearTimeout(t);
   }, [droppedBlocks.length, updateBoardRect]);
 
+  // Stamina recovery ticker
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStamina(getStamina());
+      setRecoverSeconds(getRecoverSeconds());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Timer
   useEffect(() => {
     if (!difficulty || isGameWon || isGenerating) return;
@@ -120,6 +132,13 @@ const SimpleBoard = () => {
 
   // --- Difficulty selection ---
   const handleSelectDifficulty = useCallback((diff: Difficulty) => {
+    const cost = DIFFICULTY_CONFIG[diff].digCount;
+    if (!consumeStamina(cost)) {
+      setMessage(`体力不足！需要 ${cost} 点，当前 ${getStamina()} 点`);
+      return;
+    }
+    setStamina(getStamina());
+    setRecoverSeconds(getRecoverSeconds());
     setIsGenerating(true);
     setMessage('正在生成谜题...');
 
@@ -318,11 +337,36 @@ const SimpleBoard = () => {
 
   const restartSameDifficulty = useCallback(() => {
     if (difficulty) {
+      const cost = DIFFICULTY_CONFIG[difficulty].digCount;
+      if (!consumeStamina(cost)) {
+        setMessage(`体力不足！需要 ${cost} 点，当前 ${getStamina()} 点`);
+        return;
+      }
+      setStamina(getStamina());
+      setRecoverSeconds(getRecoverSeconds());
       setHintMode(false);
       setHintedBlocks(new Set());
-      handleSelectDifficulty(difficulty);
+      // Call generatePuzzle directly instead of handleSelectDifficulty to avoid double consume
+      setIsGenerating(true);
+      setMessage('正在生成谜题...');
+      setTimeout(() => {
+        const result = generatePuzzle(difficulty);
+        if (result) {
+          setPuzzle(result);
+          setPrePlacedBlocks(result.prePlacedBlocks);
+          setDroppedBlocks([]);
+          setBlockTypes(result.remainingBlocks);
+          setTimer(0);
+          setIsGameWon(false);
+          setSelectedBlock(null);
+          setMessage(`${DIFFICULTY_CONFIG[difficulty].label}模式 - 放置 ${result.remainingBlocks.length} 个方块`);
+        } else {
+          setMessage('生成失败，请重试');
+        }
+        setIsGenerating(false);
+      }, 50);
     }
-  }, [difficulty, handleSelectDifficulty]);
+  }, [difficulty]);
 
   // All blocks the player is responsible for (palette + already placed by player)
   const hintCandidates = useMemo(() => {
@@ -377,6 +421,19 @@ const SimpleBoard = () => {
     return (
       <View className='simple-board'>
         <Text className='header-timer'>日历谜题</Text>
+        <View className='stamina-bar'>
+          <Text className='stamina-text'>
+            体力: {stamina} / {MAX_STAMINA_VALUE}
+          </Text>
+          {stamina < MAX_STAMINA_VALUE && (
+            <Text className='stamina-recover'>
+              恢复下一点: {Math.floor(recoverSeconds / 60)}:{String(recoverSeconds % 60).padStart(2, '0')}
+            </Text>
+          )}
+        </View>
+        {message && (
+          <Text className='message message-info'>{message}</Text>
+        )}
         <Text className='difficulty-subtitle'>选择难度开始游戏</Text>
         <View className='difficulty-list'>
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map((diff) => {
@@ -388,7 +445,7 @@ const SimpleBoard = () => {
                 onClick={() => handleSelectDifficulty(diff)}
               >
                 <Text className='difficulty-btn-label'>{config.label}</Text>
-                <Text className='difficulty-btn-desc'>放置 {config.digCount} 个方块</Text>
+                <Text className='difficulty-btn-desc'>放置 {config.digCount} 个方块 | 消耗 {config.digCount} 体力</Text>
               </View>
             );
           })}
@@ -415,6 +472,9 @@ const SimpleBoard = () => {
         </Text>
         <Text className='header-difficulty'>
           {DIFFICULTY_CONFIG[difficulty].label}
+        </Text>
+        <Text className='header-stamina'>
+          体力 {stamina}
         </Text>
       </View>
 
@@ -504,11 +564,17 @@ const SimpleBoard = () => {
         ))}
       </View>
 
-      {/* Selected Block Preview */}
+      {/* Selected Block Preview (draggable) */}
       {selectedBlock && !draggingBlock && (
-        <View className='preview-container'>
+        <View
+          className='preview-container'
+          catchMove
+          onTouchStart={(e) => handlePaletteTouchStart(selectedBlock, e)}
+          onTouchMove={handlePaletteTouchMove}
+          onTouchEnd={handlePaletteTouchEnd}
+        >
           <Text className='preview-label'>
-            已选择: {selectedBlock.label} (点击棋盘放置)
+            已选择: {selectedBlock.label} (点击棋盘或拖动放置)
           </Text>
           {selectedBlock.shape.map((row, rIdx) => (
             <View className='preview-row' key={`prev-row-${rIdx}`}>

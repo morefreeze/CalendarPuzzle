@@ -412,6 +412,39 @@
   background-color: #757575;
 }
 
+// Stamina display
+.stamina-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24rpx;
+  padding: 16rpx 32rpx;
+  background-color: #FFF3E0;
+  border-radius: 12rpx;
+  border: 2rpx solid #FFB74D;
+}
+
+.stamina-text {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #E65100;
+}
+
+.stamina-recover {
+  font-size: 24rpx;
+  color: #F57C00;
+  margin-top: 4rpx;
+}
+
+.header-stamina {
+  font-size: 24rpx;
+  color: #E65100;
+  background-color: #FFF3E0;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  border: 2rpx solid #FFB74D;
+}
+
 // Loading
 .loading-container {
   display: flex;
