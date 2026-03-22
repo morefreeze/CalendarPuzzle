@@ -179,12 +179,8 @@ const SimpleBoard = () => {
     if (!block) return;
 
     if (!hasDraggedRef.current) {
-      if (hintMode) {
-        applyHint(block);
-      } else {
-        setSelectedBlock(block);
-        setMessage(`已选择: ${block.label}`);
-      }
+      setSelectedBlock(block);
+      setMessage(`已选择: ${block.label}`);
       draggingBlockRef.current = null;
       setDraggingBlock(null);
       return;
@@ -328,32 +324,53 @@ const SimpleBoard = () => {
     }
   }, [difficulty, handleSelectDifficulty]);
 
-  const toggleHintMode = useCallback(() => {
-    setHintMode(prev => {
-      if (!prev) {
-        setMessage('提示模式：选择一个方块查看正确方向');
-      } else {
-        setMessage('');
-      }
-      return !prev;
-    });
+  // All blocks the player is responsible for (palette + already placed by player)
+  const hintCandidates = useMemo(() => {
+    const fromPalette: { id: string; label: string; color: string }[] = blockTypes.map(b => ({
+      id: b.id, label: b.label, color: b.color,
+    }));
+    const fromDropped: { id: string; label: string; color: string }[] = droppedBlocks.map(b => ({
+      id: b.id, label: b.label, color: b.color,
+    }));
+    return [...fromPalette, ...fromDropped];
+  }, [blockTypes, droppedBlocks]);
+
+  const openHintPopup = useCallback(() => {
+    setHintMode(true);
   }, []);
 
-  const applyHint = useCallback((block: BlockType) => {
+  const closeHintPopup = useCallback(() => {
+    setHintMode(false);
+  }, []);
+
+  const applyHint = useCallback((blockId: string, blockLabel: string) => {
     if (!puzzle) return;
-    const hintShape = getHintShape(puzzle.solvedBoard, block.label);
+    const hintShape = getHintShape(puzzle.solvedBoard, blockLabel);
     if (!hintShape) return;
 
+    // Update in palette if present
     setBlockTypes(prev => prev.map(b =>
-      b.id === block.id ? { ...b, shape: hintShape } : b
+      b.id === blockId ? { ...b, shape: hintShape } : b
     ));
-    if (selectedBlock?.id === block.id) {
+    // Update in selected block if it's selected
+    if (selectedBlock?.id === blockId) {
       setSelectedBlock(prev => prev ? { ...prev, shape: hintShape } : null);
     }
-    setHintedBlocks(prev => new Set(prev).add(block.id));
+    // If block was already placed by player, remove it and put corrected version back in palette
+    const placedBlock = droppedBlocks.find(b => b.id === blockId);
+    if (placedBlock) {
+      setDroppedBlocks(prev => prev.filter(b => b.id !== blockId));
+      const restored: BlockType = {
+        id: placedBlock.id, label: placedBlock.label, color: placedBlock.color,
+        shape: hintShape, key: placedBlock.key || placedBlock.id.charAt(0).toLowerCase(),
+      };
+      setBlockTypes(prev => [...prev, restored]);
+    }
+
+    setHintedBlocks(prev => new Set(prev).add(blockId));
     setHintMode(false);
-    setMessage(`已提示 ${block.label} 的正确方向`);
-  }, [puzzle, selectedBlock]);
+    setMessage(`已提示 ${blockLabel} 的正确方向`);
+  }, [puzzle, selectedBlock, droppedBlocks]);
 
   // --- Difficulty selection screen ---
   if (!difficulty) {
@@ -426,8 +443,8 @@ const SimpleBoard = () => {
           <Text>翻转</Text>
         </View>
         <View
-          className={`btn ${hintMode ? 'btn-hint-active' : 'btn-hint'}`}
-          onClick={toggleHintMode}
+          className='btn btn-hint'
+          onClick={openHintPopup}
         >
           <Text>提示</Text>
         </View>
@@ -519,7 +536,6 @@ const SimpleBoard = () => {
               const isHinted = hintedBlocks.has(block.id);
               let itemClass = 'palette-item';
               if (selectedBlock?.id === block.id) itemClass += ' palette-item-selected';
-              if (hintMode && !isHinted) itemClass += ' palette-item-hint-target';
               if (isHinted) itemClass += ' palette-item-hinted';
               return (
               <View
@@ -568,6 +584,35 @@ const SimpleBoard = () => {
                 <Text>{block.label}</Text>
               </View>
             ))}
+          </View>
+        </View>
+      )}
+
+      {/* Hint popup */}
+      {hintMode && (
+        <View className='hint-overlay' onClick={closeHintPopup}>
+          <View className='hint-popup' onClick={(e) => e.stopPropagation()}>
+            <Text className='hint-popup-title'>选择要提示的方块</Text>
+            <View className='hint-popup-list'>
+              {hintCandidates.map((block) => {
+                const isAlreadyHinted = hintedBlocks.has(block.id);
+                return (
+                  <View
+                    key={block.id}
+                    className={`hint-popup-item ${isAlreadyHinted ? 'hint-popup-item-disabled' : ''}`}
+                    style={{ backgroundColor: block.color }}
+                    onClick={() => !isAlreadyHinted && applyHint(block.id, block.label)}
+                  >
+                    <Text className='hint-popup-item-label'>
+                      {block.label}{isAlreadyHinted ? ' ✓' : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+            <View className='hint-popup-close' onClick={closeHintPopup}>
+              <Text>取消</Text>
+            </View>
           </View>
         </View>
       )}
