@@ -11,45 +11,53 @@ import {
   rotateShape,
   flipShape
 } from './InitBoard';
-import { useGameInitialization } from '../hooks/useGameInitialization';
 import { BlockType, PlacedBlock, UncoverableCell } from '../types/game';
+import { generatePuzzle, DIFFICULTY_CONFIG, type Difficulty, type GeneratedPuzzle } from '../utils/puzzleGenerator';
 import './SimpleBoard.scss';
 
 const CELL_RPX = 90;
 
 const SimpleBoard = () => {
-  const { gameId, loading: initLoading } = useGameInitialization();
   const [timer, setTimer] = useState(0);
   const [droppedBlocks, setDroppedBlocks] = useState<PlacedBlock[]>([]);
+  const [prePlacedBlocks, setPrePlacedBlocks] = useState<PlacedBlock[]>([]);
   const [blockTypes, setBlockTypes] = useState<BlockType[]>(initialBlockTypes);
   const [isGameWon, setIsGameWon] = useState(false);
   const [selectedBlock, setSelectedBlock] = useState<BlockType | null>(null);
   const [message, setMessage] = useState('');
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [puzzle, setPuzzle] = useState<GeneratedPuzzle | null>(null);
 
-  // Drag state — use refs for position to avoid re-render lag during touchMove
+  // Drag state
   const [draggingBlock, setDraggingBlock] = useState<BlockType | null>(null);
   const [ghostStyle, setGhostStyle] = useState({ left: '0px', top: '0px' });
   const draggingBlockRef = useRef<BlockType | null>(null);
   const boardRectRef = useRef<{ left: number; top: number } | null>(null);
   const cellSizePxRef = useRef(0);
   const dragPosRef = useRef({ x: 0, y: 0 });
-
-  // Track whether finger actually moved (to distinguish tap from drag)
   const hasDraggedRef = useRef(false);
   const touchStartPosRef = useRef({ x: 0, y: 0 });
-
-  // Double-tap detection
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: -1, y: -1 });
 
   const uncoverableCells = useMemo(() => getUncoverableCells(), []);
 
-  // Calculate cell size in px
+  // All blocks on board = pre-placed (locked) + player-dropped
+  const allBoardBlocks = useMemo(
+    () => [...prePlacedBlocks, ...droppedBlocks],
+    [prePlacedBlocks, droppedBlocks]
+  );
+
+  const totalBlockCount = useMemo(() => {
+    if (!puzzle) return initialBlockTypes.length;
+    return puzzle.remainingBlocks.length;
+  }, [puzzle]);
+
   useEffect(() => {
     const sysInfo = Taro.getSystemInfoSync();
     cellSizePxRef.current = CELL_RPX * sysInfo.windowWidth / 750;
   }, []);
 
-  // Get board bounding rect
   const updateBoardRect = useCallback(() => {
     Taro.createSelectorQuery()
       .select('.board-container')
@@ -61,30 +69,32 @@ const SimpleBoard = () => {
       .exec();
   }, []);
 
-  // Update board rect after layout changes
   useEffect(() => {
-    const timer = setTimeout(updateBoardRect, 150);
-    return () => clearTimeout(timer);
+    const t = setTimeout(updateBoardRect, 150);
+    return () => clearTimeout(t);
   }, [droppedBlocks.length, updateBoardRect]);
 
-  // Timer — stops on win
+  // Timer
   useEffect(() => {
-    if (initLoading || isGameWon) return;
+    if (!difficulty || isGameWon || isGenerating) return;
     const interval = setInterval(() => {
       setTimer(prev => prev + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, [initLoading, isGameWon]);
+  }, [difficulty, isGameWon, isGenerating]);
 
-  // Check win condition
+  // Win check — player needs to place all remaining blocks
   useEffect(() => {
-    if (!isGameWon && checkGameWin(droppedBlocks, uncoverableCells)) {
-      setIsGameWon(true);
-      setMessage('Congratulations! You Won!');
+    if (!difficulty || isGameWon || !puzzle) return;
+    if (droppedBlocks.length === puzzle.remainingBlocks.length) {
+      // Check that all coverable cells are covered by allBoardBlocks
+      if (checkGameWin(allBoardBlocks, uncoverableCells)) {
+        setIsGameWon(true);
+        setMessage('恭喜通关！');
+      }
     }
-  }, [droppedBlocks, isGameWon, uncoverableCells]);
+  }, [droppedBlocks, isGameWon, uncoverableCells, difficulty, puzzle, allBoardBlocks]);
 
-  // Clear message after 3 seconds
   useEffect(() => {
     if (message && !isGameWon) {
       const timeout = setTimeout(() => setMessage(''), 3000);
@@ -93,18 +103,46 @@ const SimpleBoard = () => {
   }, [message, isGameWon]);
 
   const getBlockAtCell = useCallback((x: number, y: number): PlacedBlock | undefined => {
-    return droppedBlocks.find(b =>
+    return allBoardBlocks.find(b =>
       b.shape.some((row, dy) =>
         row.some((cell, dx) =>
           cell === 1 && b.x + dx === x && b.y + dy === y
         )
       )
     );
-  }, [droppedBlocks]);
+  }, [allBoardBlocks]);
 
-  const DRAG_THRESHOLD = 10; // px — movement beyond this starts a drag
+  const isPrePlacedBlock = useCallback((blockId: string): boolean => {
+    return prePlacedBlocks.some(b => b.id === blockId);
+  }, [prePlacedBlocks]);
 
-  // --- Drag: start from palette item ---
+  // --- Difficulty selection ---
+  const handleSelectDifficulty = useCallback((diff: Difficulty) => {
+    setIsGenerating(true);
+    setMessage('正在生成谜题...');
+
+    // Use setTimeout to let UI update before heavy computation
+    setTimeout(() => {
+      const result = generatePuzzle(diff);
+      if (result) {
+        setPuzzle(result);
+        setDifficulty(diff);
+        setPrePlacedBlocks(result.prePlacedBlocks);
+        setDroppedBlocks([]);
+        setBlockTypes(result.remainingBlocks);
+        setTimer(0);
+        setIsGameWon(false);
+        setSelectedBlock(null);
+        setMessage(`${DIFFICULTY_CONFIG[diff].label}模式 - 放置 ${result.remainingBlocks.length} 个方块`);
+      } else {
+        setMessage('生成失败，请重试');
+      }
+      setIsGenerating(false);
+    }, 50);
+  }, []);
+
+  const DRAG_THRESHOLD = 10;
+
   const handlePaletteTouchStart = useCallback((block: BlockType, e: any) => {
     const touch = e.touches[0];
     draggingBlockRef.current = block;
@@ -114,13 +152,11 @@ const SimpleBoard = () => {
     updateBoardRect();
   }, [updateBoardRect]);
 
-  // --- Drag: touchMove on palette item (touch stays bound to originating element) ---
   const handlePaletteTouchMove = useCallback((e: any) => {
     if (!draggingBlockRef.current) return;
     const touch = e.touches[0];
     dragPosRef.current = { x: touch.clientX, y: touch.clientY };
 
-    // Check if moved beyond threshold to start drag
     if (!hasDraggedRef.current) {
       const dx = touch.clientX - touchStartPosRef.current.x;
       const dy = touch.clientY - touchStartPosRef.current.y;
@@ -136,15 +172,13 @@ const SimpleBoard = () => {
     });
   }, []);
 
-  // --- Drag: touchEnd on palette item, calculate drop or select ---
   const handlePaletteTouchEnd = useCallback((e: any) => {
     const block = draggingBlockRef.current;
     if (!block) return;
 
-    // If finger didn't move much, treat as tap → select block
     if (!hasDraggedRef.current) {
       setSelectedBlock(block);
-      setMessage(`Selected: ${block.label}`);
+      setMessage(`已选择: ${block.label}`);
       draggingBlockRef.current = null;
       setDraggingBlock(null);
       return;
@@ -158,7 +192,6 @@ const SimpleBoard = () => {
     const cs = cellSizePxRef.current;
 
     if (boardRect && cs > 0) {
-      // Ghost top-left is at (finger - cs), so use that for cell calculation
       const ghostLeft = finalX - cs;
       const ghostTop = finalY - cs;
       const relX = ghostLeft - boardRect.left;
@@ -169,27 +202,26 @@ const SimpleBoard = () => {
       if (cellX >= 0 && cellX < 7 && cellY >= 0 && cellY < 8) {
         const isValid = isValidPlacement(
           block, { x: cellX, y: cellY },
-          droppedBlocks, uncoverableCells, block.id
+          allBoardBlocks, uncoverableCells, block.id
         );
         if (isValid) {
           const newBlock: PlacedBlock = { ...block, x: cellX, y: cellY };
           setDroppedBlocks(prev => [...prev, newBlock]);
           setBlockTypes(prev => prev.filter(b => b.id !== block.id));
           setSelectedBlock(null);
-          setMessage('Block placed!');
+          setMessage('放置成功！');
         } else {
-          setMessage('Invalid placement!');
+          setMessage('无法放置！');
         }
       } else {
-        setMessage('Dropped outside the board');
+        setMessage('超出棋盘范围');
       }
     }
 
     draggingBlockRef.current = null;
     setDraggingBlock(null);
-  }, [droppedBlocks, uncoverableCells]);
+  }, [allBoardBlocks, uncoverableCells]);
 
-  // --- Board cell: double-tap to remove, single-tap to place selected ---
   const handleCellTap = useCallback((x: number, y: number) => {
     const now = Date.now();
     const last = lastTapRef.current;
@@ -197,9 +229,8 @@ const SimpleBoard = () => {
     lastTapRef.current = { time: now, x, y };
 
     if (isDoubleTap) {
-      // Double-tap: remove placed block
       const placedBlock = getBlockAtCell(x, y);
-      if (placedBlock) {
+      if (placedBlock && !isPrePlacedBlock(placedBlock.id)) {
         setDroppedBlocks(prev => prev.filter(b => b.id !== placedBlock.id));
         const restored: BlockType = {
           id: placedBlock.id, label: placedBlock.label,
@@ -208,26 +239,25 @@ const SimpleBoard = () => {
         };
         setBlockTypes(prev => [...prev, restored]);
         setSelectedBlock(null);
-        setMessage('Block removed');
+        setMessage('已移除方块');
       }
       return;
     }
 
-    // Single-tap: place selected block
     if (!selectedBlock) return;
     const isValid = isValidPlacement(
-      selectedBlock, { x, y }, droppedBlocks, uncoverableCells, selectedBlock.id
+      selectedBlock, { x, y }, allBoardBlocks, uncoverableCells, selectedBlock.id
     );
     if (isValid) {
       const newBlock: PlacedBlock = { ...selectedBlock, x, y };
       setDroppedBlocks(prev => [...prev, newBlock]);
       setBlockTypes(prev => prev.filter(b => b.id !== selectedBlock.id));
       setSelectedBlock(null);
-      setMessage('Block placed!');
+      setMessage('放置成功！');
     } else {
-      setMessage('Invalid placement!');
+      setMessage('无法放置！');
     }
-  }, [selectedBlock, droppedBlocks, uncoverableCells, getBlockAtCell]);
+  }, [selectedBlock, allBoardBlocks, uncoverableCells, getBlockAtCell, isPrePlacedBlock]);
 
   const handleRotateSelected = useCallback(() => {
     if (!selectedBlock) return;
@@ -235,7 +265,6 @@ const SimpleBoard = () => {
     setBlockTypes(prev => prev.map(b =>
       b.id === selectedBlock.id ? { ...b, shape: rotateShape(b.shape) } : b
     ));
-    setMessage(`Rotated ${selectedBlock.label}`);
   }, [selectedBlock]);
 
   const handleFlipSelected = useCallback(() => {
@@ -244,10 +273,10 @@ const SimpleBoard = () => {
     setBlockTypes(prev => prev.map(b =>
       b.id === selectedBlock.id ? { ...b, shape: flipShape(b.shape) } : b
     ));
-    setMessage(`Flipped ${selectedBlock.label}`);
   }, [selectedBlock]);
 
   const handleRemoveBlock = useCallback((blockId: string) => {
+    if (isPrePlacedBlock(blockId)) return;
     const block = droppedBlocks.find(b => b.id === blockId);
     if (block) {
       setDroppedBlocks(prev => prev.filter(b => b.id !== blockId));
@@ -257,12 +286,13 @@ const SimpleBoard = () => {
       };
       setBlockTypes(prev => [...prev, restored]);
       setSelectedBlock(null);
-      setMessage('Block removed');
+      setMessage('已移除方块');
     }
-  }, [droppedBlocks]);
+  }, [droppedBlocks, isPrePlacedBlock]);
 
   const resetGame = useCallback(() => {
     setDroppedBlocks([]);
+    setPrePlacedBlocks([]);
     setBlockTypes(initialBlockTypes);
     setIsGameWon(false);
     setTimer(0);
@@ -270,12 +300,45 @@ const SimpleBoard = () => {
     setDraggingBlock(null);
     draggingBlockRef.current = null;
     setMessage('');
+    setDifficulty(null);
+    setPuzzle(null);
   }, []);
 
-  if (initLoading) {
+  const restartSameDifficulty = useCallback(() => {
+    if (difficulty) {
+      handleSelectDifficulty(difficulty);
+    }
+  }, [difficulty, handleSelectDifficulty]);
+
+  // --- Difficulty selection screen ---
+  if (!difficulty) {
+    return (
+      <View className='simple-board'>
+        <Text className='header-timer'>日历谜题</Text>
+        <Text className='difficulty-subtitle'>选择难度开始游戏</Text>
+        <View className='difficulty-list'>
+          {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map((diff) => {
+            const config = DIFFICULTY_CONFIG[diff];
+            return (
+              <View
+                key={diff}
+                className={`difficulty-btn difficulty-${diff}`}
+                onClick={() => handleSelectDifficulty(diff)}
+              >
+                <Text className='difficulty-btn-label'>{config.label}</Text>
+                <Text className='difficulty-btn-desc'>放置 {config.digCount} 个方块</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  if (isGenerating) {
     return (
       <View className='loading-container'>
-        <Text>Loading...</Text>
+        <Text>正在生成谜题...</Text>
       </View>
     );
   }
@@ -284,16 +347,17 @@ const SimpleBoard = () => {
 
   return (
     <View className='simple-board'>
-      <Text className='header-timer'>
-        Time: {formatTime(timer)}
-      </Text>
-
-      <Text className='header-game-id'>
-        Game ID: {gameId}
-      </Text>
+      <View className='header-row'>
+        <Text className='header-timer'>
+          {formatTime(timer)}
+        </Text>
+        <Text className='header-difficulty'>
+          {DIFFICULTY_CONFIG[difficulty].label}
+        </Text>
+      </View>
 
       <Text className='header-count'>
-        Placed: {droppedBlocks.length} / {initialBlockTypes.length} blocks
+        已放置: {droppedBlocks.length} / {totalBlockCount}
       </Text>
 
       {message && (
@@ -308,16 +372,19 @@ const SimpleBoard = () => {
           className={`btn ${selectedBlock ? 'btn-rotate' : 'btn-disabled'}`}
           onClick={handleRotateSelected}
         >
-          <Text>Rotate</Text>
+          <Text>旋转</Text>
         </View>
         <View
           className={`btn ${selectedBlock ? 'btn-flip' : 'btn-disabled'}`}
           onClick={handleFlipSelected}
         >
-          <Text>Flip</Text>
+          <Text>翻转</Text>
         </View>
-        <View className='btn btn-reset' onClick={resetGame}>
-          <Text>Reset</Text>
+        <View className='btn btn-reset' onClick={restartSameDifficulty}>
+          <Text>换题</Text>
+        </View>
+        <View className='btn btn-back' onClick={resetGame}>
+          <Text>返回</Text>
         </View>
       </View>
 
@@ -331,11 +398,13 @@ const SimpleBoard = () => {
               );
               const blockAtCell = getBlockAtCell(x, y);
               const isEmpty = cell.type === 'empty';
+              const isLocked = blockAtCell && isPrePlacedBlock(blockAtCell.id);
 
               let bgColor: string | undefined;
               let cellClass = 'board-cell';
               if (blockAtCell) {
                 bgColor = blockAtCell.color;
+                if (isLocked) cellClass += ' cell-locked';
               } else if (isUncoverable) {
                 cellClass += ' cell-uncoverable';
               } else if (cell.type === 'month') {
@@ -352,7 +421,7 @@ const SimpleBoard = () => {
                 <View
                   key={`${y}-${x}`}
                   className={cellClass}
-                  style={bgColor ? { backgroundColor: bgColor, opacity: 0.9 } : undefined}
+                  style={bgColor ? { backgroundColor: bgColor, opacity: isLocked ? 0.6 : 0.9 } : undefined}
                   onClick={() => !isEmpty && handleCellTap(x, y)}
                 >
                   {!blockAtCell && !isEmpty && (
@@ -371,7 +440,7 @@ const SimpleBoard = () => {
       {selectedBlock && !draggingBlock && (
         <View className='preview-container'>
           <Text className='preview-label'>
-            Selected: {selectedBlock.label} (tap board to place)
+            已选择: {selectedBlock.label} (点击棋盘放置)
           </Text>
           {selectedBlock.shape.map((row, rIdx) => (
             <View className='preview-row' key={`prev-row-${rIdx}`}>
@@ -388,43 +457,47 @@ const SimpleBoard = () => {
       )}
 
       {/* Available Blocks */}
-      <Text className='palette-title'>
-        Available Blocks ({blockTypes.length})
-      </Text>
+      {blockTypes.length > 0 && (
+        <>
+          <Text className='palette-title'>
+            待放置方块 ({blockTypes.length})
+          </Text>
 
-      <View className='palette-list'>
-        {blockTypes.map((block: BlockType) => (
-          <View
-            key={block.id}
-            className={`palette-item ${selectedBlock?.id === block.id ? 'palette-item-selected' : ''}`}
-            catchMove
-            onTouchStart={(e) => handlePaletteTouchStart(block, e)}
-            onTouchMove={handlePaletteTouchMove}
-            onTouchEnd={handlePaletteTouchEnd}
-          >
-            <Text className='palette-item-label'>
-              {block.label}
-            </Text>
-            {block.shape.map((row, rIdx) => (
-              <View className='palette-shape-row' key={`pal-row-${rIdx}`}>
-                {row.map((cell, cIdx) => (
-                  <View
-                    key={`pal-${rIdx}-${cIdx}`}
-                    className='palette-shape-cell'
-                    style={{ backgroundColor: cell ? block.color : 'transparent' }}
-                  />
+          <View className='palette-list'>
+            {blockTypes.map((block: BlockType) => (
+              <View
+                key={block.id}
+                className={`palette-item ${selectedBlock?.id === block.id ? 'palette-item-selected' : ''}`}
+                catchMove
+                onTouchStart={(e) => handlePaletteTouchStart(block, e)}
+                onTouchMove={handlePaletteTouchMove}
+                onTouchEnd={handlePaletteTouchEnd}
+              >
+                <Text className='palette-item-label'>
+                  {block.label}
+                </Text>
+                {block.shape.map((row, rIdx) => (
+                  <View className='palette-shape-row' key={`pal-row-${rIdx}`}>
+                    {row.map((cell, cIdx) => (
+                      <View
+                        key={`pal-${rIdx}-${cIdx}`}
+                        className='palette-shape-cell'
+                        style={{ backgroundColor: cell ? block.color : 'transparent' }}
+                      />
+                    ))}
+                  </View>
                 ))}
               </View>
             ))}
           </View>
-        ))}
-      </View>
+        </>
+      )}
 
-      {/* Placed Blocks List */}
+      {/* Placed Blocks List (only player-placed, removable) */}
       {droppedBlocks.length > 0 && (
         <View className='placed-section'>
           <Text className='placed-title'>
-            Placed Blocks (double-tap board to remove)
+            已放置 (双击棋盘移除)
           </Text>
           <View className='placed-list'>
             {droppedBlocks.map((block) => (

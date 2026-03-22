@@ -107,3 +107,5 @@ export interface SolverState {
   solutionError: string | null;
   solution: Solution | null;
 }
+
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';

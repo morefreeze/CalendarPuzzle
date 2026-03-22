@@ -253,6 +253,87 @@
   box-sizing: border-box;
 }
 
+// Header row with timer and difficulty
+.header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16rpx;
+  gap: 32rpx;
+}
+
+.header-difficulty {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #4CAF50;
+  padding: 4rpx 16rpx;
+  border: 2rpx solid #4CAF50;
+  border-radius: 8rpx;
+}
+
+// Locked (pre-placed) cells
+.cell-locked {
+  border: 2rpx solid rgba(0, 0, 0, 0.1);
+}
+
+// Difficulty selection screen
+.difficulty-subtitle {
+  font-size: 32rpx;
+  color: #666;
+  margin-bottom: 48rpx;
+}
+
+.difficulty-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 24rpx;
+}
+
+.difficulty-btn {
+  width: 500rpx;
+  padding: 32rpx;
+  border-radius: 16rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.difficulty-easy {
+  background-color: #4CAF50;
+}
+
+.difficulty-medium {
+  background-color: #FF9800;
+}
+
+.difficulty-hard {
+  background-color: #F44336;
+}
+
+.difficulty-expert {
+  background-color: #9C27B0;
+}
+
+.difficulty-btn-label {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 8rpx;
+}
+
+.difficulty-btn-desc {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+// Back button
+.btn-back {
+  background-color: #757575;
+}
+
 // Loading
 .loading-container {
   display: flex;
