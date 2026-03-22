@@ -236,17 +236,6 @@
   margin-bottom: 12rpx;
 }
 
-// Full-screen overlay to capture touch events during drag
-.drag-overlay {
-  position: fixed;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 998;
-  background-color: transparent;
-}
-
 // Drag ghost — floating block following finger
 .drag-ghost {
   position: fixed;

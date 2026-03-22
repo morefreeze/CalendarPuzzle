@@ -34,6 +34,10 @@ const SimpleBoard = () => {
   const cellSizePxRef = useRef(0);
   const dragPosRef = useRef({ x: 0, y: 0 });
 
+  // Track whether finger actually moved (to distinguish tap from drag)
+  const hasDraggedRef = useRef(false);
+  const touchStartPosRef = useRef({ x: 0, y: 0 });
+
   // Double-tap detection
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: -1, y: -1 });
 
@@ -98,25 +102,33 @@ const SimpleBoard = () => {
     );
   }, [droppedBlocks]);
 
+  const DRAG_THRESHOLD = 10; // px — movement beyond this starts a drag
+
   // --- Drag: start from palette item ---
   const handlePaletteTouchStart = useCallback((block: BlockType, e: any) => {
     const touch = e.touches[0];
     draggingBlockRef.current = block;
+    hasDraggedRef.current = false;
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     dragPosRef.current = { x: touch.clientX, y: touch.clientY };
-    const cs = cellSizePxRef.current;
-    setGhostStyle({
-      left: `${touch.clientX - cs}px`,
-      top: `${touch.clientY - cs}px`,
-    });
-    setDraggingBlock(block);
-    setSelectedBlock(block);
     updateBoardRect();
   }, [updateBoardRect]);
 
-  // --- Drag: overlay captures all touchMove ---
-  const handleOverlayTouchMove = useCallback((e: any) => {
+  // --- Drag: touchMove on palette item (touch stays bound to originating element) ---
+  const handlePaletteTouchMove = useCallback((e: any) => {
+    if (!draggingBlockRef.current) return;
     const touch = e.touches[0];
     dragPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+    // Check if moved beyond threshold to start drag
+    if (!hasDraggedRef.current) {
+      const dx = touch.clientX - touchStartPosRef.current.x;
+      const dy = touch.clientY - touchStartPosRef.current.y;
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      hasDraggedRef.current = true;
+      setDraggingBlock(draggingBlockRef.current);
+    }
+
     const cs = cellSizePxRef.current;
     setGhostStyle({
       left: `${touch.clientX - cs}px`,
@@ -124,10 +136,19 @@ const SimpleBoard = () => {
     });
   }, []);
 
-  // --- Drag: overlay captures touchEnd, calculate drop ---
-  const handleOverlayTouchEnd = useCallback((e: any) => {
+  // --- Drag: touchEnd on palette item, calculate drop or select ---
+  const handlePaletteTouchEnd = useCallback((e: any) => {
     const block = draggingBlockRef.current;
     if (!block) return;
+
+    // If finger didn't move much, treat as tap → select block
+    if (!hasDraggedRef.current) {
+      setSelectedBlock(block);
+      setMessage(`Selected: ${block.label}`);
+      draggingBlockRef.current = null;
+      setDraggingBlock(null);
+      return;
+    }
 
     const touch = e.changedTouches?.[0];
     const finalX = touch ? touch.clientX : dragPosRef.current.x;
@@ -207,11 +228,6 @@ const SimpleBoard = () => {
       setMessage('Invalid placement!');
     }
   }, [selectedBlock, droppedBlocks, uncoverableCells, getBlockAtCell]);
-
-  const handleBlockSelect = useCallback((block: BlockType) => {
-    setSelectedBlock(block);
-    setMessage(`Selected: ${block.label}`);
-  }, []);
 
   const handleRotateSelected = useCallback(() => {
     if (!selectedBlock) return;
@@ -381,8 +397,10 @@ const SimpleBoard = () => {
           <View
             key={block.id}
             className={`palette-item ${selectedBlock?.id === block.id ? 'palette-item-selected' : ''}`}
-            onClick={() => handleBlockSelect(block)}
+            catchMove
             onTouchStart={(e) => handlePaletteTouchStart(block, e)}
+            onTouchMove={handlePaletteTouchMove}
+            onTouchEnd={handlePaletteTouchEnd}
           >
             <Text className='palette-item-label'>
               {block.label}
@@ -423,33 +441,25 @@ const SimpleBoard = () => {
         </View>
       )}
 
-      {/* Full-screen drag overlay — captures all touch events during drag */}
+      {/* Ghost block following finger during drag */}
       {draggingBlock && (
-        <View
-          className='drag-overlay'
-          catchMove
-          onTouchMove={handleOverlayTouchMove}
-          onTouchEnd={handleOverlayTouchEnd}
-        >
-          {/* Ghost block following finger */}
-          <View className='drag-ghost' style={ghostStyle}>
-            {draggingBlock.shape.map((row, rIdx) => (
-              <View className='ghost-row' key={`ghost-row-${rIdx}`}>
-                {row.map((cell, cIdx) => (
-                  <View
-                    key={`ghost-${rIdx}-${cIdx}`}
-                    className='ghost-cell'
-                    style={{
-                      width: `${ghostCellSize}px`,
-                      height: `${ghostCellSize}px`,
-                      backgroundColor: cell ? draggingBlock.color : 'transparent',
-                      opacity: cell ? 0.7 : 0,
-                    }}
-                  />
-                ))}
-              </View>
-            ))}
-          </View>
+        <View className='drag-ghost' style={ghostStyle}>
+          {draggingBlock.shape.map((row, rIdx) => (
+            <View className='ghost-row' key={`ghost-row-${rIdx}`}>
+              {row.map((cell, cIdx) => (
+                <View
+                  key={`ghost-${rIdx}-${cIdx}`}
+                  className='ghost-cell'
+                  style={{
+                    width: `${ghostCellSize}px`,
+                    height: `${ghostCellSize}px`,
+                    backgroundColor: cell ? draggingBlock.color : 'transparent',
+                    opacity: cell ? 0.7 : 0,
+                  }}
+                />
+              ))}
+            </View>
+          ))}
         </View>
       )}
     </View>
