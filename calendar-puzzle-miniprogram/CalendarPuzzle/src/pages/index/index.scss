@@ -1,0 +1,14 @@
+.index {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden; /* Prevent page scroll */
+  touch-action: none; /* Disable touch gestures that cause scroll */
+}
+
+.calendar-grid-container {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
