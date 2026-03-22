@@ -236,6 +236,23 @@
   margin-bottom: 12rpx;
 }
 
+// Drag ghost — floating block following finger
+.drag-ghost {
+  position: fixed;
+  z-index: 999;
+  pointer-events: none;
+}
+
+.ghost-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.ghost-cell {
+  border: 2rpx solid rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+}
+
 // Loading
 .loading-container {
   display: flex;
