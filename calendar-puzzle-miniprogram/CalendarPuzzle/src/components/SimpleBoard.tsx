@@ -137,10 +137,13 @@ const SimpleBoard = () => {
     const cs = cellSizePxRef.current;
 
     if (boardRect && cs > 0) {
-      const relX = finalX - boardRect.left;
-      const relY = finalY - boardRect.top;
-      const cellX = Math.floor(relX / cs);
-      const cellY = Math.floor(relY / cs);
+      // Ghost top-left is at (finger - cs), so use that for cell calculation
+      const ghostLeft = finalX - cs;
+      const ghostTop = finalY - cs;
+      const relX = ghostLeft - boardRect.left;
+      const relY = ghostTop - boardRect.top;
+      const cellX = Math.round(relX / cs);
+      const cellY = Math.round(relY / cs);
 
       if (cellX >= 0 && cellX < 7 && cellY >= 0 && cellY < 8) {
         const isValid = isValidPlacement(
