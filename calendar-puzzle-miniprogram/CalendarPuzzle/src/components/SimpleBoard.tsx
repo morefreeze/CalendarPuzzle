@@ -15,14 +15,7 @@ import { useGameInitialization } from '../hooks/useGameInitialization';
 import { BlockType, PlacedBlock, UncoverableCell } from '../types/game';
 import './SimpleBoard.scss';
 
-// Calculate cell size in px from rpx (90rpx)
 const CELL_RPX = 90;
-const BORDER_RPX = 2;
-
-const rpxToPx = (rpx: number): number => {
-  const sysInfo = Taro.getSystemInfoSync();
-  return rpx * sysInfo.windowWidth / 750;
-};
 
 const SimpleBoard = () => {
   const { gameId, loading: initLoading } = useGameInitialization();
@@ -33,35 +26,42 @@ const SimpleBoard = () => {
   const [selectedBlock, setSelectedBlock] = useState<BlockType | null>(null);
   const [message, setMessage] = useState('');
 
-  // Drag state
+  // Drag state — use refs for position to avoid re-render lag during touchMove
   const [draggingBlock, setDraggingBlock] = useState<BlockType | null>(null);
-  const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
+  const [ghostStyle, setGhostStyle] = useState({ left: '0px', top: '0px' });
+  const draggingBlockRef = useRef<BlockType | null>(null);
   const boardRectRef = useRef<{ left: number; top: number } | null>(null);
-  const cellSizePx = useRef(rpxToPx(CELL_RPX));
+  const cellSizePxRef = useRef(0);
+  const dragPosRef = useRef({ x: 0, y: 0 });
 
   // Double-tap detection
   const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: -1, y: -1 });
 
   const uncoverableCells = useMemo(() => getUncoverableCells(), []);
 
-  // Get board position after render
+  // Calculate cell size in px
+  useEffect(() => {
+    const sysInfo = Taro.getSystemInfoSync();
+    cellSizePxRef.current = CELL_RPX * sysInfo.windowWidth / 750;
+  }, []);
+
+  // Get board bounding rect
   const updateBoardRect = useCallback(() => {
-    const query = Taro.createSelectorQuery();
-    query.select('.board-container').boundingClientRect((rect) => {
-      if (rect) {
-        boardRectRef.current = { left: rect.left, top: rect.top };
-      }
-    }).exec();
+    Taro.createSelectorQuery()
+      .select('.board-container')
+      .boundingClientRect((rect) => {
+        if (rect) {
+          boardRectRef.current = { left: rect.left, top: rect.top };
+        }
+      })
+      .exec();
   }, []);
 
+  // Update board rect after layout changes
   useEffect(() => {
-    cellSizePx.current = rpxToPx(CELL_RPX);
-  }, []);
-
-  // Update board rect after blocks change (layout may shift)
-  useEffect(() => {
-    setTimeout(updateBoardRect, 100);
-  }, [droppedBlocks, updateBoardRect]);
+    const timer = setTimeout(updateBoardRect, 150);
+    return () => clearTimeout(timer);
+  }, [droppedBlocks.length, updateBoardRect]);
 
   // Timer — stops on win
   useEffect(() => {
@@ -72,7 +72,7 @@ const SimpleBoard = () => {
     return () => clearInterval(interval);
   }, [initLoading, isGameWon]);
 
-  // Check win condition using full coverage check
+  // Check win condition
   useEffect(() => {
     if (!isGameWon && checkGameWin(droppedBlocks, uncoverableCells)) {
       setIsGameWon(true);
@@ -88,7 +88,6 @@ const SimpleBoard = () => {
     }
   }, [message, isGameWon]);
 
-  // Helper: check if cell (x,y) is covered by any placed block
   const getBlockAtCell = useCallback((x: number, y: number): PlacedBlock | undefined => {
     return droppedBlocks.find(b =>
       b.shape.some((row, dy) =>
@@ -99,31 +98,43 @@ const SimpleBoard = () => {
     );
   }, [droppedBlocks]);
 
-  // --- Drag handlers ---
+  // --- Drag: start from palette item ---
   const handlePaletteTouchStart = useCallback((block: BlockType, e: any) => {
     const touch = e.touches[0];
+    draggingBlockRef.current = block;
+    dragPosRef.current = { x: touch.clientX, y: touch.clientY };
+    const cs = cellSizePxRef.current;
+    setGhostStyle({
+      left: `${touch.clientX - cs}px`,
+      top: `${touch.clientY - cs}px`,
+    });
     setDraggingBlock(block);
     setSelectedBlock(block);
-    setDragPos({ x: touch.clientX, y: touch.clientY });
     updateBoardRect();
   }, [updateBoardRect]);
 
-  const handleTouchMove = useCallback((e: any) => {
-    if (!draggingBlock) return;
+  // --- Drag: overlay captures all touchMove ---
+  const handleOverlayTouchMove = useCallback((e: any) => {
     const touch = e.touches[0];
-    setDragPos({ x: touch.clientX, y: touch.clientY });
-  }, [draggingBlock]);
+    dragPosRef.current = { x: touch.clientX, y: touch.clientY };
+    const cs = cellSizePxRef.current;
+    setGhostStyle({
+      left: `${touch.clientX - cs}px`,
+      top: `${touch.clientY - cs}px`,
+    });
+  }, []);
 
-  const handleTouchEnd = useCallback((e: any) => {
-    if (!draggingBlock) return;
+  // --- Drag: overlay captures touchEnd, calculate drop ---
+  const handleOverlayTouchEnd = useCallback((e: any) => {
+    const block = draggingBlockRef.current;
+    if (!block) return;
 
     const touch = e.changedTouches?.[0];
-    const finalX = touch ? touch.clientX : dragPos.x;
-    const finalY = touch ? touch.clientY : dragPos.y;
+    const finalX = touch ? touch.clientX : dragPosRef.current.x;
+    const finalY = touch ? touch.clientY : dragPosRef.current.y;
 
-    // Calculate board cell from touch position
     const boardRect = boardRectRef.current;
-    const cs = cellSizePx.current;
+    const cs = cellSizePxRef.current;
 
     if (boardRect && cs > 0) {
       const relX = finalX - boardRect.left;
@@ -133,17 +144,13 @@ const SimpleBoard = () => {
 
       if (cellX >= 0 && cellX < 7 && cellY >= 0 && cellY < 8) {
         const isValid = isValidPlacement(
-          draggingBlock,
-          { x: cellX, y: cellY },
-          droppedBlocks,
-          uncoverableCells,
-          draggingBlock.id
+          block, { x: cellX, y: cellY },
+          droppedBlocks, uncoverableCells, block.id
         );
-
         if (isValid) {
-          const newBlock: PlacedBlock = { ...draggingBlock, x: cellX, y: cellY };
+          const newBlock: PlacedBlock = { ...block, x: cellX, y: cellY };
           setDroppedBlocks(prev => [...prev, newBlock]);
-          setBlockTypes(prev => prev.filter(b => b.id !== draggingBlock.id));
+          setBlockTypes(prev => prev.filter(b => b.id !== block.id));
           setSelectedBlock(null);
           setMessage('Block placed!');
         } else {
@@ -154,47 +161,39 @@ const SimpleBoard = () => {
       }
     }
 
+    draggingBlockRef.current = null;
     setDraggingBlock(null);
-  }, [draggingBlock, dragPos, droppedBlocks, uncoverableCells]);
+  }, [droppedBlocks, uncoverableCells]);
 
-  // --- Board cell double-tap to remove ---
+  // --- Board cell: double-tap to remove, single-tap to place selected ---
   const handleCellTap = useCallback((x: number, y: number) => {
     const now = Date.now();
     const last = lastTapRef.current;
     const isDoubleTap = (now - last.time < 350) && last.x === x && last.y === y;
-
     lastTapRef.current = { time: now, x, y };
 
     if (isDoubleTap) {
+      // Double-tap: remove placed block
       const placedBlock = getBlockAtCell(x, y);
       if (placedBlock) {
         setDroppedBlocks(prev => prev.filter(b => b.id !== placedBlock.id));
         const restored: BlockType = {
-          id: placedBlock.id,
-          label: placedBlock.label,
-          color: placedBlock.color,
-          shape: placedBlock.shape,
+          id: placedBlock.id, label: placedBlock.label,
+          color: placedBlock.color, shape: placedBlock.shape,
           key: placedBlock.key || placedBlock.id.charAt(0).toLowerCase(),
         };
         setBlockTypes(prev => [...prev, restored]);
         setSelectedBlock(null);
         setMessage('Block removed');
       }
+      return;
     }
-  }, [getBlockAtCell]);
 
-  // --- Click to place (fallback for non-drag) ---
-  const handleCellClick = useCallback((x: number, y: number) => {
-    if (!selectedBlock || draggingBlock) return;
-
+    // Single-tap: place selected block
+    if (!selectedBlock) return;
     const isValid = isValidPlacement(
-      selectedBlock,
-      { x, y },
-      droppedBlocks,
-      uncoverableCells,
-      selectedBlock.id
+      selectedBlock, { x, y }, droppedBlocks, uncoverableCells, selectedBlock.id
     );
-
     if (isValid) {
       const newBlock: PlacedBlock = { ...selectedBlock, x, y };
       setDroppedBlocks(prev => [...prev, newBlock]);
@@ -204,7 +203,7 @@ const SimpleBoard = () => {
     } else {
       setMessage('Invalid placement!');
     }
-  }, [selectedBlock, draggingBlock, droppedBlocks, uncoverableCells]);
+  }, [selectedBlock, droppedBlocks, uncoverableCells, getBlockAtCell]);
 
   const handleBlockSelect = useCallback((block: BlockType) => {
     setSelectedBlock(block);
@@ -234,11 +233,8 @@ const SimpleBoard = () => {
     if (block) {
       setDroppedBlocks(prev => prev.filter(b => b.id !== blockId));
       const restored: BlockType = {
-        id: block.id,
-        label: block.label,
-        color: block.color,
-        shape: block.shape,
-        key: block.key || block.id.charAt(0).toLowerCase(),
+        id: block.id, label: block.label, color: block.color,
+        shape: block.shape, key: block.key || block.id.charAt(0).toLowerCase(),
       };
       setBlockTypes(prev => [...prev, restored]);
       setSelectedBlock(null);
@@ -253,6 +249,7 @@ const SimpleBoard = () => {
     setTimer(0);
     setSelectedBlock(null);
     setDraggingBlock(null);
+    draggingBlockRef.current = null;
     setMessage('');
   }, []);
 
@@ -264,15 +261,10 @@ const SimpleBoard = () => {
     );
   }
 
-  const ghostCellSize = cellSizePx.current;
+  const ghostCellSize = cellSizePxRef.current;
 
   return (
-    <View
-      className='simple-board'
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      catchMove={!!draggingBlock}
-    >
+    <View className='simple-board'>
       <Text className='header-timer'>
         Time: {formatTime(timer)}
       </Text>
@@ -342,11 +334,7 @@ const SimpleBoard = () => {
                   key={`${y}-${x}`}
                   className={cellClass}
                   style={bgColor ? { backgroundColor: bgColor, opacity: 0.9 } : undefined}
-                  onClick={() => {
-                    if (isEmpty) return;
-                    handleCellTap(x, y);
-                    handleCellClick(x, y);
-                  }}
+                  onClick={() => !isEmpty && handleCellTap(x, y)}
                 >
                   {!blockAtCell && !isEmpty && (
                     <Text className='cell-label'>
@@ -415,7 +403,7 @@ const SimpleBoard = () => {
       {droppedBlocks.length > 0 && (
         <View className='placed-section'>
           <Text className='placed-title'>
-            Placed Blocks (double-tap on board to remove)
+            Placed Blocks (double-tap board to remove)
           </Text>
           <View className='placed-list'>
             {droppedBlocks.map((block) => (
@@ -432,31 +420,33 @@ const SimpleBoard = () => {
         </View>
       )}
 
-      {/* Drag Ghost — floating block following finger */}
+      {/* Full-screen drag overlay — captures all touch events during drag */}
       {draggingBlock && (
         <View
-          className='drag-ghost'
-          style={{
-            left: `${dragPos.x - ghostCellSize}px`,
-            top: `${dragPos.y - ghostCellSize}px`,
-          }}
+          className='drag-overlay'
+          catchMove
+          onTouchMove={handleOverlayTouchMove}
+          onTouchEnd={handleOverlayTouchEnd}
         >
-          {draggingBlock.shape.map((row, rIdx) => (
-            <View className='ghost-row' key={`ghost-row-${rIdx}`}>
-              {row.map((cell, cIdx) => (
-                <View
-                  key={`ghost-${rIdx}-${cIdx}`}
-                  className='ghost-cell'
-                  style={{
-                    width: `${ghostCellSize}px`,
-                    height: `${ghostCellSize}px`,
-                    backgroundColor: cell ? draggingBlock.color : 'transparent',
-                    opacity: cell ? 0.7 : 0,
-                  }}
-                />
-              ))}
-            </View>
-          ))}
+          {/* Ghost block following finger */}
+          <View className='drag-ghost' style={ghostStyle}>
+            {draggingBlock.shape.map((row, rIdx) => (
+              <View className='ghost-row' key={`ghost-row-${rIdx}`}>
+                {row.map((cell, cIdx) => (
+                  <View
+                    key={`ghost-${rIdx}-${cIdx}`}
+                    className='ghost-cell'
+                    style={{
+                      width: `${ghostCellSize}px`,
+                      height: `${ghostCellSize}px`,
+                      backgroundColor: cell ? draggingBlock.color : 'transparent',
+                      opacity: cell ? 0.7 : 0,
+                    }}
+                  />
+                ))}
+              </View>
+            ))}
+          </View>
         </View>
       )}
     </View>
