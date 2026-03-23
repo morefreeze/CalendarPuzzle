@@ -1,15 +1,12 @@
 {
-  "miniprogramRoot": "dist/",
   "projectname": "CalendarPuzzle",
-  "description": "日历拼图挑战是一款融合了日历元素和经典拼图玩法的休闲益智小游戏。通过拖动各种形状的方块，覆盖日历网格上的日期、月份和星期几，挑战你的空间思维能力和逻辑推理能力。",
+  "description": "日历拼图挑战",
   "appid": "wx95259f37f3fa80c0",
   "setting": {
-    "urlCheck": true,
-    "es6": false,
-    "enhance": false,
-    "compileHotReLoad": false,
+    "es6": true,
+    "enhance": true,
+    "minified": true,
     "postcss": false,
-    "minified": false,
     "compileWorklet": false,
     "uglifyFileName": false,
     "uploadWithSourceMap": true,
@@ -29,11 +26,12 @@
       "outputPath": ""
     }
   },
-  "compileType": "miniprogram",
+  "compileType": "game",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],
     "include": []
   },
+  "isGameTourist": false,
   "editorSetting": {}
 }
