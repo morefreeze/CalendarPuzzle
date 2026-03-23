@@ -140,6 +140,137 @@ function digFloor(sb, cnt) {
   return rem;
 }
 
+function buildBlockAdjacency(sb) {
+  var letters = SHAPES.map(function(s) { return s.n; });
+  var adj = {};
+  for (var i = 0; i < letters.length; i++) adj[letters[i]] = {};
+  var dirs = [[-1,0],[0,-1],[0,1],[1,0]];
+  for (var y = 0; y < sb.length; y++) {
+    for (var x = 0; x < sb[y].length; x++) {
+      var ch = sb[y][x];
+      if (letters.indexOf(ch) < 0) continue;
+      for (var d = 0; d < dirs.length; d++) {
+        var ny = y + dirs[d][0], nx = x + dirs[d][1];
+        if (ny >= 0 && ny < sb.length && nx >= 0 && nx < sb[ny].length) {
+          var nc = sb[ny][nx];
+          if (nc !== ch && letters.indexOf(nc) >= 0) adj[ch][nc] = true;
+        }
+      }
+    }
+  }
+  return adj;
+}
+
+function isConnected(subset, adj) {
+  if (subset.length <= 1) return true;
+  var visited = {};
+  var queue = [subset[0]];
+  visited[subset[0]] = true;
+  while (queue.length > 0) {
+    var cur = queue.shift();
+    var neighbors = adj[cur] || {};
+    for (var k in neighbors) {
+      if (!visited[k] && subset.indexOf(k) >= 0) {
+        visited[k] = true;
+        queue.push(k);
+      }
+    }
+  }
+  for (var i = 0; i < subset.length; i++) {
+    if (!visited[subset[i]]) return false;
+  }
+  return true;
+}
+
+function enumAllDigCombinations(sb, digCount) {
+  var letters = SHAPES.map(function(s) { return s.n; });
+  var adj = buildBlockAdjacency(sb);
+  var results = [];
+
+  function combine(start, current) {
+    if (current.length === digCount) {
+      if (isConnected(current, adj)) results.push(current.slice());
+      return;
+    }
+    if (start >= letters.length) return;
+    var remaining = letters.length - start;
+    if (current.length + remaining < digCount) return;
+    for (var i = start; i < letters.length; i++) {
+      current.push(letters[i]);
+      combine(i + 1, current);
+      current.pop();
+    }
+  }
+
+  combine(0, []);
+  return results;
+}
+
+function puzzleFromCombo(sb, combo) {
+  var all = boardToPlaced(sb);
+  var pre = all.filter(function(b) { return combo.indexOf(b.label) < 0; });
+  var rem = all.filter(function(b) { return combo.indexOf(b.label) >= 0; }).map(function(b) {
+    var orig = null;
+    for (var i = 0; i < initialBlockTypes.length; i++) {
+      if (initialBlockTypes[i].id === b.id) { orig = initialBlockTypes[i]; break; }
+    }
+    return { id: orig.id, label: orig.label, color: orig.color, shape: orig.shape.map(function(r) { return r.slice(); }), key: orig.key };
+  });
+  return { prePlacedBlocks: pre, remainingBlocks: rem };
+}
+
+function solveBoardForCombo(sb, combo) {
+  var b = [];
+  for (var y = 0; y < sb.length; y++) {
+    var row = [];
+    for (var x = 0; x < sb[y].length; x++) {
+      if (combo.indexOf(sb[y][x]) >= 0) row.push(EMPTY);
+      else row.push(sb[y][x]);
+    }
+    b.push(row);
+  }
+  var comboShapes = SHAPES.filter(function(s) { return combo.indexOf(s.n) >= 0; });
+  var sc = comboShapes.length;
+  var ep = [];
+  for (var i = 0; i < ROWS; i++) {
+    for (var j = 0; j < COLS; j++) {
+      if (b[i][j] === EMPTY) ep.push([i, j]);
+    }
+  }
+  if (ep.length === 0) return 0;
+  var mx = [], rn = ['head'], vis = {};
+  for (var ii = 0; ii < ROWS; ii++) {
+    for (var jj = 0; jj < COLS; jj++) {
+      for (var k = 0; k < sc; k++) {
+        var oris = allOri(comboShapes[k].g);
+        for (var o = 0; o < oris.length; o++) {
+          var nb = fitPut(b, ii, jj, oris[o], comboShapes[k].n);
+          if (!nb) continue;
+          var tc = sc + ep.length, row2 = [];
+          for (var fi = 0; fi < tc; fi++) row2.push(0);
+          row2[k] = 1;
+          for (var p = 0; p < ep.length; p++) {
+            if (nb[ep[p][0]][ep[p][1]] === comboShapes[k].n) row2[sc + p] = 1;
+          }
+          var key = row2.join('');
+          if (!vis[key]) {
+            vis[key] = 1;
+            mx.push(row2);
+            rn.push(nb.map(function(r) { return r.join(''); }).join('\n'));
+          }
+        }
+      }
+    }
+  }
+  if (!mx.length) return 0;
+  var dlx = new DLX(mx, rn);
+  return dlx.countAll();
+}
+
+function countSolutionsForCombo(sb, combo) {
+  return solveBoardForCombo(sb, combo);
+}
+
 function boardToPlaced(sb) {
   var letters=SHAPES.map(function(s){return s.n;}), res=[];
   for(var l=0;l<letters.length;l++) {
@@ -159,16 +290,22 @@ function boardToPlaced(sb) {
 }
 
 function generatePuzzle(diff, date) {
-  var sb = solveBoard(date||new Date());
-  if(!sb) return null;
-  var dug = digFloor(sb, DIFFICULTY_CONFIG[diff].digCount);
-  var all = boardToPlaced(sb);
-  var pre = all.filter(function(b){return dug.indexOf(b.label)<0;});
-  var rem = all.filter(function(b){return dug.indexOf(b.label)>=0;}).map(function(b){
-    var orig=null; for(var i=0;i<initialBlockTypes.length;i++) if(initialBlockTypes[i].id===b.id){orig=initialBlockTypes[i];break;}
-    return {id:orig.id,label:orig.label,color:orig.color,shape:orig.shape.map(function(r){return r.slice();}),key:orig.key};
-  });
-  return {prePlacedBlocks:pre, remainingBlocks:rem, difficulty:diff, solvedBoard:sb};
+  var sb = solveBoard(date || new Date());
+  if (!sb) return null;
+  var digCount = DIFFICULTY_CONFIG[diff].digCount;
+  var allCombos = enumAllDigCombinations(sb, digCount);
+  if (!allCombos.length) return null;
+  var idx = Math.floor(Math.random() * allCombos.length);
+  var combo = allCombos[idx];
+  var parts = puzzleFromCombo(sb, combo);
+  return {
+    prePlacedBlocks: parts.prePlacedBlocks,
+    remainingBlocks: parts.remainingBlocks,
+    difficulty: diff,
+    solvedBoard: sb,
+    allCombinations: allCombos,
+    currentComboIndex: idx,
+  };
 }
 
 function getHintShape(sb, label) {
@@ -185,5 +322,7 @@ function getHintShape(sb, label) {
 module.exports = {
   generatePuzzle: generatePuzzle,
   getHintShape: getHintShape,
+  puzzleFromCombo: puzzleFromCombo,
+  countSolutionsForCombo: countSolutionsForCombo,
   DIFFICULTY_CONFIG: DIFFICULTY_CONFIG,
 };
