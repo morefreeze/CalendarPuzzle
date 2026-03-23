@@ -3,14 +3,16 @@ var createSelectScene = require('./selectScene');
 var createGameScene = require('./gameScene');
 var PG = require('./puzzleGenerator');
 
-var ctx, W, H;
+var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
 var staminaRefreshInterval = null;
 
-function init(canvas, context, width, height) {
+function init(canvas, context, width, height, safe, menuBtn) {
   ctx = context;
   W = width;
   H = height;
+  safeInsets = safe || { top: 0, bottom: 0, left: 0, right: 0 };
+  menuRect = menuBtn || { top: 0, bottom: 0, left: W, right: W, width: 0, height: 0 };
 
   // Start stamina refresh (for the select screen timer)
   staminaRefreshInterval = setInterval(function () {
@@ -22,7 +24,7 @@ function init(canvas, context, width, height) {
 
 function goToSelect() {
   if (currentScene && currentScene.destroy) currentScene.destroy();
-  currentScene = createSelectScene(function (difficulty) {
+  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty) {
     startGame(difficulty);
   });
   currentScene.dirty = true;
@@ -44,20 +46,24 @@ function startGame(difficulty) {
   setTimeout(function () {
     var puzzle = PG.generatePuzzle(difficulty);
     if (!puzzle) {
-      // Failed, go back
       goToSelect();
       return;
     }
-    currentScene = createGameScene(difficulty, puzzle, {
-      onRestart: function (diff) {
-        startGame(diff);
-      },
-      onBack: function () {
-        goToSelect();
-      },
-    });
-    currentScene.dirty = true;
+    launchGameScene(difficulty, puzzle);
   }, 50);
+}
+
+function launchGameScene(difficulty, puzzle) {
+  if (currentScene && currentScene.destroy) currentScene.destroy();
+  currentScene = createGameScene(difficulty, puzzle, safeInsets, menuRect, {
+    onSwitchPuzzle: function (newPuzzle) {
+      launchGameScene(difficulty, newPuzzle);
+    },
+    onBack: function () {
+      goToSelect();
+    },
+  });
+  currentScene.dirty = true;
 }
 
 function render() {
