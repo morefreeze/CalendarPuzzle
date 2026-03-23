@@ -87,6 +87,34 @@ DLX.prototype._search = function (k, results) {
   this._uncover(col);
 };
 
+DLX.prototype.countAll = function () {
+  var count = { n: 0 };
+  this._countAll(0, count);
+  return count.n;
+};
+
+DLX.prototype._countAll = function (k, count) {
+  if (this.head.right === this.head) {
+    count.n++;
+    return;
+  }
+  var col = this._chooseColumn();
+  if (col.size === 0) return;
+  this._cover(col);
+  var row = col.down;
+  while (row !== col) {
+    this.solution.push(row);
+    var j = row.right;
+    while (j !== row) { this._cover(j.head); j = j.right; }
+    this._countAll(k + 1, count);
+    row = this.solution.pop();
+    j = row.left;
+    while (j !== row) { this._uncover(j.head); j = j.left; }
+    row = row.down;
+  }
+  this._uncover(col);
+};
+
 DLX.prototype._chooseColumn = function () {
   var col = this.head.right, min = Infinity, node = this.head.right;
   while (node !== this.head) {
