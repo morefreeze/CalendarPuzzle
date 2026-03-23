@@ -31,11 +31,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var selectScrollY = 0;
   var solutionCount = -1;
   var solutionCountText = '\u89E3\u6CD5: \u8BA1\u7B97\u4E2D...';
-  var playedCombos = {};
+  var playedCombos = puzzle._playedCombos || {};
   playedCombos[puzzle.currentComboIndex] = true;
+  puzzle._playedCombos = playedCombos;
 
   // Async solution count
-  setTimeout(function () {
+  var solutionCountTimer = setTimeout(function () {
     var combo = puzzle.allCombinations[puzzle.currentComboIndex];
     solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo);
     solutionCountText = '\u89E3\u6CD5: ' + solutionCount;
@@ -687,6 +688,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         } else if (action === 'restart') {
           if (switchMode === 'manual') {
             selectPanelOpen = true;
+            selectScrollY = 0;
             scene.dirty = true;
           } else {
             var combos = puzzle.allCombinations;
@@ -764,6 +766,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   scene.destroy = function () {
     clearInterval(timerInterval);
     if (msgTimer) clearTimeout(msgTimer);
+    if (solutionCountTimer) clearTimeout(solutionCountTimer);
   };
 
   return scene;

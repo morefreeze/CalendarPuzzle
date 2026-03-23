@@ -116,30 +116,6 @@ function solveBoard(date) {
   return res;
 }
 
-function digFloor(sb, cnt) {
-  var letters = SHAPES.map(function(s){return s.n;}), lp = {};
-  for(var y=0;y<sb.length;y++) for(var x=0;x<sb[y].length;x++) {
-    var ch=sb[y][x]; if(letters.indexOf(ch)>=0) { if(!lp[ch]) lp[ch]=[]; lp[ch].push([x,y]); }
-  }
-  var avail=Object.keys(lp); if(!avail.length) return [];
-  var rem=[], dirs=[[-1,0],[0,-1],[0,1],[1,0]];
-  var sc=avail[Math.floor(Math.random()*avail.length)];
-  while(rem.length<cnt) {
-    rem.push(sc);
-    var nxt=[], pos=lp[sc]||[];
-    for(var p=0;p<pos.length;p++) for(var d=0;d<4;d++) {
-      var nx=pos[p][0]+dirs[d][0], ny=pos[p][1]+dirs[d][1];
-      if(ny>=0&&ny<sb.length&&nx>=0&&nx<sb[ny].length) {
-        var nc=sb[ny][nx]; if(letters.indexOf(nc)>=0&&rem.indexOf(nc)<0) nxt.push(nc);
-      }
-    }
-    delete lp[sc];
-    if(nxt.length) sc=nxt[Math.floor(Math.random()*nxt.length)];
-    else { var r2=Object.keys(lp).filter(function(k){return rem.indexOf(k)<0;}); if(!r2.length)break; sc=r2[Math.floor(Math.random()*r2.length)]; }
-  }
-  return rem;
-}
-
 function buildBlockAdjacency(sb) {
   var letters = SHAPES.map(function(s) { return s.n; });
   var adj = {};
