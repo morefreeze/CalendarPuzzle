@@ -3,10 +3,11 @@ var R = require('./render');
 var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
+var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
 
-module.exports = function createGameScene(difficulty, puzzle, callbacks) {
+module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
   var scene = {};
   scene.dirty = true;
 
@@ -24,6 +25,22 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
   var hintedIds = [];
   var uncov = B.getUncoverableCells();
   var diffLabel = PG.DIFFICULTY_CONFIG[difficulty].label;
+
+  var switchMode = 'random'; // 'random' or 'manual'
+  var selectPanelOpen = false;
+  var selectScrollY = 0;
+  var solutionCount = -1;
+  var solutionCountText = '\u89E3\u6CD5: \u8BA1\u7B97\u4E2D...';
+  var playedCombos = {};
+  playedCombos[puzzle.currentComboIndex] = true;
+
+  // Async solution count
+  setTimeout(function () {
+    var combo = puzzle.allCombinations[puzzle.currentComboIndex];
+    solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo);
+    solutionCountText = '\u89E3\u6CD5: ' + solutionCount;
+    scene.dirty = true;
+  }, 50);
 
   // Drag state (not in data, just local)
   var dragging = null;
@@ -90,8 +107,12 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
 
   // ---- LAYOUT COMPUTATION ----
   function computeLayout(W, H) {
+    var padTop = safeInsets.top || 0;
+    var padBottom = safeInsets.bottom || 0;
+    var menuBottom = menuRect.bottom || 0;
     var pad = 10;
-    var y = pad;
+    // Start content below the capsule button if present, otherwise below safe area
+    var y = Math.max(padTop + pad, menuBottom + 6);
 
     // Header
     L.headerY = y;
@@ -105,25 +126,48 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
     L.msgY = y;
     if (message) y += 18 + 4;
 
-    // Controls
+    // Controls — row 1: action buttons + switch area
     var btnGap = 6;
-    var btnCount = 5;
-    var btnW = Math.floor((W - 2 * pad - (btnCount - 1) * btnGap) / btnCount);
     var btnH = 28;
     L.ctrlY = y;
     L.ctrlBtns = [];
-    var labels = ['\u65CB\u8F6C', '\u7FFB\u8F6C', '\u63D0\u793A', '\u6362\u9898', '\u8FD4\u56DE'];
-    var colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#757575'];
-    for (var i = 0; i < btnCount; i++) {
+
+    // Left: rotate, flip, hint (3 buttons)
+    var leftBtnW = Math.floor((W * 0.45 - pad - 2 * btnGap) / 3);
+    var leftLabels = ['\u65CB\u8F6C', '\u7FFB\u8F6C', '\u63D0\u793A'];
+    var leftColors = ['#4CAF50', '#2196F3', '#FF9800'];
+    var leftActions = ['rotate', 'flip', 'hint'];
+    for (var i = 0; i < 3; i++) {
       L.ctrlBtns.push({
-        x: pad + i * (btnW + btnGap), y: y, w: btnW, h: btnH,
-        label: labels[i], color: colors[i], action: ['rotate', 'flip', 'hint', 'restart', 'back'][i],
+        x: pad + i * (leftBtnW + btnGap), y: y, w: leftBtnW, h: btnH,
+        label: leftLabels[i], color: leftColors[i], action: leftActions[i],
       });
     }
-    y += btnH + 8;
+
+    // Right: mode toggle + switch button
+    var rightX = W * 0.5;
+    var modeW = 40;
+    L.modeToggle = { x: rightX, y: y, w: modeW, h: btnH };
+    var switchW = W - rightX - modeW - btnGap - pad;
+    var totalCombos = puzzle.allCombinations.length;
+    L.ctrlBtns.push({
+      x: rightX + modeW + btnGap, y: y, w: switchW, h: btnH,
+      label: '\u6362\u9898(' + totalCombos + ')', color: '#F44336', action: 'restart',
+    });
+
+    y += btnH + 4;
+
+    // Controls — row 2: back button (centered, smaller)
+    var backW = 60;
+    L.ctrlBtns.push({
+      x: (W - backW) / 2, y: y, w: backW, h: 24,
+      label: '\u8FD4\u56DE', color: '#757575', action: 'back',
+    });
+    y += 24 + 8;
 
     // Board
-    var maxBoardH = H * 0.42;
+    var safeH = H - padTop - padBottom;
+    var maxBoardH = safeH * 0.42;
     var cellSize = Math.min(Math.floor((W - 2 * pad) / 7), Math.floor(maxBoardH / 8));
     var boardW = cellSize * 7;
     var boardH = cellSize * 8;
@@ -210,6 +254,34 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
       }
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 80) / 2, y: L.hintPopup.y + popH - 45, w: 80, h: 30 };
     }
+
+    // Select panel popup
+    if (selectPanelOpen) {
+      var spW = W * 0.9, spH = H * 0.75;
+      L.selectPanel = { x: (W - spW) / 2, y: (H - spH) / 2, w: spW, h: spH };
+      L.selectCloseBtn = { x: L.selectPanel.x + (spW - 80) / 2, y: L.selectPanel.y + spH - 45, w: 80, h: 30 };
+
+      var combos = puzzle.allCombinations;
+      var thumbCS = 6;
+      var thumbW = thumbCS * 7 + 8;
+      var thumbH = thumbCS * 8 + 20;
+      var thumbGap = 8;
+      var cols = Math.floor((spW - 30) / (thumbW + thumbGap));
+      if (cols < 1) cols = 1;
+
+      L.selectItems = [];
+      var sx = L.selectPanel.x + 15, sy = L.selectPanel.y + 45;
+      var col = 0;
+      for (var si = 0; si < combos.length; si++) {
+        var ix = sx + col * (thumbW + thumbGap);
+        var iy = sy + Math.floor(si / cols) * (thumbH + thumbGap);
+        L.selectItems.push({ x: ix, y: iy, w: thumbW, h: thumbH, comboIndex: si });
+        col = (col + 1) % cols;
+      }
+
+      L.selectContentH = Math.ceil(combos.length / cols) * (thumbH + thumbGap);
+      L.selectVisibleH = spH - 90;
+    }
   }
 
   // ---- RENDER ----
@@ -223,12 +295,18 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
     // Header
     R.textBold(ctx, B.formatTime(timer), pad, L.headerY, 22, '#333');
     R.textBold(ctx, diffLabel, W / 2, L.headerY + 2, 16, '#4CAF50', 'center');
+    // Stamina: place left of capsule button to avoid overlap
     var staText = '\u4F53\u529B ' + stamina.getStamina();
-    R.roundRect(ctx, W - pad - 60, L.headerY, 60, 22, 4, '#FFF3E0', '#FFB74D');
-    R.text(ctx, staText, W - pad - 30, L.headerY + 4, 11, '#E65100', 'center');
+    var staW = 60, staH = 22;
+    var staX = (menuRect.left || W) - staW - 6;
+    R.roundRect(ctx, staX, L.headerY, staW, staH, 4, '#FFF3E0', '#FFB74D');
+    R.text(ctx, staText, staX + staW / 2, L.headerY + 4, 11, '#E65100', 'center');
 
     // Count
     R.text(ctx, '\u5DF2\u653E\u7F6E: ' + dropped.length + ' / ' + puzzle.remainingBlocks.length, W / 2, L.countY, 12, '#888', 'center');
+
+    // Solution count (async)
+    R.text(ctx, solutionCountText, W - pad, L.countY, 12, '#999', 'right');
 
     // Message
     if (message) {
@@ -240,6 +318,15 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
       var cb = L.ctrlBtns[ci];
       var disabled = !selected && (cb.action === 'rotate' || cb.action === 'flip');
       R.button(ctx, cb.x, cb.y, cb.w, cb.h, cb.label, disabled ? '#ccc' : cb.color, '#fff', 4);
+    }
+
+    // Mode toggle
+    if (L.modeToggle) {
+      var mt = L.modeToggle;
+      var mLabel = switchMode === 'random' ? '\u968F\u673A' : '\u624B\u52A8';
+      var mColor = switchMode === 'random' ? '#9C27B0' : '#009688';
+      R.roundRect(ctx, mt.x, mt.y, mt.w, mt.h, 4, mColor);
+      R.text(ctx, mLabel, mt.x + mt.w / 2, mt.y + mt.h / 2, 10, '#fff', 'center', 'middle');
     }
 
     // Board
@@ -340,6 +427,69 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
       R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, '\u53D6\u6D88', '#eee', '#333', 6);
     }
 
+    // Select panel popup
+    if (selectPanelOpen && L.selectPanel) {
+      R.overlay(ctx, W, H);
+      var sp = L.selectPanel;
+      R.roundRect(ctx, sp.x, sp.y, sp.w, sp.h, 16, '#fff');
+      var totalCombos2 = puzzle.allCombinations.length;
+      R.textBold(ctx, '\u9009\u62E9\u9898\u76EE (\u5171 ' + totalCombos2 + ' \u9898)', sp.x + sp.w / 2, sp.y + 18, 16, '#333', 'center');
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sp.x, sp.y + 40, sp.w, L.selectVisibleH);
+      ctx.clip();
+
+      var combos2 = puzzle.allCombinations;
+      var sb = puzzle.solvedBoard;
+      var tCS = 6;
+      for (var si2 = 0; si2 < L.selectItems.length; si2++) {
+        var item = L.selectItems[si2];
+        var iy2 = item.y - selectScrollY;
+        if (iy2 + item.h < sp.y + 40 || iy2 > sp.y + 40 + L.selectVisibleH) continue;
+
+        var isCurrent = item.comboIndex === puzzle.currentComboIndex;
+        var borderColor = isCurrent ? '#4CAF50' : '#ddd';
+        var bgColor = isCurrent ? '#E8F5E9' : '#fafafa';
+        R.roundRect(ctx, item.x, iy2, item.w, item.h, 4, bgColor, borderColor);
+        if (isCurrent) {
+          ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
+          ctx.strokeRect(item.x, iy2, item.w, item.h);
+        }
+
+        var combo = combos2[item.comboIndex];
+        var bx0 = item.x + 4, by0 = iy2 + 2;
+        for (var ty = 0; ty < 8; ty++) {
+          for (var tx = 0; tx < 7; tx++) {
+            var ch = sb[ty][tx];
+            var px2 = bx0 + tx * tCS, py2 = by0 + ty * tCS;
+            if (ch === '#' || ch === '*') {
+              ctx.fillStyle = ch === '*' ? '#F0E68C' : '#eee';
+            } else if (combo.indexOf(ch) >= 0) {
+              ctx.fillStyle = '#fff';
+            } else {
+              var bc = '#ccc';
+              for (var bi = 0; bi < initialBlockTypes.length; bi++) {
+                if (initialBlockTypes[bi].label === ch) { bc = initialBlockTypes[bi].color; break; }
+              }
+              ctx.fillStyle = bc;
+              ctx.globalAlpha = 0.6;
+            }
+            ctx.fillRect(px2, py2, tCS, tCS);
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = 0.3;
+            ctx.strokeRect(px2, py2, tCS, tCS);
+          }
+        }
+
+        R.text(ctx, '#' + (item.comboIndex + 1), item.x + item.w / 2, iy2 + item.h - 14, 9, '#999', 'center');
+      }
+
+      ctx.restore();
+      R.button(ctx, L.selectCloseBtn.x, L.selectCloseBtn.y, L.selectCloseBtn.w, L.selectCloseBtn.h, '\u53D6\u6D88', '#eee', '#333', 6);
+    }
+
     // Drag ghost
     if (dragging && dragHasMoved) {
       R.blockShape(ctx, dragging.shape, dragging.color, dragPos.x - cs, dragPos.y - cs, cs, 0.7);
@@ -348,6 +498,10 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
 
   // ---- TOUCH HANDLING ----
   scene.onTouchStart = function (x, y) {
+    if (selectPanelOpen) {
+      dragStart = { x: x, y: y };
+      return;
+    }
     if (hintMode) return;
 
     // Check palette items
@@ -375,6 +529,16 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
   };
 
   scene.onTouchMove = function (x, y) {
+    // Panel scroll
+    if (selectPanelOpen && L.selectPanel) {
+      if (!dragging) {
+        var scrollDelta = dragStart.y - y;
+        selectScrollY = Math.max(0, Math.min(selectScrollY + scrollDelta * 0.5, Math.max(0, L.selectContentH - L.selectVisibleH)));
+        dragStart = { x: x, y: y };
+        scene.dirty = true;
+        return;
+      }
+    }
     if (!dragging) return;
     dragPos = { x: x, y: y };
     if (!dragHasMoved) {
@@ -386,6 +550,43 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
   };
 
   scene.onTouchEnd = function (x, y) {
+    // Select panel
+    if (selectPanelOpen) {
+      if (L.selectCloseBtn && R.hitTest(x, y, L.selectCloseBtn)) {
+        selectPanelOpen = false; scene.dirty = true; return;
+      }
+      if (L.selectPanel && !R.hitTest(x, y, L.selectPanel)) {
+        selectPanelOpen = false; scene.dirty = true; return;
+      }
+      if (L.selectItems) {
+        for (var si3 = 0; si3 < L.selectItems.length; si3++) {
+          var sItem = L.selectItems[si3];
+          var adjY = sItem.y - selectScrollY;
+          var adjRect = { x: sItem.x, y: adjY, w: sItem.w, h: sItem.h };
+          if (R.hitTest(x, y, adjRect)) {
+            var newIdx2 = sItem.comboIndex;
+            if (newIdx2 === puzzle.currentComboIndex) {
+              selectPanelOpen = false; scene.dirty = true; return;
+            }
+            playedCombos[newIdx2] = true;
+            var parts2 = PG.puzzleFromCombo(puzzle.solvedBoard, puzzle.allCombinations[newIdx2]);
+            var newPuzzle2 = {
+              prePlacedBlocks: parts2.prePlacedBlocks,
+              remainingBlocks: parts2.remainingBlocks,
+              difficulty: difficulty,
+              solvedBoard: puzzle.solvedBoard,
+              allCombinations: puzzle.allCombinations,
+              currentComboIndex: newIdx2,
+            };
+            selectPanelOpen = false;
+            callbacks.onSwitchPuzzle(newPuzzle2);
+            return;
+          }
+        }
+      }
+      return;
+    }
+
     // Hint popup
     if (hintMode) {
       for (var hi = 0; hi < L.hintItems.length; hi++) {
@@ -458,6 +659,13 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
       return;
     }
 
+    // Mode toggle
+    if (L.modeToggle && R.hitTest(x, y, L.modeToggle)) {
+      switchMode = switchMode === 'random' ? 'manual' : 'random';
+      scene.dirty = true;
+      return;
+    }
+
     // Control buttons
     for (var ci = 0; ci < L.ctrlBtns.length; ci++) {
       if (R.hitTest(x, y, L.ctrlBtns[ci])) {
@@ -477,12 +685,32 @@ module.exports = function createGameScene(difficulty, puzzle, callbacks) {
         } else if (action === 'hint') {
           hintMode = true; scene.dirty = true;
         } else if (action === 'restart') {
-          var cost = PG.DIFFICULTY_CONFIG[difficulty].digCount;
-          if (!stamina.consumeStamina(cost)) {
-            showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9');
-            return;
+          if (switchMode === 'manual') {
+            selectPanelOpen = true;
+            scene.dirty = true;
+          } else {
+            var combos = puzzle.allCombinations;
+            var available = [];
+            for (var ai = 0; ai < combos.length; ai++) {
+              if (!playedCombos[ai]) available.push(ai);
+            }
+            if (available.length === 0) {
+              playedCombos = {};
+              for (var ai2 = 0; ai2 < combos.length; ai2++) available.push(ai2);
+            }
+            var newIdx = available[Math.floor(Math.random() * available.length)];
+            playedCombos[newIdx] = true;
+            var parts = PG.puzzleFromCombo(puzzle.solvedBoard, combos[newIdx]);
+            var newPuzzle = {
+              prePlacedBlocks: parts.prePlacedBlocks,
+              remainingBlocks: parts.remainingBlocks,
+              difficulty: difficulty,
+              solvedBoard: puzzle.solvedBoard,
+              allCombinations: combos,
+              currentComboIndex: newIdx,
+            };
+            callbacks.onSwitchPuzzle(newPuzzle);
           }
-          callbacks.onRestart(difficulty);
         } else if (action === 'back') {
           clearInterval(timerInterval);
           callbacks.onBack();
