@@ -26,16 +26,16 @@ interface SaveSlot {
   userId: string;            // WeChat openid
   gameId: string;            // Current puzzle's gameId
   difficulty: Difficulty;    // Difficulty level (union type, matching puzzleGenerator.ts)
-  droppedBlocks: Block[];    // User-placed blocks
-  remainingBlocks: Block[];  // Blocks still to be placed
-  prePlacedBlocks: Block[];  // Locked blocks pre-placed by difficulty
-  solvedBoard: number[][];   // Solved board state (needed for hint system)
-  hintedBlocks: string[];    // Block labels that received hints (serialized from Set<string>)
-  timerSeconds: number;      // Timer in seconds
-  createdAt: number;         // Creation timestamp
-  updatedAt: number;         // Last update timestamp
-  syncVersion: number;       // Monotonically increasing version for conflict detection
-  thumbnailBlocks: Block[];  // Minimal block data for re-rendering thumbnails (no image)
+  droppedBlocks: PlacedBlock[];    // User-placed blocks (with x/y positions)
+  remainingBlocks: BlockType[];    // Blocks still to be placed (no positions until placed)
+  prePlacedBlocks: PlacedBlock[];  // Locked blocks pre-placed by difficulty (with positions)
+  solvedBoard: string[][];         // Solved board grid of block label characters (for hint system)
+  hintedBlocks: string[];          // Block labels that received hints (serialized from Set<string>)
+  timerSeconds: number;            // Timer in seconds
+  createdAt: number;               // Creation timestamp
+  updatedAt: number;               // Last update timestamp
+  syncVersion: number;             // Monotonically increasing version for conflict detection
+  thumbnailBlocks: PlacedBlock[];  // Block positions for re-rendering thumbnail previews
 }
 ```
 
@@ -84,9 +84,7 @@ Note: `thumbnail_blocks` stores block positions for client-side re-rendering, no
 
 ## API Design
 
-All endpoints extend the existing Flask backend at `/api`. All endpoints receive `user_id` via a consistent method: extracted from a session token or request header (matching the existing auth pattern). For the current implementation, passed as `X-User-Id` header until proper auth middleware is added.
-
-The existing `api.tsx` `request` function supports `GET` and `POST`. A `DELETE` method will be added to its type union. For simplicity, the delete endpoint is also implemented as `POST` with a `_method=DELETE` body parameter to avoid modifying the HTTP method support immediately.
+All endpoints extend the existing Flask backend at `/api`. All endpoints receive `user_id` via `X-User-Id` header. The existing `api.tsx` `request` function supports `GET` and `POST` — no method type changes are needed since all slot endpoints use these two methods.
 
 ### GET /api/save-slots
 
