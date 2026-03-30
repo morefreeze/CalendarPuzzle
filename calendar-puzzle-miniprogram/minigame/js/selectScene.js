@@ -3,7 +3,7 @@ var R = require('./render');
 var stamina = require('./stamina');
 var DIFF = require('./puzzleGenerator').DIFFICULTY_CONFIG;
 
-module.exports = function createSelectScene(onSelect) {
+module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
   var scene = {};
   scene.dirty = true;
 
@@ -20,10 +20,14 @@ module.exports = function createSelectScene(onSelect) {
 
   scene.render = function (ctx, W, H) {
     R.clear(ctx, W, H, '#FAFAFA');
-    var y = H * 0.08;
+    var padBottom = safeInsets.bottom || 0;
+    var menuBottom = menuRect.bottom || 0;
+    var contentTop = Math.max((safeInsets.top || 0) + 10, menuBottom + 6);
+    var safeH = H - contentTop - padBottom;
+    var y = contentTop + safeH * 0.04;
 
     // Title
-    R.textBold(ctx, '\u65E5\u5386\u8C1C\u9898', W / 2, y, 28, '#333', 'center');
+    R.textBold(ctx, '\u65E5\u5386\u65B9\u5757\u6311\u6218', W / 2, y, 28, '#333', 'center');
     y += 40;
 
     // Stamina bar
