@@ -1,6 +1,6 @@
 {
-  "projectname": "CalendarPuzzle",
-  "description": "日历拼图挑战",
+  "projectname": "日历方块挑战",
+  "description": "日历方块挑战",
   "appid": "wx95259f37f3fa80c0",
   "setting": {
     "es6": true,

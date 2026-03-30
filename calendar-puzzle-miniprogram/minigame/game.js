@@ -15,11 +15,27 @@ ctx.scale(dpr, dpr);
 var W = sysInfo.windowWidth;
 var H = sysInfo.windowHeight;
 
+// Safe area for notch screens (iPhone X+, etc.)
+var safeArea = sysInfo.safeArea || { top: 0, left: 0, bottom: H, right: W, width: W, height: H };
+var safe = {
+  top: safeArea.top || 0,
+  bottom: H - (safeArea.bottom || H),
+  left: safeArea.left || 0,
+  right: W - (safeArea.right || W),
+};
+
+// Menu button rect (capsule button top-right)
+var menuBtn = { top: 0, bottom: 0, left: W, right: W, width: 0, height: 0 };
+try {
+  var rect = wx.getMenuButtonBoundingClientRect();
+  if (rect) menuBtn = rect;
+} catch (e) {}
+
 // Set 30fps (enough for a puzzle game)
 wx.setPreferredFramesPerSecond(30);
 
 // Initialize
-main.init(canvas, ctx, W, H);
+main.init(canvas, ctx, W, H, safe, menuBtn);
 
 // Game loop
 function loop() {
