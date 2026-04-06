@@ -1,14 +1,14 @@
 // Board layout data, block definitions, and utility functions
 
 var boardLayoutData = [
-  [{t:'month',v:'Jan'},{t:'month',v:'Feb'},{t:'month',v:'Mar'},{t:'month',v:'Apr'},{t:'month',v:'May'},{t:'month',v:'Jun'},{t:'empty',v:null}],
-  [{t:'month',v:'Jul'},{t:'month',v:'Aug'},{t:'month',v:'Sep'},{t:'month',v:'Oct'},{t:'month',v:'Nov'},{t:'month',v:'Dec'},{t:'empty',v:null}],
+  [{t:'month',v:'一月'},{t:'month',v:'二月'},{t:'month',v:'三月'},{t:'month',v:'四月'},{t:'month',v:'五月'},{t:'month',v:'六月'},{t:'empty',v:null}],
+  [{t:'month',v:'七月'},{t:'month',v:'八月'},{t:'month',v:'九月'},{t:'month',v:'十月'},{t:'month',v:'十一月'},{t:'month',v:'十二月'},{t:'empty',v:null}],
   [{t:'day',v:1},{t:'day',v:2},{t:'day',v:3},{t:'day',v:4},{t:'day',v:5},{t:'day',v:6},{t:'day',v:7}],
   [{t:'day',v:8},{t:'day',v:9},{t:'day',v:10},{t:'day',v:11},{t:'day',v:12},{t:'day',v:13},{t:'day',v:14}],
   [{t:'day',v:15},{t:'day',v:16},{t:'day',v:17},{t:'day',v:18},{t:'day',v:19},{t:'day',v:20},{t:'day',v:21}],
   [{t:'day',v:22},{t:'day',v:23},{t:'day',v:24},{t:'day',v:25},{t:'day',v:26},{t:'day',v:27},{t:'day',v:28}],
-  [{t:'day',v:29},{t:'day',v:30},{t:'day',v:31},{t:'weekday',v:'Sun'},{t:'weekday',v:'Mon'},{t:'weekday',v:'Tue'},{t:'weekday',v:'Wed'}],
-  [{t:'empty',v:null},{t:'empty',v:null},{t:'empty',v:null},{t:'empty',v:null},{t:'weekday',v:'Thu'},{t:'weekday',v:'Fri'},{t:'weekday',v:'Sat'}]
+  [{t:'day',v:29},{t:'day',v:30},{t:'day',v:31},{t:'weekday',v:'日'},{t:'weekday',v:'一'},{t:'weekday',v:'二'},{t:'weekday',v:'三'}],
+  [{t:'empty',v:null},{t:'empty',v:null},{t:'empty',v:null},{t:'empty',v:null},{t:'weekday',v:'四'},{t:'weekday',v:'五'},{t:'weekday',v:'六'}]
 ];
 
 var initialBlockTypes = [
@@ -41,8 +41,8 @@ function formatTime(s) {
 
 function getUncoverableCells() {
   var today = new Date();
-  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var months = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
+  var weekdays = ['日','一','二','三','四','五','六'];
   var cm = months[today.getMonth()];
   var cd = today.getDate();
   var cw = weekdays[today.getDay()];
