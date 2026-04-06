@@ -13,15 +13,15 @@ export const formatTime = (totalSeconds: number): string => {
 
 export const getUncoverableCells = (): UncoverableCell[] => {
   const today = new Date();
-  const currentMonth = today.toLocaleString('en-US', { month: 'short' });
+  const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
-  const currentWeekday = today.toLocaleString('en-US', { weekday: 'short' });
+  const currentWeekday = today.getDay() === 0 ? '日' : `一${today.getDay() - 1}`;
 
   const coords: UncoverableCell[] = [];
   boardLayoutData.forEach((row, y) => {
     row.forEach((cell, x) => {
       if (
-        (cell.type === 'month' && cell.value === currentMonth) ||
+        (cell.type === 'month' && cell.value === `月${currentMonth}`) ||
         (cell.type === 'day' && cell.value === currentDay) ||
         (cell.type === 'weekday' && cell.value === currentWeekday)
       ) {
@@ -150,12 +150,12 @@ export const initialBlockTypes = [
 ];
 
 export const boardLayoutData = [
-  [{ type: 'month', value: 'Jan' }, { type: 'month', value: 'Feb' }, { type: 'month', value: 'Mar' }, { type: 'month', value: 'Apr' }, { type: 'month', value: 'May' }, { type: 'month', value: 'Jun' }, { type: 'empty', value: null }],
-  [{ type: 'month', value: 'Jul' }, { type: 'month', value: 'Aug' }, { type: 'month', value: 'Sep' }, { type: 'month', value: 'Oct' }, { type: 'month', value: 'Nov' }, { type: 'month', value: 'Dec' }, { type: 'empty', value: null }],
+  [{ type: 'month', value: '一月' }, { type: 'month', value: '二月' }, { type: 'month', value: '三月' }, { type: 'month', value: '四月' }, { type: 'month', value: '五月' }, { type: 'month', value: '六月' }, { type: 'empty', value: null }],
+  [{ type: 'month', value: '七月' }, { type: 'month', value: '八月' }, { type: 'month', value: '九月' }, { type: 'month', value: '十月' }, { type: 'month', value: '十一月' }, { type: 'month', value: '十二月' }, { type: 'empty', value: null }],
   [{ type: 'day', value: 1 }, { type: 'day', value: 2 }, { type: 'day', value: 3 }, { type: 'day', value: 4 }, { type: 'day', value: 5 }, { type: 'day', value: 6 }, { type: 'day', value: 7 }],
   [{ type: 'day', value: 8 }, { type: 'day', value: 9 }, { type: 'day', value: 10 }, { type: 'day', value: 11 }, { type: 'day', value: 12 }, { type: 'day', value: 13 }, { type: 'day', value: 14 }],
   [{ type: 'day', value: 15 }, { type: 'day', value: 16 }, { type: 'day', value: 17 }, { type: 'day', value: 18 }, { type: 'day', value: 19 }, { type: 'day', value: 20 }, { type: 'day', value: 21 }],
   [{ type: 'day', value: 22 }, { type: 'day', value: 23 }, { type: 'day', value: 24 }, { type: 'day', value: 25 }, { type: 'day', value: 26 }, { type: 'day', value: 27 }, { type: 'day', value: 28 }],
-  [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: 'Sun' }, { type: 'weekday', value: 'Mon' }, { type: 'weekday', value: 'Tue' }, { type: 'weekday', value: 'Wed' }],
-  [{ type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: 'Thu' }, { type: 'weekday', value: 'Fri' }, { type: 'weekday', value: 'Sat' }]
+  [{ type: 'day', value: 29 }, { type: 'day', value: 30 }, { type: 'day', value: 31 }, { type: 'weekday', value: '日' }, { type: 'weekday', value: '一' }, { type: 'weekday', value: '二' }, { type: 'weekday', value: '三' }],
+  [{ type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'empty', value: null }, { type: 'weekday', value: '四' }, { type: 'weekday', value: '五' }, { type: 'weekday', value: '六' }]
 ];
