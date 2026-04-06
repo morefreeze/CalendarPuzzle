@@ -128,9 +128,10 @@ function markDate(board: string[][], date: Date): void {
 
   const month = date.getMonth() + 1; // 1-12
   const day = date.getDate();         // 1-31
-  // JS getDay(): 0=Sun, need to convert to Python weekday: 0=Mon
+  // JS getDay(): 0=Sun, need to convert to Chinese weekday: 0=一, 6=日
   const jsDay = date.getDay();
-  const weekday = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon, 6=Sun
+  const chineseWeekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  const weekday = jsDay === 0 ? 6 : jsDay - 1; // 0=一, 6=日
 
   // Mark month
   board[Math.floor((month - 1) / 6)][(month - 1) % 6] = DATE_BLOCK;
@@ -138,11 +139,11 @@ function markDate(board: string[][], date: Date): void {
   board[2 + Math.floor((day - 1) / 7)][(day - 1) % 7] = DATE_BLOCK;
   // Mark weekday
   if (weekday === 6) {
-    board[6][3] = DATE_BLOCK; // Sunday
+    board[6][3] = DATE_BLOCK; // 日
   } else if (weekday >= 0 && weekday <= 2) {
-    board[6][4 + weekday] = DATE_BLOCK; // Mon, Tue, Wed
+    board[6][4 + weekday] = DATE_BLOCK; // 一, 二, 三
   } else {
-    board[7][1 + weekday] = DATE_BLOCK; // Thu(4), Fri(5), Sat -- wait
+    board[7][1 + weekday] = DATE_BLOCK; // 四(4), 五(5), 六(5)
   }
 }
 
