@@ -23,9 +23,7 @@ export default defineConfig<'vite'>(async (merge, { command, mode }) => {
     defineConstants: {
     },
     copy: {
-      patterns: [
-        { from: 'src/game.json', to: 'dist/game.json' }
-      ],
+      patterns: [],
       options: {
       }
     },
