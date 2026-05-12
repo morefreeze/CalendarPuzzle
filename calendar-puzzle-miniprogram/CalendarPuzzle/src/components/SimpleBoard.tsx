@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { View, Text } from '@tarojs/components';
-import Taro from '@tarojs/taro';
+import { View, Text, Button } from '@tarojs/components';
+import Taro, { useRouter } from '@tarojs/taro';
+import { setShareablePuzzle } from '../utils/shareState';
 import {
   boardLayoutData,
   initialBlockTypes,
@@ -33,6 +34,8 @@ const SimpleBoard = () => {
   const [hintedBlocks, setHintedBlocks] = useState<Set<string>>(new Set());
   const [stamina, setStamina] = useState(() => getStamina());
   const [recoverSeconds, setRecoverSeconds] = useState(() => getRecoverSeconds());
+
+  const router = useRouter();
 
   // Drag state
   const [draggingBlock, setDraggingBlock] = useState<BlockType | null>(null);
@@ -116,6 +119,45 @@ const SimpleBoard = () => {
     }
   }, [message, isGameWon]);
 
+  // Auto-load a puzzle from share link params (skips difficulty selection and stamina cost).
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (autoLoadedRef.current) return;
+    autoLoadedRef.current = true;
+    const params = router.params || {};
+    const d = params.d as Difficulty | undefined;
+    const seedNum = params.s !== undefined ? Number(params.s) : NaN;
+    const dateStr = params.date as string | undefined;
+    const validDiff = !!d && (Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).includes(d);
+    const validSeed = Number.isFinite(seedNum) && seedNum >= 0;
+    if (!validDiff || !validSeed) return;
+    setIsGenerating(true);
+    setMessage('载入朋友的挑战...');
+    setTimeout(() => {
+      const result = generatePuzzle(d, { seed: seedNum, date: dateStr });
+      if (result) {
+        setPuzzle(result);
+        setDifficulty(d);
+        setPrePlacedBlocks(result.prePlacedBlocks);
+        setDroppedBlocks([]);
+        setBlockTypes(result.remainingBlocks);
+        setTimer(0);
+        setIsGameWon(false);
+        setSelectedBlock(null);
+        setMessage(`${DIFFICULTY_CONFIG[d].label}模式 - 朋友邀请你挑战这一题！`);
+        setShareablePuzzle({
+          difficulty: d,
+          difficultyLabel: DIFFICULTY_CONFIG[d].label,
+          seed: seedNum,
+          dateStr: result.dateStr,
+        });
+      } else {
+        setMessage('载入失败，请手动选择难度');
+      }
+      setIsGenerating(false);
+    }, 50);
+  }, [router]);
+
   const getBlockAtCell = useCallback((x: number, y: number): PlacedBlock | undefined => {
     return allBoardBlocks.find(b =>
       b.shape.some((row, dy) =>
@@ -155,6 +197,12 @@ const SimpleBoard = () => {
         setIsGameWon(false);
         setSelectedBlock(null);
         setMessage(`${DIFFICULTY_CONFIG[diff].label}模式 - 放置 ${result.remainingBlocks.length} 个方块`);
+        setShareablePuzzle({
+          difficulty: diff,
+          difficultyLabel: DIFFICULTY_CONFIG[diff].label,
+          seed: result.seed,
+          dateStr: result.dateStr,
+        });
       } else {
         setMessage('生成失败，请重试');
       }
@@ -360,6 +408,12 @@ const SimpleBoard = () => {
           setIsGameWon(false);
           setSelectedBlock(null);
           setMessage(`${DIFFICULTY_CONFIG[difficulty].label}模式 - 放置 ${result.remainingBlocks.length} 个方块`);
+          setShareablePuzzle({
+            difficulty,
+            difficultyLabel: DIFFICULTY_CONFIG[difficulty].label,
+            seed: result.seed,
+            dateStr: result.dateStr,
+          });
         } else {
           setMessage('生成失败，请重试');
         }
@@ -488,6 +542,12 @@ const SimpleBoard = () => {
         </Text>
       )}
 
+      {isGameWon && (
+        <Button className='invite-btn' openType='share' hoverClass='none'>
+          🎯 邀请朋友挑战这一题
+        </Button>
+      )}
+
       {/* Control Buttons */}
       <View className='controls'>
         <View
@@ -514,6 +574,9 @@ const SimpleBoard = () => {
         <View className='btn btn-back' onClick={resetGame}>
           <Text>返回</Text>
         </View>
+        <Button className='btn-share' openType='share' hoverClass='none'>
+          分享
+        </Button>
       </View>
 
       {/* Game Board */}

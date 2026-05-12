@@ -1,4 +1,5 @@
 export default definePageConfig({
   navigationBarTitleText: 'Calendar Puzzle',
-  disableScroll: true
+  disableScroll: true,
+  enableShareTimeline: true
 })

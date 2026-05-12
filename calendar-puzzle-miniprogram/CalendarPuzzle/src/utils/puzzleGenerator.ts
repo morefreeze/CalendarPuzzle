@@ -245,8 +245,20 @@ export function solveBoard(date: Date): string[][] | null {
   return null;
 }
 
+// mulberry32: tiny deterministic PRNG so a (difficulty, seed) pair reproduces a puzzle.
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // --- Dig logic (port from dig_block.py dig_floor) ---
-function digFloor(solvedBoard: string[][], digCount: number): string[] {
+function digFloor(solvedBoard: string[][], digCount: number, rng: () => number): string[] {
   const letters = SHAPE_DEFS.map(s => s.name);
 
   // Find all letter positions
@@ -268,7 +280,7 @@ function digFloor(solvedBoard: string[][], digCount: number): string[] {
   const directions: [number, number][] = [[-1, 0], [0, -1], [0, 1], [1, 0]];
 
   // BFS-like: start from random block, find adjacent blocks
-  let startChar = available[Math.floor(Math.random() * available.length)];
+  let startChar = available[Math.floor(rng() * available.length)];
 
   while (toRemove.length < digCount) {
     toRemove.push(startChar);
@@ -291,11 +303,11 @@ function digFloor(solvedBoard: string[][], digCount: number): string[] {
     delete letterPositions[startChar];
 
     if (nextLetters.length > 0) {
-      startChar = nextLetters[Math.floor(Math.random() * nextLetters.length)];
+      startChar = nextLetters[Math.floor(rng() * nextLetters.length)];
     } else if (Object.keys(letterPositions).length > 0) {
       const remaining = Object.keys(letterPositions).filter(k => !toRemove.includes(k));
       if (remaining.length === 0) break;
-      startChar = remaining[Math.floor(Math.random() * remaining.length)];
+      startChar = remaining[Math.floor(rng() * remaining.length)];
     } else {
       break;
     }
@@ -358,15 +370,40 @@ export interface GeneratedPuzzle {
   remainingBlocks: { id: string; label: string; color: string; shape: number[][]; key: string }[];
   difficulty: Difficulty;
   solvedBoard: string[][];
+  seed: number;
+  dateStr: string;  // YYYY-MM-DD of the calendar markers used
 }
 
-export function generatePuzzle(difficulty: Difficulty, date?: Date): GeneratedPuzzle | null {
-  const targetDate = date || new Date();
+function formatDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function parseDateStr(s: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function generatePuzzle(
+  difficulty: Difficulty,
+  opts?: { seed?: number; date?: Date | string },
+): GeneratedPuzzle | null {
+  const targetDate =
+    opts?.date instanceof Date ? opts.date :
+    typeof opts?.date === 'string' ? (parseDateStr(opts.date) || new Date()) :
+    new Date();
+  const seed = opts?.seed ?? ((Math.random() * 0xFFFFFFFF) >>> 0);
+  const rng = mulberry32(seed);
+
   const solvedBoard = solveBoard(targetDate);
   if (!solvedBoard) return null;
 
   const { digCount } = DIFFICULTY_CONFIG[difficulty];
-  const dugLetters = digFloor(solvedBoard, digCount);
+  const dugLetters = digFloor(solvedBoard, digCount, rng);
 
   const allPlaced = boardToPlacedBlocks(solvedBoard);
 
@@ -392,6 +429,8 @@ export function generatePuzzle(difficulty: Difficulty, date?: Date): GeneratedPu
     remainingBlocks,
     difficulty,
     solvedBoard,
+    seed,
+    dateStr: formatDateStr(targetDate),
   };
 }
 
