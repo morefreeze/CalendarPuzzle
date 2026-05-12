@@ -62,3 +62,16 @@ wx.onTouchEnd(function (res) {
     main.onTouchEnd(res.changedTouches[0].clientX, res.changedTouches[0].clientY);
   }
 });
+
+// Share
+wx.showShareMenu({
+  withShareTicket: true,
+  menus: ['shareAppMessage', 'shareTimeline'],
+});
+
+wx.onShareAppMessage(function () {
+  return {
+    title: '日历方块挑战 — 用方块拼出今天',
+    imageUrl: '',
+  };
+});
