@@ -27,7 +27,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var uncov = B.getUncoverableCells();
   var diffLabel = PG.DIFFICULTY_CONFIG[difficulty].label;
 
-  var switchMode = 'random'; // 'random' or 'manual'
+  var switchMode = 'random'; // 'random' or 'manual'; toggled by the caret
   var selectPanelOpen = false;
   var selectScrollY = 0;
   var solutionCount = -1;
@@ -50,6 +50,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var dragStart = { x: 0, y: 0 };
   var dragPos = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
+  var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
 
   // Timer interval
   var timerInterval = setInterval(function () {
@@ -107,14 +108,87 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     showMsg('\u5DF2\u79FB\u9664\u65B9\u5757');
   }
 
+  // ---- Switch puzzle (stamina-aware) ----
+  function switchCost() { return PG.DIFFICULTY_CONFIG[difficulty].digCount; }
+
+  function executeRandomSwitch() {
+    var combos = puzzle.allCombinations;
+    var available = [];
+    for (var ai = 0; ai < combos.length; ai++) {
+      if (!playedCombos[ai]) available.push(ai);
+    }
+    if (available.length === 0) {
+      playedCombos = {};
+      for (var ai2 = 0; ai2 < combos.length; ai2++) available.push(ai2);
+    }
+    var newIdx = available[Math.floor(Math.random() * available.length)];
+    playedCombos[newIdx] = true;
+    var parts = PG.puzzleFromCombo(puzzle.solvedBoard, combos[newIdx]);
+    callbacks.onSwitchPuzzle({
+      prePlacedBlocks: parts.prePlacedBlocks,
+      remainingBlocks: parts.remainingBlocks,
+      difficulty: difficulty,
+      solvedBoard: puzzle.solvedBoard,
+      allCombinations: combos,
+      currentComboIndex: newIdx,
+      dateStr: puzzle.dateStr,
+    });
+  }
+
+  function executeManualSwitch(newIdx) {
+    playedCombos[newIdx] = true;
+    var parts = PG.puzzleFromCombo(puzzle.solvedBoard, puzzle.allCombinations[newIdx]);
+    selectPanelOpen = false;
+    callbacks.onSwitchPuzzle({
+      prePlacedBlocks: parts.prePlacedBlocks,
+      remainingBlocks: parts.remainingBlocks,
+      difficulty: difficulty,
+      solvedBoard: puzzle.solvedBoard,
+      allCombinations: puzzle.allCombinations,
+      currentComboIndex: newIdx,
+      dateStr: puzzle.dateStr,
+    });
+  }
+
+  // Wrap a switch action with stamina check + confirm modal when current puzzle is incomplete.
+  function confirmAndSwitch(doSwitch) {
+    if (isWon) { doSwitch(); return; }
+    var cost = switchCost();
+    var have = stamina.getStamina();
+    if (have < cost) {
+      showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9\uFF0C\u5F53\u524D ' + have + ' \u70B9');
+      return;
+    }
+    wx.showModal({
+      title: '\u6362\u9898\u6D88\u8017\u4F53\u529B',
+      content: '\u5F53\u524D\u9898\u76EE\u672A\u5B8C\u6210\uFF0C\u6362\u9898\u5C06\u6D88\u8017 ' + cost + ' \u70B9\u4F53\u529B\uFF08\u5F53\u524D ' + have + ' \u70B9\uFF09\u3002\u662F\u5426\u7EE7\u7EED\uFF1F',
+      confirmText: '\u7EE7\u7EED',
+      cancelText: '\u53D6\u6D88',
+      success: function (res) {
+        if (!res.confirm) return;
+        if (!stamina.consumeStamina(cost)) {
+          showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9\uFF0C\u5F53\u524D ' + stamina.getStamina() + ' \u70B9');
+          scene.dirty = true;
+          return;
+        }
+        doSwitch();
+      },
+    });
+  }
+
   // ---- LAYOUT COMPUTATION ----
   function computeLayout(W, H) {
     var padTop = safeInsets.top || 0;
     var padBottom = safeInsets.bottom || 0;
     var menuBottom = menuRect.bottom || 0;
     var pad = 10;
-    // Start content below the capsule button if present, otherwise below safe area
-    var y = Math.max(padTop + pad, menuBottom + 6);
+
+    // Back arrow button at the very top-left (above the timer).
+    var backSize = 28;
+    L.backBtn = { x: pad, y: padTop + 6, w: backSize, h: backSize };
+
+    // Start content below the back arrow (and below the menu capsule on the right).
+    var y = Math.max(L.backBtn.y + L.backBtn.h + 4, menuBottom + 6);
 
     // Header
     L.headerY = y;
@@ -142,38 +216,25 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.ctrlY = y;
     L.ctrlBtns = [];
 
-    // Left: rotate, flip, hint (3 buttons)
+    // Left: hint button only (rotate/flip moved to preview row).
     var leftBtnW = Math.floor((W * 0.45 - pad - 2 * btnGap) / 3);
-    var leftLabels = ['\u65CB\u8F6C', '\u7FFB\u8F6C', '\u63D0\u793A'];
-    var leftColors = ['#4CAF50', '#2196F3', '#FF9800'];
-    var leftActions = ['rotate', 'flip', 'hint'];
-    for (var i = 0; i < 3; i++) {
-      L.ctrlBtns.push({
-        x: pad + i * (leftBtnW + btnGap), y: y, w: leftBtnW, h: btnH,
-        label: leftLabels[i], color: leftColors[i], action: leftActions[i],
-      });
-    }
+    L.ctrlBtns.push({
+      x: pad, y: y, w: leftBtnW, h: btnH,
+      label: '\u63D0\u793A', color: '#FF9800', action: 'hint',
+    });
 
-    // Right: mode toggle + switch button
+    // Right: split-button. Main part executes current switchMode; caret toggles the dropdown.
     var rightX = W * 0.5;
     var modeW = 40;
-    L.modeToggle = { x: rightX, y: y, w: modeW, h: btnH };
     var switchW = W - rightX - modeW - btnGap - pad;
+    var switchBtnX = rightX + modeW + btnGap;
     var totalCombos = puzzle.allCombinations.length;
-    L.ctrlBtns.push({
-      x: rightX + modeW + btnGap, y: y, w: switchW, h: btnH,
-      label: '\u6362\u9898(' + totalCombos + ')', color: '#F44336', action: 'restart',
-    });
+    var caretW = 26;
+    L.switchMainBtn = { x: switchBtnX, y: y, w: switchW - caretW, h: btnH };
+    L.switchCaretBtn = { x: switchBtnX + switchW - caretW, y: y, w: caretW, h: btnH };
+    L.switchTotalCombos = totalCombos;
 
-    y += btnH + 4;
-
-    // Controls — row 2: back button (centered, smaller)
-    var backW = 60;
-    L.ctrlBtns.push({
-      x: (W - backW) / 2, y: y, w: backW, h: 24,
-      label: '\u8FD4\u56DE', color: '#757575', action: 'back',
-    });
-    y += 24 + 8;
+    y += btnH + 8;
 
     // Board
     var safeH = H - padTop - padBottom;
@@ -189,12 +250,25 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.boardH = boardH;
     y += boardH + 8;
 
-    // Preview
+    // Preview row: [rotate 0.191][shape 0.618][flip 0.191] horizontal split.
     L.previewY = y;
     L.previewH = 0;
+    L.previewRotateBtn = null;
+    L.previewFlipBtn = null;
+    L.previewShape = null;
     if (selected && !dragging) {
-      L.previewH = 16 + selected.shape.length * Math.floor(cellSize * 0.6) + 8;
-      y += L.previewH + 4;
+      var prevCS = Math.floor(cellSize * 0.6);
+      var shapeRowsH = selected.shape.length * prevCS;
+      var rowH = Math.max(shapeRowsH + 12, 44);
+      var totalW = W - 2 * pad;
+      var gapW = Math.floor(totalW * 0.05);
+      var shapeAreaW = Math.floor(totalW * 0.618 * 0.9);
+      var sideW = Math.floor((totalW - shapeAreaW - 2 * gapW) / 2);
+      L.previewFlipBtn = { x: pad, y: y, w: sideW, h: rowH };
+      L.previewShape = { x: pad + sideW + gapW, y: y, w: shapeAreaW, h: rowH };
+      L.previewRotateBtn = { x: pad + sideW + gapW + shapeAreaW + gapW, y: y, w: sideW, h: rowH };
+      L.previewH = rowH;
+      y += L.previewH + 8;
     }
 
     // Palette
@@ -302,6 +376,21 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     var pad = 10;
     var cs = L.cellSize;
 
+    // Back arrow (top-left). Drawn as a chevron pointing left.
+    if (L.backBtn) {
+      var bb = L.backBtn;
+      var bcx = bb.x + bb.w / 2, bcy = bb.y + bb.h / 2;
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(bcx + bb.w * 0.18, bcy - bb.h * 0.28);
+      ctx.lineTo(bcx - bb.w * 0.18, bcy);
+      ctx.lineTo(bcx + bb.w * 0.18, bcy + bb.h * 0.28);
+      ctx.stroke();
+    }
+
     // Header
     R.textBold(ctx, B.formatTime(timer), pad, L.headerY, 22, '#333');
     R.textBold(ctx, diffLabel, W / 2, L.headerY + 2, 16, '#4CAF50', 'center');
@@ -328,21 +417,30 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.button(ctx, L.inviteBtn.x, L.inviteBtn.y, L.inviteBtn.w, L.inviteBtn.h, '🎯 邀请朋友挑战这一题', '#FF5722', '#fff', 8);
     }
 
-    // Controls
+    // Controls — hint + other future ctrl buttons in L.ctrlBtns
     for (var ci = 0; ci < L.ctrlBtns.length; ci++) {
       var cb = L.ctrlBtns[ci];
-      var disabled = !selected && (cb.action === 'rotate' || cb.action === 'flip');
-      R.button(ctx, cb.x, cb.y, cb.w, cb.h, cb.label, disabled ? '#ccc' : cb.color, '#fff', 4);
+      R.button(ctx, cb.x, cb.y, cb.w, cb.h, cb.label, cb.color, '#fff', 4);
     }
 
-    // Mode toggle
-    if (L.modeToggle) {
-      var mt = L.modeToggle;
-      var mLabel = switchMode === 'random' ? '\u968F\u673A' : '\u624B\u52A8';
-      var mColor = switchMode === 'random' ? '#9C27B0' : '#009688';
-      R.roundRect(ctx, mt.x, mt.y, mt.w, mt.h, 4, mColor);
-      R.text(ctx, mLabel, mt.x + mt.w / 2, mt.y + mt.h / 2, 10, '#fff', 'center', 'middle');
+    // 换题 split-button: solid red background spans both halves; main label on
+    // the left, separator, caret on the right.
+    if (L.switchMainBtn && L.switchCaretBtn) {
+      var mB = L.switchMainBtn, cB = L.switchCaretBtn;
+      var swColor = switchMode === 'manual' ? '#009688' : '#9C27B0';
+      R.roundRect(ctx, mB.x, mB.y, mB.w + cB.w, mB.h, 4, swColor);
+      var swLabel = (switchMode === 'manual' ? '手动换题' : '随机换题') + '(' + L.switchTotalCombos + ')';
+      R.textBold(ctx, swLabel, mB.x + mB.w / 2, mB.y + mB.h / 2, 12, '#fff', 'center', 'middle');
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cB.x, cB.y + 4);
+      ctx.lineTo(cB.x, cB.y + cB.h - 4);
+      ctx.stroke();
+      R.textBold(ctx, '▾', cB.x + cB.w / 2, cB.y + cB.h / 2, 14, '#fff', 'center', 'middle');
     }
+
+
 
     // Board
     ctx.strokeStyle = '#333';
@@ -389,14 +487,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
     }
 
-    // Preview
-    if (selected && !dragging) {
+    // Preview row: [rotate button][shape area][flip button] with 0.191/0.618/0.191 split.
+    if (selected && !dragging && L.previewShape) {
       var prevCS = Math.floor(cs * 0.6);
-      R.roundRect(ctx, pad, L.previewY, W - 2 * pad, L.previewH, 8, '#f0f0f0', '#4CAF50');
-      R.text(ctx, '\u5DF2\u9009\u62E9: ' + selected.label + ' (\u70B9\u51FB\u68CB\u76D8\u6216\u62D6\u52A8\u653E\u7F6E)', W / 2, L.previewY + 4, 12, '#333', 'center');
-      var shapeW = selected.shape[0].length * prevCS;
-      var shapeX = (W - shapeW) / 2;
-      R.blockShape(ctx, selected.shape, selected.color, shapeX, L.previewY + 18, prevCS);
+      var rB = L.previewRotateBtn, fB = L.previewFlipBtn, sB = L.previewShape;
+      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '\u65CB\u8F6C', '#4CAF50', '#fff', 6);
+      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '\u7FFB\u8F6C', '#2196F3', '#fff', 6);
+      R.roundRect(ctx, sB.x, sB.y, sB.w, sB.h, 6, '#f7f7f7', '#4CAF50');
+      var shapeBlockW = selected.shape[0].length * prevCS;
+      var shapeBlockH = selected.shape.length * prevCS;
+      var shapeBlockX = sB.x + (sB.w - shapeBlockW) / 2;
+      var shapeBlockY = sB.y + (sB.h - shapeBlockH) / 2;
+      R.blockShape(ctx, selected.shape, selected.color, shapeBlockX, shapeBlockY, prevCS);
     }
 
     // Palette
@@ -513,6 +615,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- TOUCH HANDLING ----
   scene.onTouchStart = function (x, y) {
+    // Record every touch start for swipe-back / tap-vs-drag detection.
+    gestureStart = { x: x, y: y, t: Date.now(), fromEdge: x < 24 };
+
     if (selectPanelOpen) {
       dragStart = { x: x, y: y };
       return;
@@ -530,10 +635,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
     }
 
-    // Check preview area (drag selected block)
-    if (selected && !dragging && L.previewH > 0) {
-      var prevRect = { x: 10, y: L.previewY, w: 500, h: L.previewH };
-      if (R.hitTest(x, y, prevRect)) {
+    // Only the preview *shape area* initiates a drag — the side rotate/flip
+    // buttons stay as taps.
+    if (selected && !dragging && L.previewShape) {
+      if (R.hitTest(x, y, L.previewShape)) {
         dragging = selected;
         dragHasMoved = false;
         dragStart = { x: x, y: y };
@@ -583,19 +688,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (newIdx2 === puzzle.currentComboIndex) {
               selectPanelOpen = false; scene.dirty = true; return;
             }
-            playedCombos[newIdx2] = true;
-            var parts2 = PG.puzzleFromCombo(puzzle.solvedBoard, puzzle.allCombinations[newIdx2]);
-            var newPuzzle2 = {
-              prePlacedBlocks: parts2.prePlacedBlocks,
-              remainingBlocks: parts2.remainingBlocks,
-              difficulty: difficulty,
-              solvedBoard: puzzle.solvedBoard,
-              allCombinations: puzzle.allCombinations,
-              currentComboIndex: newIdx2,
-              dateStr: puzzle.dateStr,
-            };
-            selectPanelOpen = false;
-            callbacks.onSwitchPuzzle(newPuzzle2);
+            confirmAndSwitch(function () { executeManualSwitch(newIdx2); });
             return;
           }
         }
@@ -684,63 +777,70 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // Mode toggle
-    if (L.modeToggle && R.hitTest(x, y, L.modeToggle)) {
+    // Back arrow (top-left)
+    if (L.backBtn && R.hitTest(x, y, L.backBtn)) {
+      clearInterval(timerInterval);
+      callbacks.onBack();
+      return;
+    }
+
+    // Preview rotate button (left side of the preview shape)
+    if (L.previewRotateBtn && R.hitTest(x, y, L.previewRotateBtn)) {
+      if (selected) {
+        if (hintedIds.indexOf(selected.id) >= 0) {
+          showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A');
+          return;
+        }
+        selected.shape = B.rotateShape(selected.shape);
+        for (var rp = 0; rp < palette.length; rp++) {
+          if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
+        }
+        scene.dirty = true;
+      }
+      return;
+    }
+
+    // Preview flip button (right side of the preview shape)
+    if (L.previewFlipBtn && R.hitTest(x, y, L.previewFlipBtn)) {
+      if (selected) {
+        if (hintedIds.indexOf(selected.id) >= 0) {
+          showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A');
+          return;
+        }
+        selected.shape = B.flipShape(selected.shape);
+        for (var fp = 0; fp < palette.length; fp++) {
+          if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
+        }
+        scene.dirty = true;
+      }
+      return;
+    }
+
+    // 换题 split-button: caret toggles mode directly; main body executes current mode.
+    if (L.switchCaretBtn && R.hitTest(x, y, L.switchCaretBtn)) {
       switchMode = switchMode === 'random' ? 'manual' : 'random';
       scene.dirty = true;
       return;
     }
+    if (L.switchMainBtn && R.hitTest(x, y, L.switchMainBtn)) {
+      if (switchMode === 'manual') {
+        // Manual mode: open the combo panel; stamina check happens when a
+        // combo is actually picked (so cancelling the panel costs nothing).
+        selectPanelOpen = true;
+        selectScrollY = 0;
+        scene.dirty = true;
+      } else {
+        confirmAndSwitch(executeRandomSwitch);
+      }
+      return;
+    }
 
-    // Control buttons
+    // Other control buttons (hint, etc.) still go through L.ctrlBtns.
     for (var ci = 0; ci < L.ctrlBtns.length; ci++) {
       if (R.hitTest(x, y, L.ctrlBtns[ci])) {
         var action = L.ctrlBtns[ci].action;
-        if (action === 'rotate') {
-          if (!selected) return;
-          if (hintedIds.indexOf(selected.id) >= 0) { showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A'); return; }
-          selected.shape = B.rotateShape(selected.shape);
-          for (var rp = 0; rp < palette.length; rp++) if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
-          scene.dirty = true;
-        } else if (action === 'flip') {
-          if (!selected) return;
-          if (hintedIds.indexOf(selected.id) >= 0) { showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A'); return; }
-          selected.shape = B.flipShape(selected.shape);
-          for (var fp = 0; fp < palette.length; fp++) if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
-          scene.dirty = true;
-        } else if (action === 'hint') {
+        if (action === 'hint') {
           hintMode = true; scene.dirty = true;
-        } else if (action === 'restart') {
-          if (switchMode === 'manual') {
-            selectPanelOpen = true;
-            selectScrollY = 0;
-            scene.dirty = true;
-          } else {
-            var combos = puzzle.allCombinations;
-            var available = [];
-            for (var ai = 0; ai < combos.length; ai++) {
-              if (!playedCombos[ai]) available.push(ai);
-            }
-            if (available.length === 0) {
-              playedCombos = {};
-              for (var ai2 = 0; ai2 < combos.length; ai2++) available.push(ai2);
-            }
-            var newIdx = available[Math.floor(Math.random() * available.length)];
-            playedCombos[newIdx] = true;
-            var parts = PG.puzzleFromCombo(puzzle.solvedBoard, combos[newIdx]);
-            var newPuzzle = {
-              prePlacedBlocks: parts.prePlacedBlocks,
-              remainingBlocks: parts.remainingBlocks,
-              difficulty: difficulty,
-              solvedBoard: puzzle.solvedBoard,
-              allCombinations: combos,
-              currentComboIndex: newIdx,
-              dateStr: puzzle.dateStr,
-            };
-            callbacks.onSwitchPuzzle(newPuzzle);
-          }
-        } else if (action === 'back') {
-          clearInterval(timerInterval);
-          callbacks.onBack();
         }
         return;
       }
@@ -781,6 +881,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     for (var pi2 = 0; pi2 < L.placedBtns.length; pi2++) {
       if (R.hitTest(x, y, L.placedBtns[pi2])) {
         removeDropped(L.placedBtns[pi2].block.id);
+        return;
+      }
+    }
+
+    // Edge-swipe back: touch started within the left edge and moved right
+    // far enough horizontally, with limited vertical drift.
+    if (gestureStart.fromEdge && !dragging) {
+      var sdx = x - gestureStart.x;
+      var sdy = Math.abs(y - gestureStart.y);
+      if (sdx > 60 && sdy < sdx) {
+        clearInterval(timerInterval);
+        callbacks.onBack();
         return;
       }
     }
