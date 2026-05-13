@@ -1,5 +1,6 @@
 // WeChat Mini Game entry point
 var main = require('./js/main');
+var shareState = require('./js/shareState');
 
 // Create canvas
 var canvas = wx.createCanvas();
@@ -34,8 +35,15 @@ try {
 // Set 30fps (enough for a puzzle game)
 wx.setPreferredFramesPerSecond(30);
 
+// Read launch options for share deep-linking
+var launchQuery = {};
+try {
+  var launchOpts = wx.getLaunchOptionsSync();
+  if (launchOpts && launchOpts.query) launchQuery = launchOpts.query;
+} catch (e) {}
+
 // Initialize
-main.init(canvas, ctx, W, H, safe, menuBtn);
+main.init(canvas, ctx, W, H, safe, menuBtn, launchQuery);
 
 // Game loop
 function loop() {
@@ -70,8 +78,5 @@ wx.showShareMenu({
 });
 
 wx.onShareAppMessage(function () {
-  return {
-    title: '日历方块挑战 — 用方块拼出今天',
-    imageUrl: '',
-  };
+  return shareState.buildShareData();
 });

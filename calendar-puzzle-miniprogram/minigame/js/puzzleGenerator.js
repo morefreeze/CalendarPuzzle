@@ -13,6 +13,20 @@ var DIFFICULTY_CONFIG = {
   expert: { label: '\u94BB\u77F3', digCount: 9 },
 };
 
+function formatDateStr(d) {
+  var y = d.getFullYear();
+  var mo = d.getMonth() + 1;
+  var da = d.getDate();
+  return y + '-' + (mo < 10 ? '0' + mo : mo) + '-' + (da < 10 ? '0' + da : da);
+}
+
+function parseDateStr(s) {
+  if (!s) return null;
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
 function parseGrid(rows, n) {
   var ml = 0;
   for (var i = 0; i < rows.length; i++) if (rows[i].length > ml) ml = rows[i].length;
@@ -265,13 +279,23 @@ function boardToPlaced(sb) {
   return res;
 }
 
-function generatePuzzle(diff, date) {
-  var sb = solveBoard(date || new Date());
+function generatePuzzle(diff, opts) {
+  // Backwards compat: callers used to pass a Date as the second arg.
+  if (opts instanceof Date) opts = { date: opts };
+  opts = opts || {};
+  var date = opts.date || new Date();
+  var sb = solveBoard(date);
   if (!sb) return null;
   var digCount = DIFFICULTY_CONFIG[diff].digCount;
   var allCombos = enumAllDigCombinations(sb, digCount);
   if (!allCombos.length) return null;
-  var idx = Math.floor(Math.random() * allCombos.length);
+  var idx;
+  var ci = opts.comboIndex;
+  if (typeof ci === 'number' && ci >= 0 && ci < allCombos.length) {
+    idx = ci;
+  } else {
+    idx = Math.floor(Math.random() * allCombos.length);
+  }
   var combo = allCombos[idx];
   var parts = puzzleFromCombo(sb, combo);
   return {
@@ -281,6 +305,7 @@ function generatePuzzle(diff, date) {
     solvedBoard: sb,
     allCombinations: allCombos,
     currentComboIndex: idx,
+    dateStr: formatDateStr(date),
   };
 }
 
@@ -301,4 +326,6 @@ module.exports = {
   puzzleFromCombo: puzzleFromCombo,
   countSolutionsForCombo: countSolutionsForCombo,
   DIFFICULTY_CONFIG: DIFFICULTY_CONFIG,
+  formatDateStr: formatDateStr,
+  parseDateStr: parseDateStr,
 };

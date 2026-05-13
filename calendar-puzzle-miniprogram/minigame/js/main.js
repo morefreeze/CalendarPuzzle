@@ -2,12 +2,13 @@
 var createSelectScene = require('./selectScene');
 var createGameScene = require('./gameScene');
 var PG = require('./puzzleGenerator');
+var shareState = require('./shareState');
 
 var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
 var staminaRefreshInterval = null;
 
-function init(canvas, context, width, height, safe, menuBtn) {
+function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
   ctx = context;
   W = width;
   H = height;
@@ -19,7 +20,36 @@ function init(canvas, context, width, height, safe, menuBtn) {
     if (currentScene) currentScene.dirty = true;
   }, 1000);
 
+  if (tryLaunchShared(launchQuery)) return;
   goToSelect();
+}
+
+function tryLaunchShared(q) {
+  if (!q || !q.d || q.c === undefined) return false;
+  if (!PG.DIFFICULTY_CONFIG[q.d]) return false;
+  var ci = parseInt(q.c, 10);
+  if (isNaN(ci) || ci < 0) return false;
+  var date = PG.parseDateStr(q.date) || new Date();
+  showLoading();
+  setTimeout(function () {
+    var puzzle = PG.generatePuzzle(q.d, { comboIndex: ci, date: date });
+    if (!puzzle) {
+      goToSelect();
+      return;
+    }
+    launchGameScene(q.d, puzzle);
+  }, 50);
+  return true;
+}
+
+function showLoading() {
+  ctx.fillStyle = '#FAFAFA';
+  ctx.fillRect(0, 0, W, H);
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('正在生成谜题...', W / 2, H / 2);
 }
 
 function goToSelect() {
@@ -34,14 +64,7 @@ function startGame(difficulty) {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = null; // clear while generating
 
-  // Show loading
-  ctx.fillStyle = '#FAFAFA';
-  ctx.fillRect(0, 0, W, H);
-  ctx.font = '16px sans-serif';
-  ctx.fillStyle = '#333';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('\u6B63\u5728\u751F\u6210\u8C1C\u9898...', W / 2, H / 2);
+  showLoading();
 
   setTimeout(function () {
     var puzzle = PG.generatePuzzle(difficulty);
@@ -54,6 +77,12 @@ function startGame(difficulty) {
 }
 
 function launchGameScene(difficulty, puzzle) {
+  shareState.setCurrent({
+    difficulty: difficulty,
+    difficultyLabel: PG.DIFFICULTY_CONFIG[difficulty].label,
+    comboIndex: puzzle.currentComboIndex,
+    dateStr: puzzle.dateStr,
+  });
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = createGameScene(difficulty, puzzle, safeInsets, menuRect, {
     onSwitchPuzzle: function (newPuzzle) {

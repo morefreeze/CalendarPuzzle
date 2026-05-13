@@ -3,6 +3,7 @@ var R = require('./render');
 var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
+var shareState = require('./shareState');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -126,6 +127,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Message
     L.msgY = y;
     if (message) y += 18 + 4;
+
+    // Invite-friends button (only when game is won)
+    L.inviteBtn = null;
+    if (isWon) {
+      var ibtnH = 36;
+      L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
+      y += ibtnH + 8;
+    }
 
     // Controls — row 1: action buttons + switch area
     var btnGap = 6;
@@ -312,6 +321,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Message
     if (message) {
       R.textBold(ctx, message, W / 2, L.msgY, 14, msgIsWin ? '#FF4500' : '#2196F3', 'center');
+    }
+
+    // Invite friends button (on win)
+    if (L.inviteBtn) {
+      R.button(ctx, L.inviteBtn.x, L.inviteBtn.y, L.inviteBtn.w, L.inviteBtn.h, '🎯 邀请朋友挑战这一题', '#FF5722', '#fff', 8);
     }
 
     // Controls
@@ -578,6 +592,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               solvedBoard: puzzle.solvedBoard,
               allCombinations: puzzle.allCombinations,
               currentComboIndex: newIdx2,
+              dateStr: puzzle.dateStr,
             };
             selectPanelOpen = false;
             callbacks.onSwitchPuzzle(newPuzzle2);
@@ -660,6 +675,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
+    // Invite friends button (visible on win). Must call wx.shareAppMessage
+    // synchronously inside the touch handler — WeChat rejects async calls.
+    if (L.inviteBtn && R.hitTest(x, y, L.inviteBtn)) {
+      try {
+        wx.shareAppMessage(shareState.buildShareData());
+      } catch (e) {}
+      return;
+    }
+
     // Mode toggle
     if (L.modeToggle && R.hitTest(x, y, L.modeToggle)) {
       switchMode = switchMode === 'random' ? 'manual' : 'random';
@@ -710,6 +734,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               solvedBoard: puzzle.solvedBoard,
               allCombinations: combos,
               currentComboIndex: newIdx,
+              dateStr: puzzle.dateStr,
             };
             callbacks.onSwitchPuzzle(newPuzzle);
           }
