@@ -24,14 +24,32 @@ var initialBlockTypes = [
   {id:'J-block',label:'J',color:'#339933',shape:[[1,0],[1,0],[1,1]],key:'j'},
 ];
 
-// Cell type colors
-var CELL_COLORS = {
-  month: '#FFB6C1',
-  day: '#AAEEBB',
-  weekday: '#87CEFA',
-  empty: '#FFFFFF',
-  uncoverable: '#F0E68C',
+// Color themes. Add a new entry to THEMES and call setCellTheme(name) to swap.
+// Consumers read B.CELL_COLORS; setCellTheme mutates that object in place so
+// existing references keep pointing at the active palette.
+var THEMES = {
+  green: {
+    month: '#E8F5E9',       // very light green
+    day: '#C8E6C9',         // light green
+    weekday: '#A5D6A7',     // medium-light green
+    empty: '#FFFFFF',
+    uncoverable: '#FF7043', // deep orange — high contrast against the greens
+  },
 };
+
+var CELL_COLORS = {};
+var currentTheme = '';
+
+function setCellTheme(name) {
+  if (!THEMES[name]) return false;
+  var t = THEMES[name];
+  for (var k in CELL_COLORS) if (Object.prototype.hasOwnProperty.call(CELL_COLORS, k)) delete CELL_COLORS[k];
+  for (var k2 in t) CELL_COLORS[k2] = t[k2];
+  currentTheme = name;
+  return true;
+}
+
+setCellTheme('green');
 
 function formatTime(s) {
   var m = Math.floor(s / 60);
@@ -160,6 +178,8 @@ module.exports = {
   boardLayoutData: boardLayoutData,
   initialBlockTypes: initialBlockTypes,
   CELL_COLORS: CELL_COLORS,
+  THEMES: THEMES,
+  setCellTheme: setCellTheme,
   formatTime: formatTime,
   getUncoverableCells: getUncoverableCells,
   rotateShape: rotateShape,

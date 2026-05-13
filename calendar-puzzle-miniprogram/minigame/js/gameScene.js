@@ -258,8 +258,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.previewShape = null;
     if (selected && !dragging) {
       var prevCS = Math.floor(cellSize * 0.6);
-      var shapeRowsH = selected.shape.length * prevCS;
-      var rowH = Math.max(shapeRowsH + 12, 44);
+      // Fixed to 4-cell height so the row doesn't resize when the player rotates the block.
+      var rowH = 4 * prevCS + 12;
       var totalW = W - 2 * pad;
       var gapW = Math.floor(totalW * 0.05);
       var shapeAreaW = Math.floor(totalW * 0.618 * 0.9);
@@ -740,9 +740,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Handle drag end
     if (dragging) {
       if (!dragHasMoved) {
-        // Tap: select block
+        // Tap: select block (no message — the preview row already shows it)
         selected = dragging;
-        showMsg('\u5DF2\u9009\u62E9: ' + dragging.label);
         dragging = null;
         scene.dirty = true;
         return;
