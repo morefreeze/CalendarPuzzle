@@ -4,6 +4,7 @@ var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
+var progress = require('./progress');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -35,6 +36,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var playedCombos = puzzle._playedCombos || {};
   playedCombos[puzzle.currentComboIndex] = true;
   puzzle._playedCombos = playedCombos;
+  var wonCombos = puzzle._wonCombos || progress.getWonCombos(puzzle.dateStr, difficulty);
+  puzzle._wonCombos = wonCombos;
 
   // Async solution count
   var solutionCountTimer = setTimeout(function () {
@@ -78,6 +81,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        wonCombos[puzzle.currentComboIndex] = true;
+        progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
         clearInterval(timerInterval);
         showMsg('\u606D\u559C\u901A\u5173\uFF01', true);
       }
@@ -91,7 +96,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     palette = palette.filter(function (b) { return b.id !== block.id; });
     selected = null;
     scene.dirty = true;
-    showMsg('\u653E\u7F6E\u6210\u529F\uFF01');
     checkWin();
   }
 
@@ -105,7 +109,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     palette.push(restored);
     selected = null;
     scene.dirty = true;
-    showMsg('\u5DF2\u79FB\u9664\u65B9\u5757');
   }
 
   // ---- Switch puzzle (stamina-aware) ----
@@ -132,6 +135,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       allCombinations: combos,
       currentComboIndex: newIdx,
       dateStr: puzzle.dateStr,
+      _playedCombos: playedCombos,
+      _wonCombos: wonCombos,
     });
   }
 
@@ -147,6 +152,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       allCombinations: puzzle.allCombinations,
       currentComboIndex: newIdx,
       dateStr: puzzle.dateStr,
+      _playedCombos: playedCombos,
+      _wonCombos: wonCombos,
     });
   }
 
@@ -601,6 +608,25 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         }
 
         R.text(ctx, '#' + (item.comboIndex + 1), item.x + item.w / 2, iy2 + item.h - 14, 9, '#999', 'center');
+
+        if (wonCombos[item.comboIndex]) {
+          var badgeR = 8;
+          var bcx = item.x + item.w - badgeR - 2;
+          var bcy2 = iy2 + badgeR + 2;
+          ctx.beginPath();
+          ctx.arc(bcx, bcy2, badgeR, 0, Math.PI * 2);
+          ctx.fillStyle = '#4CAF50';
+          ctx.fill();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(bcx - badgeR * 0.45, bcy2 + badgeR * 0.05);
+          ctx.lineTo(bcx - badgeR * 0.10, bcy2 + badgeR * 0.40);
+          ctx.lineTo(bcx + badgeR * 0.50, bcy2 - badgeR * 0.35);
+          ctx.stroke();
+        }
       }
 
       ctx.restore();
