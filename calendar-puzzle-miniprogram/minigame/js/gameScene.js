@@ -633,7 +633,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.button(ctx, L.selectCloseBtn.x, L.selectCloseBtn.y, L.selectCloseBtn.w, L.selectCloseBtn.h, '\u53D6\u6D88', '#eee', '#333', 6);
     }
 
-    // Drag ghost
+    // Snap landing preview on the board (does not affect the floating ghost).
+    if (dragging && dragHasMoved) {
+      var gx = dragPos.x - cs;
+      var gy = dragPos.y - cs;
+      var snapCx = Math.round((gx - L.boardX) / cs);
+      var snapCy = Math.round((gy - L.boardY) / cs);
+      if (snapCx >= 0 && snapCx < 7 && snapCy >= 0 && snapCy < 8) {
+        var valid = B.isValidPlacement(dragging, { x: snapCx, y: snapCy }, allBlocks(), uncov, dragging.id);
+        var landColor = valid ? dragging.color : '#bbbbbb';
+        R.blockShape(ctx, dragging.shape, landColor, L.boardX + snapCx * cs, L.boardY + snapCy * cs, cs, 0.35);
+      }
+    }
+
+    // Floating drag ghost — follows the finger, no snapping.
     if (dragging && dragHasMoved) {
       R.blockShape(ctx, dragging.shape, dragging.color, dragPos.x - cs, dragPos.y - cs, cs, 0.7);
     }
