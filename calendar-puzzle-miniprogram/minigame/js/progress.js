@@ -78,10 +78,23 @@ function recordTime(dateStr, difficulty, seconds) {
   return { isNew: isNew, prev: prev, current: seconds };
 }
 
+// First-launch onboarding completion flag.
+var TUTORIAL_KEY = 'calendarPuzzleTutorialDone';
+
+function isTutorialDone() {
+  try { return wx.getStorageSync(TUTORIAL_KEY) === '1'; } catch (e) { return false; }
+}
+
+function markTutorialDone() {
+  try { wx.setStorageSync(TUTORIAL_KEY, '1'); } catch (e) {}
+}
+
 module.exports = {
   getWonCombos: getWonCombos,
   markWonCombo: markWonCombo,
   countCompletedForDate: countCompletedForDate,
   getBestTime: getBestTime,
   recordTime: recordTime,
+  isTutorialDone: isTutorialDone,
+  markTutorialDone: markTutorialDone,
 };

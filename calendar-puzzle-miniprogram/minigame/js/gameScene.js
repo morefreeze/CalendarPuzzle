@@ -1,6 +1,6 @@
 // Main game scene — board, palette, controls, hints, drag.
 // v0.3.0 UX rewrite: compact top header, brand-green controls, three-state
-// board cells, unified palette cards, snap + shake feedback, top toast.
+// board cells, unified palette cards, snap feedback, top toast, wheel scroll.
 var R = require('./render');
 var B = require('./board');
 var PG = require('./puzzleGenerator');
@@ -17,8 +17,6 @@ var NEUTRAL = '#9E9E9E';      // secondary action grey
 
 // Snap animation — 60ms ease-out, makes "落子有重量"
 var SNAP_DUR = 60;
-// Shake animation — 160ms left/right pulse on invalid placement
-var SHAKE_DUR = 160;
 // Palette breathing — first-card pulse for 1.5s on first launch
 var BREATH_DUR = 1500;
 
@@ -56,12 +54,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // ---- Animations ----
   // Snap: list of { id, fromX, fromY, toX, toY, start } in canvas px
   var snapAnims = [];
-  // Shake: { x, y, blockShape, color, start }
-  var shake = null;
   var breathStart = Date.now();
   // Confetti pieces seeded on win
   var confetti = [];
   var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
+  var winCardDismissed = false;
 
   // ---- Toast (top-floating, doesn't push layout) ----
   var toast = { msg: '', isWin: false, start: 0, dur: 5000 };
@@ -83,6 +80,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // ---- Drag state ----
   var dragging = null;
   var dragHasMoved = false;
+  var dragEnteredBoard = false; // snapped to a real grid cell at least once
   var dragStart = { x: 0, y: 0 };
   var dragPos = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
@@ -100,11 +98,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (now - a.start < SNAP_DUR) { alive = true; return true; }
       return false;
     });
-    if (shake) {
-      var maxDur = SHAKE_DUR + (shake.returnX != null ? 200 : 0);
-      if (now - shake.start < maxDur) alive = true;
-      else shake = null;
-    }
     if (palette.length > 0 && now - breathStart < BREATH_DUR) alive = true;
     if (alive) scene.dirty = true;
   }, 16);
@@ -119,19 +112,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   }
 
   function spawnConfetti() {
-    var colors = ['#E91E63','#FFC107','#4CAF50','#03A9F4','#9C27B0','#FF5722'];
+    var colors = ['#E91E63','#FFC107','#4CAF50','#03A9F4','#9C27B0','#FF5722','#FF9800','#00BCD4'];
     confetti = [];
-    for (var i = 0; i < 80; i++) {
+    for (var i = 0; i < 120; i++) {
       confetti.push({
         x: Math.random(),                  // 0..1 of canvas W
-        y: -Math.random() * 0.2,           // start above viewport
-        vx: (Math.random() - 0.5) * 0.012, // horizontal drift per frame
-        vy: 0.006 + Math.random() * 0.012,
+        y: -Math.random() * 0.15,          // start just above viewport
+        vx: (Math.random() - 0.5) * 0.024, // horizontal drift (2× faster)
+        vy: 0.022 + Math.random() * 0.028, // fall rate ~3× faster than before
         rot: Math.random() * Math.PI * 2,
-        rotV: (Math.random() - 0.5) * 0.2,
-        size: 6 + Math.random() * 6,
+        rotV: (Math.random() - 0.5) * 0.35,
+        size: 7 + Math.random() * 7,
         color: colors[Math.floor(Math.random() * colors.length)],
-        born: Date.now() + Math.random() * 400,
+        born: Date.now() + Math.random() * 120, // all spawned within 120ms
       });
     }
     scene.dirty = true;
@@ -207,26 +200,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     scene.dirty = true;
   }
 
-  function triggerShake(shapeBlock, x, y, returnX, returnY) {
-    shake = {
-      x: x, y: y,
-      shape: shapeBlock.shape,
-      color: shapeBlock.color,
-      start: Date.now(),
-      // If a return point is provided, the ghost slides back after the shake.
-      returnX: typeof returnX === 'number' ? returnX : null,
-      returnY: typeof returnY === 'number' ? returnY : null,
-    };
-    try { wx.vibrateShort && wx.vibrateShort({ type: 'heavy' }); } catch (e) {}
-    scene.dirty = true;
-  }
-
   function paletteRectFor(blockId) {
     for (var i = 0; i < L.palItems.length; i++) {
       if (L.palItems[i].block.id === blockId) return L.palItems[i];
     }
     return null;
   }
+
 
   // ---- Switch puzzle (stamina-aware) ----
   function switchCost() { return diffCfg.digCount; }
@@ -320,28 +300,25 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     var backHit = 44;
     L.backBtn = { x: pad - 8, y: padTop + 4, w: backHit, h: backHit };
 
-    // Top header row Y — aligned with capsule menu
+    // ── Menu row (back arrow + WeChat capsule) ──
     var menuTop = menuRect.top || (padTop + 6);
     L.headerY = Math.max(menuTop, padTop + 6);
 
-    // Difficulty centered as the main title; sub-label below it.
-    L.diffY = L.headerY + 4;
+    // ── Title row: difficulty centered + stamina capsule on the right ──
+    var titleTop = Math.max(L.backBtn.y + L.backBtn.h + 8, menuBottom + 8);
+    L.diffY = titleTop;
     L.diffSubY = L.diffY + 26;
+    L.timerY = L.diffSubY;
+    // Stamina capsule aligned with the title row, anchored to the right edge.
+    L.staminaW = 92; L.staminaH = 22;
+    L.staminaX = W - L.staminaW - pad;
+    L.staminaY = L.diffY + (22 - L.staminaH) / 2 + 2;
 
-    // Timer right of difficulty (small, secondary)
-    L.timerY = L.headerY + 8;
-
-    // Stamina capsule top-left of menu (with countdown)
-    L.staminaW = 86; L.staminaH = 22;
-    L.staminaX = (menuRect.left || W) - L.staminaW - 6;
-    L.staminaY = L.headerY + (menuTop > 0 ? (menuRect.height || 32) / 2 - L.staminaH / 2 : 4);
-
-    // Switch icons (🎲 / 🎯) above stamina, smaller — moved into compact bar
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
 
-    // Begin main content below header (whichever is lower)
-    var y = Math.max(L.backBtn.y + L.backBtn.h + 6, L.diffSubY + 22, menuBottom + 8);
+    // Begin main content below the title row.
+    var y = L.diffSubY + 22;
 
     // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons
     var btnH = 36, btnGap = 8;
@@ -369,6 +346,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Invite (only on win) — squeezed below board
     L.inviteBtn = null;
+    L.shareBtn = null;
+    L.winCard = null;
+    L.winCloseBtn = null;
     if (isWon) {
       var ibtnH = 36;
       L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
@@ -854,42 +834,33 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
     }
 
-    // --- Shake animation (invalid placement) → slide back to origin if known ---
-    if (shake) {
-      var nowK = Date.now();
-      var sk = (nowK - shake.start) / SHAKE_DUR;
-      if (sk < 1) {
-        // First half: shake in place.
-        var amp = Math.sin(sk * Math.PI * 4) * 6 * (1 - sk);
-        R.blockShape(ctx, shake.shape, shake.color, shake.x + amp, shake.y, cs, 0.55);
-      } else if (shake.returnX != null) {
-        // Second phase: ease back to the palette card.
-        var bd = (nowK - shake.start - SHAKE_DUR) / 200;
-        if (bd >= 1) { shake = null; scene.dirty = true; }
-        else {
-          var ke = R.easeOutCubic(bd);
-          var bx = shake.x + (shake.returnX - shake.x) * ke;
-          var by = shake.y + (shake.returnY - shake.y) * ke;
-          R.blockShape(ctx, shake.shape, shake.color, bx, by, cs * (1 - 0.35 * ke), 0.5);
-        }
-      }
-    }
-
-    // --- Win summary card + confetti ---
-    if (isWon && winStats) {
+    // --- Win modal (card + dim backdrop) + confetti ---
+    if (isWon && winStats && !winCardDismissed) {
+      // Dim backdrop — makes the card modal, click-outside dismisses.
+      R.overlay(ctx, W, H);
       var cardW = Math.min(W - 32, 320);
-      var cardH = 132;
+      var cardH = 200;
       var cardX = (W - cardW) / 2;
-      var cardY = L.boardY + L.boardH / 2 - cardH / 2;
+      var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
+      L.winCard = { x: cardX, y: cardY, w: cardW, h: cardH };
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.20)';
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 4;
+      ctx.shadowColor = 'rgba(0,0,0,0.30)';
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetY = 6;
       R.roundRect(ctx, cardX, cardY, cardW, cardH, 14, '#fff');
       ctx.restore();
-      R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 18, 20, BRAND_DARK, 'center');
+      // Close ×
+      var clz = 28;
+      L.winCloseBtn = { x: cardX + cardW - clz - 6, y: cardY + 6, w: clz, h: clz };
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.beginPath();
+      ctx.arc(L.winCloseBtn.x + clz / 2, L.winCloseBtn.y + clz / 2, clz / 2, 0, Math.PI * 2);
+      ctx.fill();
+      R.textBold(ctx, '×', L.winCloseBtn.x + clz / 2, L.winCloseBtn.y + clz / 2 - 1, 20, '#666', 'center', 'middle');
+
+      R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 22, 20, BRAND_DARK, 'center');
       R.textBold(ctx, B.formatTime(winStats.time),
-        cardX + cardW / 2, cardY + 52, 26, '#333', 'center', 'middle');
+        cardX + cardW / 2, cardY + 60, 26, '#333', 'center', 'middle');
       var sub;
       if (winStats.isNewPB && winStats.prevPB != null) {
         sub = '🏆 新纪录！（前最佳 ' + B.formatTime(winStats.prevPB) + '）';
@@ -898,10 +869,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       } else {
         sub = '最佳 ' + B.formatTime(progress.getBestTime(puzzle.dateStr, difficulty));
       }
-      R.text(ctx, sub, cardX + cardW / 2, cardY + 78, 12,
+      R.text(ctx, sub, cardX + cardW / 2, cardY + 88, 12,
         winStats.isNewPB ? '#FF8F00' : '#888', 'center');
       R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
-        cardX + cardW / 2, cardY + 100, 12, '#666', 'center');
+        cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
+
+      // Share button anchored to the bottom of the card.
+      var sbtnW = cardW - 32, sbtnH = 40;
+      L.shareBtn = {
+        x: cardX + (cardW - sbtnW) / 2,
+        y: cardY + cardH - sbtnH - 14,
+        w: sbtnW, h: sbtnH,
+      };
+      R.button(ctx, L.shareBtn.x, L.shareBtn.y, L.shareBtn.w, L.shareBtn.h,
+        '🎯 邀请朋友挑战这一题', '#FF7043', '#fff', 10);
 
       // Confetti
       var nowC = Date.now();
@@ -949,6 +930,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   scene.onTouchStart = function (x, y) {
     gestureStart = { x: x, y: y, t: Date.now(), fromEdge: x < 24 };
 
+    // Modal win card swallows palette drags etc.
+    if (isWon && !winCardDismissed && L.winCard) return;
+
     if (selectPanelOpen) {
       dragStart = { x: x, y: y };
       selectScrolled = false;
@@ -961,6 +945,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (R.hitTest(x, y, L.palItems[i])) {
         dragging = L.palItems[i].block;
         dragHasMoved = false;
+        dragEnteredBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
@@ -972,6 +957,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (R.hitTest(x, y, L.previewShape)) {
         dragging = selected;
         dragHasMoved = false;
+        dragEnteredBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
@@ -999,10 +985,33 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       dragHasMoved = true;
     }
+    // Track whether the drag has snapped to a real grid cell at any point.
+    if (!dragEnteredBoard && L.cellSize) {
+      var ccs = L.cellSize;
+      var scx = Math.round((dragPos.x - ccs - L.boardX) / ccs);
+      var scy = Math.round((dragPos.y - ccs - L.boardY) / ccs);
+      if (scx >= 0 && scx < 7 && scy >= 0 && scy < 8) dragEnteredBoard = true;
+    }
     scene.dirty = true;
   };
 
   scene.onTouchEnd = function (x, y) {
+    // ── Win modal: × button dismisses; share button shares; tap outside
+    //    dismisses; tap inside (not a button) is swallowed.
+    if (isWon && !winCardDismissed && L.winCard) {
+      if (L.winCloseBtn && R.hitTest(x, y, L.winCloseBtn)) {
+        winCardDismissed = true; scene.dirty = true; return;
+      }
+      if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
+        try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
+        return;
+      }
+      if (!R.hitTest(x, y, L.winCard)) {
+        winCardDismissed = true; scene.dirty = true; return;
+      }
+      return;
+    }
+
     // Help overlay click anywhere closes it.
     if (helpOpen) { helpOpen = false; scene.dirty = true; return; }
 
@@ -1083,26 +1092,26 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var gy = dragPos.y - cs;
       var cx = Math.round((gx - L.boardX) / cs);
       var cy = Math.round((gy - L.boardY) / cs);
-      if (cx >= 0 && cx < 7 && cy >= 0 && cy < 8) {
-        if (B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
-          placeBlock(dragging, cx, cy, dragPos.x - cs, dragPos.y - cs);
-        } else {
-          var pr = paletteRectFor(dragging.id);
-          var rx = pr ? pr.x + (pr.w - dragging.shape[0].length * cs) / 2 : null;
-          var ry = pr ? pr.y + (pr.h - dragging.shape.length * cs) / 2 : null;
-          triggerShake(dragging, L.boardX + cx * cs, L.boardY + cy * cs, rx, ry);
-          showToast('无法放置！');
-        }
-      } else {
+      var onBoard = cx >= 0 && cx < 7 && cy >= 0 && cy < 8;
+      if (onBoard && B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
+        placeBlock(dragging, cx, cy, dragPos.x - cs, dragPos.y - cs);
+      } else if (onBoard) {
+        showToast('无法放置！');
+      } else if (dragEnteredBoard) {
         showToast('超出棋盘范围');
       }
+      // else: drag never reached the board → silent.
       dragging = null;
       dragHasMoved = false;
       scene.dirty = true;
       return;
     }
 
-    // Invite
+    // Share button (in-card on win) or fallback invite button (legacy slot)
+    if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
+      try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
+      return;
+    }
     if (L.inviteBtn && R.hitTest(x, y, L.inviteBtn)) {
       try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
       return;
@@ -1188,7 +1197,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (B.isValidPlacement(selected, { x: tapCX, y: tapCY }, allBlocks(), uncov, selected.id)) {
         placeBlock(selected, tapCX, tapCY, L.boardX + tapCX * cs2, L.boardY + tapCY * cs2);
       } else {
-        triggerShake(selected, L.boardX + tapCX * cs2, L.boardY + tapCY * cs2);
         showToast('无法放置！');
       }
       return;
@@ -1207,6 +1215,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.update = function () {};
+
+  scene.onWheel = function (dy) {
+    if (selectPanelOpen && L.selectPanel) {
+      var max = Math.max(0, L.selectContentH - L.selectVisibleH);
+      selectScrollY = Math.max(0, Math.min(selectScrollY + dy, max));
+      scene.dirty = true;
+    }
+  };
 
   scene.destroy = function () {
     clearInterval(timerInterval);

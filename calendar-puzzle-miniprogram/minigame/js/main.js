@@ -114,10 +114,15 @@ function onTouchEnd(x, y) {
   if (currentScene) currentScene.onTouchEnd(x, y);
 }
 
+function onWheel(dy) {
+  if (currentScene && currentScene.onWheel) currentScene.onWheel(dy);
+}
+
 module.exports = {
   init: init,
   render: render,
   onTouchStart: onTouchStart,
   onTouchMove: onTouchMove,
   onTouchEnd: onTouchEnd,
+  onWheel: onWheel,
 };

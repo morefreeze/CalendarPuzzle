@@ -71,6 +71,14 @@ wx.onTouchEnd(function (res) {
   }
 });
 
+// Mouse wheel (DevTools / PC clients). Mini-game runtime may not expose it.
+if (typeof wx.onWheel === 'function') {
+  wx.onWheel(function (res) {
+    var dy = (res && (res.deltaY || res.dy)) || 0;
+    if (dy) main.onWheel(dy);
+  });
+}
+
 // Share
 wx.showShareMenu({
   withShareTicket: true,
