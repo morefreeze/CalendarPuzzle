@@ -31,6 +31,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var switchMode = 'random'; // 'random' or 'manual'; toggled by the caret
   var selectPanelOpen = false;
   var selectScrollY = 0;
+  var selectScrolled = false; // distinguish scroll vs tap inside the select panel
   var solutionCount = -1;
   var solutionCountText = '\u89E3\u6CD5: \u8BA1\u7B97\u4E2D...';
   var playedCombos = puzzle._playedCombos || {};
@@ -42,7 +43,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // Async solution count
   var solutionCountTimer = setTimeout(function () {
     var combo = puzzle.allCombinations[puzzle.currentComboIndex];
-    solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo);
+    solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo.letters);
     solutionCountText = '\u89E3\u6CD5: ' + solutionCount;
     scene.dirty = true;
   }, 50);
@@ -126,12 +127,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     var newIdx = available[Math.floor(Math.random() * available.length)];
     playedCombos[newIdx] = true;
-    var parts = PG.puzzleFromCombo(puzzle.solvedBoard, combos[newIdx]);
+    var newCombo = combos[newIdx];
+    var newBase = puzzle.bases ? puzzle.bases[newCombo.baseIdx] : puzzle.solvedBoard;
+    var parts = PG.puzzleFromCombo(newBase, newCombo.letters);
     callbacks.onSwitchPuzzle({
       prePlacedBlocks: parts.prePlacedBlocks,
       remainingBlocks: parts.remainingBlocks,
       difficulty: difficulty,
-      solvedBoard: puzzle.solvedBoard,
+      solvedBoard: newBase,
+      bases: puzzle.bases,
       allCombinations: combos,
       currentComboIndex: newIdx,
       dateStr: puzzle.dateStr,
@@ -142,13 +146,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   function executeManualSwitch(newIdx) {
     playedCombos[newIdx] = true;
-    var parts = PG.puzzleFromCombo(puzzle.solvedBoard, puzzle.allCombinations[newIdx]);
+    var newCombo = puzzle.allCombinations[newIdx];
+    var newBase = puzzle.bases ? puzzle.bases[newCombo.baseIdx] : puzzle.solvedBoard;
+    var parts = PG.puzzleFromCombo(newBase, newCombo.letters);
     selectPanelOpen = false;
     callbacks.onSwitchPuzzle({
       prePlacedBlocks: parts.prePlacedBlocks,
       remainingBlocks: parts.remainingBlocks,
       difficulty: difficulty,
-      solvedBoard: puzzle.solvedBoard,
+      solvedBoard: newBase,
+      bases: puzzle.bases,
       allCombinations: puzzle.allCombinations,
       currentComboIndex: newIdx,
       dateStr: puzzle.dateStr,
@@ -565,7 +572,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       ctx.clip();
 
       var combos2 = puzzle.allCombinations;
-      var sb = puzzle.solvedBoard;
       var tCS = 6;
       for (var si2 = 0; si2 < L.selectItems.length; si2++) {
         var item = L.selectItems[si2];
@@ -582,6 +588,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         }
 
         var combo = combos2[item.comboIndex];
+        var sb = puzzle.bases ? puzzle.bases[combo.baseIdx] : puzzle.solvedBoard;
+        var letters = combo.letters || combo;
         var bx0 = item.x + 4, by0 = iy2 + 2;
         for (var ty = 0; ty < 8; ty++) {
           for (var tx = 0; tx < 7; tx++) {
@@ -589,7 +597,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             var px2 = bx0 + tx * tCS, py2 = by0 + ty * tCS;
             if (ch === '#' || ch === '*') {
               ctx.fillStyle = ch === '*' ? '#F0E68C' : '#eee';
-            } else if (combo.indexOf(ch) >= 0) {
+            } else if (letters.indexOf(ch) >= 0) {
               ctx.fillStyle = '#fff';
             } else {
               var bc = '#ccc';
@@ -659,6 +667,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     if (selectPanelOpen) {
       dragStart = { x: x, y: y };
+      selectScrolled = false;
       return;
     }
     if (hintMode) return;
@@ -692,6 +701,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (selectPanelOpen && L.selectPanel) {
       if (!dragging) {
         var scrollDelta = dragStart.y - y;
+        if (Math.abs(scrollDelta) >= DRAG_THRESHOLD) selectScrolled = true;
         selectScrollY = Math.max(0, Math.min(selectScrollY + scrollDelta * 0.5, Math.max(0, L.selectContentH - L.selectVisibleH)));
         dragStart = { x: x, y: y };
         scene.dirty = true;
@@ -711,6 +721,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   scene.onTouchEnd = function (x, y) {
     // Select panel
     if (selectPanelOpen) {
+      // Treat any gesture that scrolled the list as a scroll, not a tap.
+      if (selectScrolled) { selectScrolled = false; return; }
       if (L.selectCloseBtn && R.hitTest(x, y, L.selectCloseBtn)) {
         selectPanelOpen = false; scene.dirty = true; return;
       }

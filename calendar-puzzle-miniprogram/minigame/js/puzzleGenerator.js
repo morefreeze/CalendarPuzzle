@@ -1,10 +1,35 @@
 var DLX = require('./dlx').DLX;
 var boardMod = require('./board');
+var packData = require('./pack_free');
 var initialBlockTypes = boardMod.initialBlockTypes;
 var boardLayoutData = boardMod.boardLayoutData;
 
 var ROWS = 8, COLS = 7;
 var BOARD_BLK = '#', DATE_BLK = '*', EMPTY = ' ';
+
+// Pack keys are (month, day, python_weekday) with python weekday = 0..6 (Mon..Sun).
+function packKey(date) {
+  var jsDay = date.getDay(); // 0=Sun..6=Sat
+  var pyWd = jsDay === 0 ? 6 : jsDay - 1;
+  return (date.getMonth() + 1) + '-' + date.getDate() + '-' + pyWd;
+}
+
+// 56-char board string -> 8x7 2D array (same shape as solveBoard's output).
+function parseBoardStr(s) {
+  var b = [];
+  for (var y = 0; y < ROWS; y++) {
+    var row = [];
+    for (var x = 0; x < COLS; x++) row.push(s[y * COLS + x]);
+    b.push(row);
+  }
+  return b;
+}
+
+function getBasesFromPack(date) {
+  var arr = packData[packKey(date)];
+  if (!arr || !arr.length) return null;
+  return arr.map(parseBoardStr);
+}
 
 var DIFFICULTY_CONFIG = {
   easy:   { label: '\u9ED1\u94C1', digCount: 3 },
@@ -284,11 +309,27 @@ function generatePuzzle(diff, opts) {
   if (opts instanceof Date) opts = { date: opts };
   opts = opts || {};
   var date = opts.date || new Date();
-  var sb = solveBoard(date);
-  if (!sb) return null;
+
+  // Try the pre-baked solution pack first; fall back to live DLX if the date
+  // isn't in the pack (e.g. game design has changed and the pack is stale).
+  var bases = getBasesFromPack(date);
+  if (!bases) {
+    var sb = solveBoard(date);
+    if (!sb) return null;
+    bases = [sb];
+  }
+
   var digCount = DIFFICULTY_CONFIG[diff].digCount;
-  var allCombos = enumAllDigCombinations(sb, digCount);
+  // Enumerate {baseIdx, letters} pairs across every base in the pack.
+  var allCombos = [];
+  for (var bi = 0; bi < bases.length; bi++) {
+    var letters = enumAllDigCombinations(bases[bi], digCount);
+    for (var li = 0; li < letters.length; li++) {
+      allCombos.push({ baseIdx: bi, letters: letters[li] });
+    }
+  }
   if (!allCombos.length) return null;
+
   var idx;
   var ci = opts.comboIndex;
   if (typeof ci === 'number' && ci >= 0 && ci < allCombos.length) {
@@ -297,12 +338,14 @@ function generatePuzzle(diff, opts) {
     idx = Math.floor(Math.random() * allCombos.length);
   }
   var combo = allCombos[idx];
-  var parts = puzzleFromCombo(sb, combo);
+  var solvedBoard = bases[combo.baseIdx];
+  var parts = puzzleFromCombo(solvedBoard, combo.letters);
   return {
     prePlacedBlocks: parts.prePlacedBlocks,
     remainingBlocks: parts.remainingBlocks,
     difficulty: diff,
-    solvedBoard: sb,
+    solvedBoard: solvedBoard,
+    bases: bases,
     allCombinations: allCombos,
     currentComboIndex: idx,
     dateStr: formatDateStr(date),
