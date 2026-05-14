@@ -35,11 +35,7 @@ function startTutorial() {
   currentScene = null;
   showLoading();
   setTimeout(function () {
-    // TEMP: testing with tomorrow's date (remove this offset after verifying
-    // the generator works for an arbitrary date — should revert to `new Date()`).
-    var testDate = new Date();
-    testDate.setDate(testDate.getDate() + 1);
-    var puz = PG.generateTutorialPuzzle(testDate);
+    var puz = PG.generateTutorialPuzzle();
     if (!puz) {
       progress.markTutorialDone();
       goToSelect();
