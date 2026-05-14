@@ -17,8 +17,6 @@ var NEUTRAL = '#9E9E9E';      // secondary action grey
 
 // Snap animation — 60ms ease-out, makes "落子有重量"
 var SNAP_DUR = 60;
-// Palette breathing — first-card pulse for 1.5s on first launch
-var BREATH_DUR = 1500;
 
 module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
   var scene = {};
@@ -54,7 +52,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // ---- Animations ----
   // Snap: list of { id, fromX, fromY, toX, toY, start } in canvas px
   var snapAnims = [];
-  var breathStart = Date.now();
   // Confetti pieces seeded on win
   var confetti = [];
   var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
@@ -81,6 +78,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var dragging = null;
   var dragHasMoved = false;
   var dragEnteredBoard = false; // snapped to a real grid cell at least once
+  var dragFromBoard = false;    // dragged block was lifted from the board, not palette
+  var dragOriginX = 0;          // original board cell of a board-lifted drag
+  var dragOriginY = 0;
   var dragStart = { x: 0, y: 0 };
   var dragPos = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
@@ -98,7 +98,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (now - a.start < SNAP_DUR) { alive = true; return true; }
       return false;
     });
-    if (palette.length > 0 && now - breathStart < BREATH_DUR) alive = true;
     if (alive) scene.dirty = true;
   }, 16);
 
@@ -637,23 +636,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.blockShape(ctx, selected.shape, selected.color, sbx, sby, prevCS);
     }
 
-    // --- Palette (unified cards, no letters, breathing first card on first launch) ---
+    // --- Palette (unified cards, no letters) ---
     if (palette.length > 0) {
-      var nowB = Date.now();
-      var breath = (nowB - breathStart < BREATH_DUR) ? 1 - (nowB - breathStart) / BREATH_DUR : 0;
       for (var pi2 = 0; pi2 < L.palItems.length; pi2++) {
         var item = L.palItems[pi2];
         var isSel = selected && selected.id === item.block.id;
         var isDragOrigin = dragging && dragging.id === item.block.id;
         var isHinted = hintedIds.indexOf(item.block.id) >= 0;
-        // First-card breathing — only on the first palette card, fades over BREATH_DUR.
-        var bScale = 1;
-        if (pi2 === 0 && breath > 0 && !isSel && !dragging) {
-          bScale = 1 + 0.06 * Math.sin((nowB - breathStart) / 90) * breath;
-        }
         var bg = isSel ? BRAND_LIGHT : (isHinted ? BRAND_LIGHT : '#fff');
         var border = (isSel || isHinted) ? BRAND : 'rgba(0,0,0,0.12)';
-        var scale = isSel ? 1.06 : bScale;
+        var scale = isSel ? 1.06 : 1;
 
         ctx.save();
         var ccx = item.x + item.w / 2, ccy = item.y + item.h / 2;
@@ -950,11 +942,40 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (helpOpen) return;
     if (hintMode) return;
 
+    // Grab a placed (non-locked) block from the board, if the touch lands on
+    // one. The block is lifted into `dragging` and removed from dropped; on
+    // touchEnd we either re-place at the new cell, restore to origin, or
+    // (for a quick double-tap) remove to palette.
+    if (L.cellSize && !isWon) {
+      var bcs = L.cellSize;
+      var btx = Math.floor((x - L.boardX) / bcs);
+      var bty = Math.floor((y - L.boardY) / bcs);
+      if (btx >= 0 && btx < 7 && bty >= 0 && bty < 8 && x >= L.boardX && y >= L.boardY) {
+        var blkAt = B.getBlockAtCell(allBlocks(), btx, bty);
+        if (blkAt && !isPrePlaced(blkAt.id)) {
+          dragging = B.cloneBlock(blkAt);
+          dragHasMoved = false;
+          dragEnteredBoard = true; // already on the board
+          dragFromBoard = true;
+          dragOriginX = blkAt.x;
+          dragOriginY = blkAt.y;
+          dropped = dropped.filter(function (b) { return b.id !== blkAt.id; });
+          selected = null;
+          dragStart = { x: x, y: y };
+          dragPos = { x: x, y: y };
+          scene.dirty = true;
+          try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
+          return;
+        }
+      }
+    }
+
     for (var i = 0; i < L.palItems.length; i++) {
       if (R.hitTest(x, y, L.palItems[i])) {
         dragging = L.palItems[i].block;
         dragHasMoved = false;
         dragEnteredBoard = false;
+        dragFromBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
@@ -967,6 +988,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         dragging = selected;
         dragHasMoved = false;
         dragEnteredBoard = false;
+        dragFromBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
@@ -1095,9 +1117,33 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Drag end
     if (dragging) {
+      // Tap (no move) handling differs by drag origin.
       if (!dragHasMoved) {
-        selected = dragging;
+        if (dragFromBoard) {
+          // Tap on a placed block: respect the existing double-tap-to-remove
+          // gesture (lifts the block to palette); a single tap restores it
+          // to its origin cell with no visible change.
+          var tcs = L.cellSize;
+          var tx = Math.floor((x - L.boardX) / tcs);
+          var ty = Math.floor((y - L.boardY) / tcs);
+          var now = Date.now();
+          var dbl = (now - lastTap.time < 350) && lastTap.x === tx && lastTap.y === ty;
+          lastTap = { time: now, x: tx, y: ty };
+          if (dbl) {
+            var rest = B.cloneBlock(dragging);
+            delete rest.x; delete rest.y;
+            palette.push(rest);
+          } else {
+            var rb = B.cloneBlock(dragging);
+            rb.x = dragOriginX; rb.y = dragOriginY;
+            dropped.push(rb);
+          }
+        } else {
+          // Tap on palette card / preview shape → select.
+          selected = dragging;
+        }
         dragging = null;
+        dragFromBoard = false;
         scene.dirty = true;
         return;
       }
@@ -1107,16 +1153,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cx = Math.round((gx - L.boardX) / cs);
       var cy = Math.round((gy - L.boardY) / cs);
       var onBoard = cx >= 0 && cx < 7 && cy >= 0 && cy < 8;
+      var placed = false;
       if (onBoard && B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
         placeBlock(dragging, cx, cy, dragPos.x - cs, dragPos.y - cs);
+        placed = true;
       } else if (onBoard) {
         showToast('无法放置！');
       } else if (dragEnteredBoard) {
         showToast('超出棋盘范围');
       }
-      // else: drag never reached the board → silent.
+      // Block came from the board and didn't land → put it back where it was.
+      if (!placed && dragFromBoard) {
+        var rb2 = B.cloneBlock(dragging);
+        rb2.x = dragOriginX; rb2.y = dragOriginY;
+        dropped.push(rb2);
+      }
       dragging = null;
       dragHasMoved = false;
+      dragFromBoard = false;
       scene.dirty = true;
       return;
     }
