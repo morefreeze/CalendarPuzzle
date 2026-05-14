@@ -1,8 +1,13 @@
 var DLX = require('./dlx').DLX;
 var boardMod = require('./board');
 var packData = require('./pack_free');
+var tutorialFallback = require('./tutorialFallback');
 var initialBlockTypes = boardMod.initialBlockTypes;
 var boardLayoutData = boardMod.boardLayoutData;
+
+// Tutorial generator gives up after this many (base, combo) attempts and
+// falls back to the pre-baked fallback puzzle.
+var MAX_TUTORIAL_ATTEMPTS = 10;
 
 var ROWS = 8, COLS = 7;
 var BOARD_BLK = '#', DATE_BLK = '*', EMPTY = ' ';
@@ -494,14 +499,18 @@ function generateTutorialPuzzle(date) {
   var digCount = DIFFICULTY_CONFIG.easy.digCount; // 3
   var uncov = boardMod.getUncoverableCells();
 
-  // ── Strict search: iterate every (base, combo) until the property holds.
+  // ── Strict search: iterate (base, combo) pairs up to MAX_TUTORIAL_ATTEMPTS,
+  //    stop at the first triple. If none in the budget, fall back to the
+  //    pre-baked tutorial below.
   var winningBase = null, winningCombo = null, winningParts = null, winningTriple = null;
-  for (var bi = 0; bi < bases.length && !winningTriple; bi++) {
+  var attempts = 0;
+  for (var bi = 0; bi < bases.length && !winningTriple && attempts < MAX_TUTORIAL_ATTEMPTS; bi++) {
     var sb2 = bases[bi];
     var letterSets = enumAllDigCombinations(sb2, digCount);
     if (!letterSets.length) continue;
     var sps = _solvedPlacements(sb2);
-    for (var li = 0; li < letterSets.length && !winningTriple; li++) {
+    for (var li = 0; li < letterSets.length && !winningTriple && attempts < MAX_TUTORIAL_ATTEMPTS; li++) {
+      attempts++;
       var pts = puzzleFromCombo(sb2, letterSets[li]);
       var triple = _findStrictTriple(pts, sps, uncov);
       if (triple) {
@@ -533,26 +542,22 @@ function generateTutorialPuzzle(date) {
     placeableId = winningTriple.placeable.id;
     unplaceableId = winningTriple.unplaceable.id;
   } else {
-    // No (base, combo) satisfies the strict property — use bases[0] +
-    // combos[0] with any-legal-non-solved misplaced placement.
-    solvedBoard = bases[0];
-    var combos0 = enumAllDigCombinations(solvedBoard, digCount);
-    if (!combos0.length) return null;
-    combo = combos0[0];
+    // No strict triple found within MAX_TUTORIAL_ATTEMPTS — use the
+    // hand-curated fallback puzzle (the 2026-05-14 layout).
+    solvedBoard = tutorialFallback.solvedBoardRows.map(function (r) { return r.split(''); });
+    combo = tutorialFallback.combo;
     parts = puzzleFromCombo(solvedBoard, combo);
-    var sps0 = _solvedPlacements(solvedBoard);
-    for (var rk = 0; rk < parts.remainingBlocks.length; rk++) {
-      var c2 = parts.remainingBlocks[rk];
-      var p2 = _findLegalPlacement(c2, parts.prePlacedBlocks, uncov, sps0[c2.id]);
-      if (!p2) continue;
-      misplacedBlock = c2;
-      misplacedPlacement = p2;
-      break;
-    }
-    if (!misplacedBlock) {
-      misplacedBlock = parts.remainingBlocks[0];
-      misplacedPlacement = { x: 0, y: 0, shape: misplacedBlock.shape };
-    }
+    misplacedBlock = parts.remainingBlocks.filter(function (b) {
+      return b.id === tutorialFallback.misplaced.id;
+    })[0] || parts.remainingBlocks[0];
+    misplacedPlacement = {
+      x: tutorialFallback.misplaced.x,
+      y: tutorialFallback.misplaced.y,
+      shape: tutorialFallback.misplaced.shape.map(function (r) { return r.slice(); }),
+    };
+    placeableId = tutorialFallback.placeableId;
+    unplaceableId = tutorialFallback.unplaceableId;
+    bases = [solvedBoard]; // ensure bases is consistent for downstream consumers
   }
 
   var initialDropped = [{
