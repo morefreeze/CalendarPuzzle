@@ -497,7 +497,10 @@ function generateTutorialPuzzle(date) {
     bases = [sb];
   }
   var digCount = DIFFICULTY_CONFIG.easy.digCount; // 3
-  var uncov = boardMod.getUncoverableCells();
+  // Use uncov computed FOR THE PUZZLE'S DATE, not today. Otherwise a
+  // tutorial generated for a different date than the current device date
+  // ends up unsolvable (placements conflict with today's markers).
+  var uncov = boardMod.getUncoverableCells(date);
 
   // ── Strict search: iterate (base, combo) pairs up to MAX_TUTORIAL_ATTEMPTS,
   //    stop at the first triple. If none in the budget, fall back to the

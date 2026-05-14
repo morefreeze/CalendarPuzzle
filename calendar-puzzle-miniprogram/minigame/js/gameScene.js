@@ -53,7 +53,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var isWon = false;
   var hintMode = false;
   var hintedIds = [];
-  var uncov = B.getUncoverableCells();
+  // Resolve uncov from the puzzle's date so a tutorial generated for a
+  // future / past date stays internally consistent (uncov in placement
+  // checks matches uncov in rendering).
+  var puzzleDate = PG.parseDateStr(puzzle.dateStr) || new Date();
+  var uncov = B.getUncoverableCells(puzzleDate);
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
   var diffLabel = diffCfg.label;
   var diffSub = diffCfg.sub || '';

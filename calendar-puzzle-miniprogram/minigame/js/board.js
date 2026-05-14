@@ -58,13 +58,13 @@ function formatTime(s) {
   return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
 }
 
-function getUncoverableCells() {
-  var today = new Date();
+function getUncoverableCells(date) {
+  date = date || new Date();
   var months = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
   var weekdays = ['日','一','二','三','四','五','六'];
-  var cm = months[today.getMonth()];
-  var cd = today.getDate();
-  var cw = weekdays[today.getDay()];
+  var cm = months[date.getMonth()];
+  var cd = date.getDate();
+  var cw = weekdays[date.getDay()];
   var coords = [];
   for (var y = 0; y < boardLayoutData.length; y++) {
     for (var x = 0; x < boardLayoutData[y].length; x++) {
