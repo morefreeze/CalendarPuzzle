@@ -31,7 +31,57 @@ function markWonCombo(dateStr, difficulty, comboIndex) {
   saveAll(all);
 }
 
+// Count completed combos across all difficulties for a date.
+function countCompletedForDate(dateStr) {
+  if (!dateStr) return 0;
+  var all = loadAll();
+  var sum = 0;
+  for (var k in all) {
+    if (k.indexOf(dateStr + ':') === 0) {
+      var bucket = all[k] || {};
+      for (var ci in bucket) if (bucket[ci]) sum++;
+    }
+  }
+  return sum;
+}
+
+// Best (lowest) completion time tracking, per (date, difficulty).
+var PB_KEY = 'calendarPuzzlePB';
+
+function loadPBs() {
+  try { var r = wx.getStorageSync(PB_KEY); if (r) return JSON.parse(r); } catch (e) {}
+  return {};
+}
+
+function savePBs(d) {
+  try { wx.setStorageSync(PB_KEY, JSON.stringify(d)); } catch (e) {}
+}
+
+function getBestTime(dateStr, difficulty) {
+  if (!dateStr || !difficulty) return null;
+  var all = loadPBs();
+  var v = all[bucketKey(dateStr, difficulty)];
+  return typeof v === 'number' ? v : null;
+}
+
+// Returns { isNew: bool, prev: number|null, current: number } for the win-summary card.
+function recordTime(dateStr, difficulty, seconds) {
+  if (!dateStr || !difficulty) return { isNew: false, prev: null, current: seconds };
+  var all = loadPBs();
+  var k = bucketKey(dateStr, difficulty);
+  var prev = typeof all[k] === 'number' ? all[k] : null;
+  var isNew = prev == null || seconds < prev;
+  if (isNew) {
+    all[k] = seconds;
+    savePBs(all);
+  }
+  return { isNew: isNew, prev: prev, current: seconds };
+}
+
 module.exports = {
   getWonCombos: getWonCombos,
   markWonCombo: markWonCombo,
+  countCompletedForDate: countCompletedForDate,
+  getBestTime: getBestTime,
+  recordTime: recordTime,
 };

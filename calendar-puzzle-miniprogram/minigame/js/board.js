@@ -33,7 +33,8 @@ var THEMES = {
     day: '#C8E6C9',         // light green
     weekday: '#A5D6A7',     // medium-light green
     empty: '#FFFFFF',
-    uncoverable: '#FF7043', // deep orange — high contrast against the greens
+    uncoverable: '#FFB300', // deep gold — clear of every block color
+    uncoverableBorder: '#FF8F00', // emphasized border for today's markers
   },
 };
 

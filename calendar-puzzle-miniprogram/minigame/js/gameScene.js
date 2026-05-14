@@ -1,4 +1,6 @@
-// Main game scene — board, palette, controls, hints, drag
+// Main game scene — board, palette, controls, hints, drag.
+// v0.3.0 UX rewrite: compact top header, brand-green controls, three-state
+// board cells, unified palette cards, snap + shake feedback, top toast.
 var R = require('./render');
 var B = require('./board');
 var PG = require('./puzzleGenerator');
@@ -8,47 +10,77 @@ var progress = require('./progress');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
+var BRAND = '#43A047';        // primary action green
+var BRAND_DARK = '#2E7D32';   // emphasis green (selected ring, focus)
+var BRAND_LIGHT = '#E8F5E9';  // selected-card bg, soft tints
+var NEUTRAL = '#9E9E9E';      // secondary action grey
+
+// Snap animation — 60ms ease-out, makes "落子有重量"
+var SNAP_DUR = 60;
+// Shake animation — 160ms left/right pulse on invalid placement
+var SHAKE_DUR = 160;
+// Palette breathing — first-card pulse for 1.5s on first launch
+var BREATH_DUR = 1500;
 
 module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
   var scene = {};
   scene.dirty = true;
 
-  // State
+  // ---- State ----
   var prePlaced = puzzle.prePlacedBlocks;
   var dropped = [];
   var palette = puzzle.remainingBlocks.map(function (b) { return B.cloneBlock(b); });
-  var selected = null; // selected block from palette
+  var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+  var selected = null;
   var timer = 0;
   var isWon = false;
-  var message = '';
-  var msgIsWin = false;
-  var msgTimer = null;
   var hintMode = false;
   var hintedIds = [];
   var uncov = B.getUncoverableCells();
-  var diffLabel = PG.DIFFICULTY_CONFIG[difficulty].label;
+  var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
+  var diffLabel = diffCfg.label;
+  var diffSub = diffCfg.sub || '';
 
-  var switchMode = 'random'; // 'random' or 'manual'; toggled by the caret
+  var switchMode = 'random'; // 'random' or 'manual'
   var selectPanelOpen = false;
   var selectScrollY = 0;
-  var selectScrolled = false; // distinguish scroll vs tap inside the select panel
+  var selectScrolled = false;
+  var helpOpen = false;
   var solutionCount = -1;
-  var solutionCountText = '\u89E3\u6CD5: \u8BA1\u7B97\u4E2D...';
   var playedCombos = puzzle._playedCombos || {};
   playedCombos[puzzle.currentComboIndex] = true;
   puzzle._playedCombos = playedCombos;
   var wonCombos = puzzle._wonCombos || progress.getWonCombos(puzzle.dateStr, difficulty);
   puzzle._wonCombos = wonCombos;
 
+  // ---- Animations ----
+  // Snap: list of { id, fromX, fromY, toX, toY, start } in canvas px
+  var snapAnims = [];
+  // Shake: { x, y, blockShape, color, start }
+  var shake = null;
+  var breathStart = Date.now();
+  // Confetti pieces seeded on win
+  var confetti = [];
+  var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
+
+  // ---- Toast (top-floating, doesn't push layout) ----
+  var toast = { msg: '', isWin: false, start: 0, dur: 5000 };
+  function showToast(msg, win) {
+    toast.msg = msg;
+    toast.isWin = !!win;
+    toast.start = Date.now();
+    toast.dur = win ? 999999 : 5000;
+    scene.dirty = true;
+  }
+
   // Async solution count
   var solutionCountTimer = setTimeout(function () {
     var combo = puzzle.allCombinations[puzzle.currentComboIndex];
     solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo.letters);
-    solutionCountText = '\u89E3\u6CD5: ' + solutionCount;
     scene.dirty = true;
   }, 50);
 
-  // Drag state (not in data, just local)
+  // ---- Drag state ----
   var dragging = null;
   var dragHasMoved = false;
   var dragStart = { x: 0, y: 0 };
@@ -56,25 +88,53 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var lastTap = { time: 0, x: -1, y: -1 };
   var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
 
-  // Timer interval
   var timerInterval = setInterval(function () {
     if (!isWon) { timer++; scene.dirty = true; }
   }, 1000);
 
-  // Layout (computed per render)
-  var L = {};
+  // Animation tick — kicks render while any animation is active.
+  var animTimer = setInterval(function () {
+    var now = Date.now();
+    var alive = false;
+    snapAnims = snapAnims.filter(function (a) {
+      if (now - a.start < SNAP_DUR) { alive = true; return true; }
+      return false;
+    });
+    if (shake) {
+      var maxDur = SHAKE_DUR + (shake.returnX != null ? 200 : 0);
+      if (now - shake.start < maxDur) alive = true;
+      else shake = null;
+    }
+    if (palette.length > 0 && now - breathStart < BREATH_DUR) alive = true;
+    if (alive) scene.dirty = true;
+  }, 16);
 
-  function showMsg(m, win) {
-    message = m; msgIsWin = !!win; scene.dirty = true;
-    if (msgTimer) clearTimeout(msgTimer);
-    if (!win && m) msgTimer = setTimeout(function () { message = ''; scene.dirty = true; }, 3000);
-  }
+  var L = {};
 
   function allBlocks() { return prePlaced.concat(dropped); }
 
   function isPrePlaced(id) {
     for (var i = 0; i < prePlaced.length; i++) if (prePlaced[i].id === id) return true;
     return false;
+  }
+
+  function spawnConfetti() {
+    var colors = ['#E91E63','#FFC107','#4CAF50','#03A9F4','#9C27B0','#FF5722'];
+    confetti = [];
+    for (var i = 0; i < 80; i++) {
+      confetti.push({
+        x: Math.random(),                  // 0..1 of canvas W
+        y: -Math.random() * 0.2,           // start above viewport
+        vx: (Math.random() - 0.5) * 0.012, // horizontal drift per frame
+        vy: 0.006 + Math.random() * 0.012,
+        rot: Math.random() * Math.PI * 2,
+        rotV: (Math.random() - 0.5) * 0.2,
+        size: 6 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        born: Date.now() + Math.random() * 400,
+      });
+    }
+    scene.dirty = true;
   }
 
   function checkWin() {
@@ -84,18 +144,40 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         isWon = true;
         wonCombos[puzzle.currentComboIndex] = true;
         progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
+        var pb = progress.recordTime(puzzle.dateStr, difficulty, timer);
+        winStats = {
+          time: timer,
+          isNewPB: pb.isNew,
+          prevPB: pb.prev,
+          todayDone: progress.countCompletedForDate(puzzle.dateStr),
+        };
         clearInterval(timerInterval);
-        showMsg('\u606D\u559C\u901A\u5173\uFF01', true);
+        spawnConfetti();
+        showToast('🎉 恭喜通关！', true);
+        try { wx.vibrateLong && wx.vibrateLong(); } catch (e) {}
       }
     }
   }
 
-  function placeBlock(block, cx, cy) {
+  function placeBlock(block, cx, cy, fromX, fromY) {
     var nb = B.cloneBlock(block);
     nb.x = cx; nb.y = cy;
     dropped.push(nb);
     palette = palette.filter(function (b) { return b.id !== block.id; });
     selected = null;
+    // Kick snap animation from the drag-release position to the target cell.
+    if (fromX != null && fromY != null && L.cellSize) {
+      snapAnims.push({
+        id: nb.id,
+        fromX: fromX, fromY: fromY,
+        toX: L.boardX + cx * L.cellSize,
+        toY: L.boardY + cy * L.cellSize,
+        start: Date.now(),
+        shape: nb.shape,
+        color: nb.color,
+      });
+    }
+    try { wx.vibrateShort && wx.vibrateShort({ type: 'medium' }); } catch (e) {}
     scene.dirty = true;
     checkWin();
   }
@@ -112,8 +194,42 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     scene.dirty = true;
   }
 
+  function resetAllPlaced() {
+    if (dropped.length === 0) return;
+    for (var i = dropped.length - 1; i >= 0; i--) {
+      var bl = dropped[i];
+      var restored = B.cloneBlock(bl);
+      delete restored.x; delete restored.y;
+      palette.push(restored);
+    }
+    dropped = [];
+    selected = null;
+    scene.dirty = true;
+  }
+
+  function triggerShake(shapeBlock, x, y, returnX, returnY) {
+    shake = {
+      x: x, y: y,
+      shape: shapeBlock.shape,
+      color: shapeBlock.color,
+      start: Date.now(),
+      // If a return point is provided, the ghost slides back after the shake.
+      returnX: typeof returnX === 'number' ? returnX : null,
+      returnY: typeof returnY === 'number' ? returnY : null,
+    };
+    try { wx.vibrateShort && wx.vibrateShort({ type: 'heavy' }); } catch (e) {}
+    scene.dirty = true;
+  }
+
+  function paletteRectFor(blockId) {
+    for (var i = 0; i < L.palItems.length; i++) {
+      if (L.palItems[i].block.id === blockId) return L.palItems[i];
+    }
+    return null;
+  }
+
   // ---- Switch puzzle (stamina-aware) ----
-  function switchCost() { return PG.DIFFICULTY_CONFIG[difficulty].digCount; }
+  function switchCost() { return diffCfg.digCount; }
 
   function executeRandomSwitch() {
     var combos = puzzle.allCombinations;
@@ -164,25 +280,23 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     });
   }
 
-  // Wrap a switch action with stamina check + confirm modal when current puzzle is incomplete.
   function confirmAndSwitch(doSwitch) {
     if (isWon) { doSwitch(); return; }
     var cost = switchCost();
     var have = stamina.getStamina();
     if (have < cost) {
-      showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9\uFF0C\u5F53\u524D ' + have + ' \u70B9');
+      showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have + ' 点');
       return;
     }
     wx.showModal({
-      title: '\u6362\u9898\u6D88\u8017\u4F53\u529B',
-      content: '\u5F53\u524D\u9898\u76EE\u672A\u5B8C\u6210\uFF0C\u6362\u9898\u5C06\u6D88\u8017 ' + cost + ' \u70B9\u4F53\u529B\uFF08\u5F53\u524D ' + have + ' \u70B9\uFF09\u3002\u662F\u5426\u7EE7\u7EED\uFF1F',
-      confirmText: '\u7EE7\u7EED',
-      cancelText: '\u53D6\u6D88',
+      title: '换题消耗体力',
+      content: '当前题目未完成，换题将消耗 ' + cost + ' 点体力（当前 ' + have + ' 点）。是否继续？',
+      confirmText: '继续',
+      cancelText: '取消',
       success: function (res) {
         if (!res.confirm) return;
         if (!stamina.consumeStamina(cost)) {
-          showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9\uFF0C\u5F53\u524D ' + stamina.getStamina() + ' \u70B9');
-          scene.dirty = true;
+          showToast('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }
         doSwitch();
@@ -190,69 +304,58 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     });
   }
 
-  // ---- LAYOUT COMPUTATION ----
+  function formatMMSS(s) {
+    var m = Math.floor(s / 60), sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // ---- LAYOUT ----
   function computeLayout(W, H) {
     var padTop = safeInsets.top || 0;
     var padBottom = safeInsets.bottom || 0;
     var menuBottom = menuRect.bottom || 0;
-    var pad = 10;
+    var pad = 12;
 
-    // Back arrow button at the very top-left (above the timer).
-    var backSize = 28;
-    L.backBtn = { x: pad, y: padTop + 6, w: backSize, h: backSize };
+    // Back button — circular hit area (44×44) with rendered chevron at 28.
+    var backHit = 44;
+    L.backBtn = { x: pad - 8, y: padTop + 4, w: backHit, h: backHit };
 
-    // Start content below the back arrow (and below the menu capsule on the right).
-    var y = Math.max(L.backBtn.y + L.backBtn.h + 4, menuBottom + 6);
+    // Top header row Y — aligned with capsule menu
+    var menuTop = menuRect.top || (padTop + 6);
+    L.headerY = Math.max(menuTop, padTop + 6);
 
-    // Header
-    L.headerY = y;
-    y += 28 + 4;
+    // Difficulty centered as the main title; sub-label below it.
+    L.diffY = L.headerY + 4;
+    L.diffSubY = L.diffY + 26;
 
-    // Count
-    L.countY = y;
-    y += 16 + 4;
+    // Timer right of difficulty (small, secondary)
+    L.timerY = L.headerY + 8;
 
-    // Message
-    L.msgY = y;
-    if (message) y += 18 + 4;
+    // Stamina capsule top-left of menu (with countdown)
+    L.staminaW = 86; L.staminaH = 22;
+    L.staminaX = (menuRect.left || W) - L.staminaW - 6;
+    L.staminaY = L.headerY + (menuTop > 0 ? (menuRect.height || 32) / 2 - L.staminaH / 2 : 4);
 
-    // Invite-friends button (only when game is won)
-    L.inviteBtn = null;
-    if (isWon) {
-      var ibtnH = 36;
-      L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
-      y += ibtnH + 8;
-    }
+    // Switch icons (🎲 / 🎯) above stamina, smaller — moved into compact bar
+    L.switchRandomBtn = null;
+    L.switchManualBtn = null;
 
-    // Controls — row 1: action buttons + switch area
-    var btnGap = 6;
-    var btnH = 28;
+    // Begin main content below header (whichever is lower)
+    var y = Math.max(L.backBtn.y + L.backBtn.h + 6, L.diffSubY + 22, menuBottom + 8);
+
+    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons
+    var btnH = 36, btnGap = 8;
+    var ctrlBtnW = Math.floor((W - 2 * pad - 3 * btnGap) / 4);
     L.ctrlY = y;
-    L.ctrlBtns = [];
+    L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
+    L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
+    L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
+    L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+    y += btnH + 10;
 
-    // Left: hint button only (rotate/flip moved to preview row).
-    var leftBtnW = Math.floor((W * 0.45 - pad - 2 * btnGap) / 3);
-    L.ctrlBtns.push({
-      x: pad, y: y, w: leftBtnW, h: btnH,
-      label: '\u63D0\u793A', color: '#FF9800', action: 'hint',
-    });
-
-    // Right: split-button. Main part executes current switchMode; caret toggles the dropdown.
-    var rightX = W * 0.5;
-    var modeW = 40;
-    var switchW = W - rightX - modeW - btnGap - pad;
-    var switchBtnX = rightX + modeW + btnGap;
-    var totalCombos = puzzle.allCombinations.length;
-    var caretW = 26;
-    L.switchMainBtn = { x: switchBtnX, y: y, w: switchW - caretW, h: btnH };
-    L.switchCaretBtn = { x: switchBtnX + switchW - caretW, y: y, w: caretW, h: btnH };
-    L.switchTotalCombos = totalCombos;
-
-    y += btnH + 8;
-
-    // Board
+    // Board with breathing padding + shadow
     var safeH = H - padTop - padBottom;
-    var maxBoardH = safeH * 0.42;
+    var maxBoardH = safeH * 0.46;
     var cellSize = Math.min(Math.floor((W - 2 * pad) / 7), Math.floor(maxBoardH / 8));
     var boardW = cellSize * 7;
     var boardH = cellSize * 8;
@@ -262,21 +365,28 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.cellSize = cellSize;
     L.boardW = boardW;
     L.boardH = boardH;
-    y += boardH + 8;
+    y += boardH + 10;
 
-    // Preview row: [rotate 0.191][shape 0.618][flip 0.191] horizontal split.
+    // Invite (only on win) — squeezed below board
+    L.inviteBtn = null;
+    if (isWon) {
+      var ibtnH = 36;
+      L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
+      y += ibtnH + 8;
+    }
+
+    // Preview row: [flip][shape][rotate]
     L.previewY = y;
     L.previewH = 0;
     L.previewRotateBtn = null;
     L.previewFlipBtn = null;
     L.previewShape = null;
     if (selected && !dragging) {
-      var prevCS = Math.floor(cellSize * 0.6);
-      // Fixed to 4-cell height so the row doesn't resize when the player rotates the block.
+      var prevCS = Math.floor(cellSize * 0.55);
       var rowH = 4 * prevCS + 12;
       var totalW = W - 2 * pad;
       var gapW = Math.floor(totalW * 0.05);
-      var shapeAreaW = Math.floor(totalW * 0.618 * 0.9);
+      var shapeAreaW = Math.floor(totalW * 0.55);
       var sideW = Math.floor((totalW - shapeAreaW - 2 * gapW) / 2);
       L.previewFlipBtn = { x: pad, y: y, w: sideW, h: rowH };
       L.previewShape = { x: pad + sideW + gapW, y: y, w: shapeAreaW, h: rowH };
@@ -285,101 +395,108 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       y += L.previewH + 8;
     }
 
-    // Palette
+    // Palette — unified card size grid
     L.paletteY = y;
-    var palCellSize = Math.floor(cellSize * 0.45);
-    L.palCellSize = palCellSize;
-    // Calculate palette item rects
     L.palItems = [];
     if (palette.length > 0) {
-      y += 18; // title
-      var itemPad = 6;
-      var maxItemW = 0;
-      // Estimate item sizes
-      var items = [];
-      for (var p = 0; p < palette.length; p++) {
-        var bl = palette[p];
-        var iw = bl.shape[0].length * palCellSize + 2 * itemPad;
-        var ih = 14 + bl.shape.length * palCellSize + 2 * itemPad;
-        if (iw < 40) iw = 40;
-        items.push({ block: bl, w: iw, h: ih });
-      }
-      // Layout items in rows
-      var ix = pad, iy = y;
-      var maxRowH = 0;
-      for (var pi = 0; pi < items.length; pi++) {
-        if (ix + items[pi].w > W - pad && ix > pad) {
-          ix = pad;
-          iy += maxRowH + 6;
-          maxRowH = 0;
+      // Cap card height by remaining vertical room so palette never overflows.
+      var palAreaH = H - y - padBottom - 30; // 30 = hint footer
+      var cols = palette.length <= 5 ? palette.length : Math.ceil(palette.length / 2);
+      var card = Math.min(
+        Math.floor((W - 2 * pad - (cols - 1) * 8) / cols),
+        Math.floor(palAreaH / (palette.length > cols ? 2 : 1)) - 8,
+        72
+      );
+      if (card < 36) card = 36;
+      L.palCardSize = card;
+      L.palCellSize = Math.floor(card * 0.18);
+      // Display palette in a stable order: paletteOrder first, then any new items.
+      var ordered = [];
+      var idSeen = {};
+      for (var oi = 0; oi < paletteOrder.length; oi++) {
+        for (var pj = 0; pj < palette.length; pj++) {
+          if (palette[pj].id === paletteOrder[oi]) { ordered.push(palette[pj]); idSeen[palette[pj].id] = true; break; }
         }
-        L.palItems.push({ x: ix, y: iy, w: items[pi].w, h: items[pi].h, block: items[pi].block });
-        ix += items[pi].w + 6;
-        if (items[pi].h > maxRowH) maxRowH = items[pi].h;
       }
-      y = iy + maxRowH + 6;
+      for (var pk = 0; pk < palette.length; pk++) if (!idSeen[palette[pk].id]) { ordered.push(palette[pk]); paletteOrder.push(palette[pk].id); }
+
+      var rows = Math.ceil(ordered.length / cols);
+      var totalRowW = cols * card + (cols - 1) * 8;
+      var startX = Math.floor((W - totalRowW) / 2);
+      for (var pi = 0; pi < ordered.length; pi++) {
+        var row = Math.floor(pi / cols);
+        var col = pi % cols;
+        L.palItems.push({
+          x: startX + col * (card + 8),
+          y: y + row * (card + 8),
+          w: card, h: card,
+          block: ordered[pi],
+        });
+      }
+      y += rows * card + (rows - 1) * 8 + 6;
     }
 
-    // Placed list
-    L.placedY = y;
-    L.placedBtns = [];
-    if (dropped.length > 0) {
-      y += 18; // title
-      var px2 = pad;
-      for (var di = 0; di < dropped.length; di++) {
-        var db = dropped[di];
-        var bw = 40, bh = 24;
-        if (px2 + bw > W - pad) { px2 = pad; y += bh + 6; }
-        L.placedBtns.push({ x: px2, y: y, w: bw, h: bh, block: db });
-        px2 += bw + 6;
-      }
-    }
+    // Bottom hint text (double-tap to remove) — keeps visible whenever player has placed something.
+    L.bottomHintY = H - padBottom - 18;
 
     // Hint popup
     if (hintMode) {
-      var popW = W * 0.75, popH = H * 0.5;
+      var popW = W * 0.78, popH = H * 0.55;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
       var candidates = [];
-      for (var ci = 0; ci < palette.length; ci++) candidates.push(palette[ci]);
+      for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
       for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
       L.hintItems = [];
       var hx = L.hintPopup.x + 20, hy = L.hintPopup.y + 50;
-      var hSize = 50, hGap = 10;
+      var hSize = 52, hGap = 10;
       for (var hi = 0; hi < candidates.length; hi++) {
         if (hx + hSize > L.hintPopup.x + L.hintPopup.w - 20) { hx = L.hintPopup.x + 20; hy += hSize + hGap; }
         L.hintItems.push({ x: hx, y: hy, w: hSize, h: hSize, block: candidates[hi] });
         hx += hSize + hGap;
       }
-      L.hintCloseBtn = { x: L.hintPopup.x + (popW - 80) / 2, y: L.hintPopup.y + popH - 45, w: 80, h: 30 };
+      L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
     }
 
-    // Select panel popup
+    // Select panel
     if (selectPanelOpen) {
-      var spW = W * 0.9, spH = H * 0.75;
+      var spW = W * 0.92, spH = H * 0.78;
       L.selectPanel = { x: (W - spW) / 2, y: (H - spH) / 2, w: spW, h: spH };
-      L.selectCloseBtn = { x: L.selectPanel.x + (spW - 80) / 2, y: L.selectPanel.y + spH - 45, w: 80, h: 30 };
+      L.selectCloseBtn = { x: L.selectPanel.x + (spW - 100) / 2, y: L.selectPanel.y + spH - 48, w: 100, h: 36 };
 
       var combos = puzzle.allCombinations;
       var thumbCS = 6;
       var thumbW = thumbCS * 7 + 8;
       var thumbH = thumbCS * 8 + 20;
       var thumbGap = 8;
-      var cols = Math.floor((spW - 30) / (thumbW + thumbGap));
-      if (cols < 1) cols = 1;
-
+      var cols2 = Math.floor((spW - 30) / (thumbW + thumbGap));
+      if (cols2 < 1) cols2 = 1;
       L.selectItems = [];
-      var sx = L.selectPanel.x + 15, sy = L.selectPanel.y + 45;
-      var col = 0;
+      var sx = L.selectPanel.x + 15, sy = L.selectPanel.y + 50;
       for (var si = 0; si < combos.length; si++) {
-        var ix = sx + col * (thumbW + thumbGap);
-        var iy = sy + Math.floor(si / cols) * (thumbH + thumbGap);
+        var ix = sx + (si % cols2) * (thumbW + thumbGap);
+        var iy = sy + Math.floor(si / cols2) * (thumbH + thumbGap);
         L.selectItems.push({ x: ix, y: iy, w: thumbW, h: thumbH, comboIndex: si });
-        col = (col + 1) % cols;
       }
-
-      L.selectContentH = Math.ceil(combos.length / cols) * (thumbH + thumbGap);
-      L.selectVisibleH = spH - 90;
+      L.selectContentH = Math.ceil(combos.length / cols2) * (thumbH + thumbGap);
+      L.selectVisibleH = spH - 100;
     }
+  }
+
+  // ---- Cell decoration helpers ----
+  function drawCellDecoration(ctx, cellType, px, py, cs) {
+    if (cellType === 'month') {
+      // Tiny dot in the top-left corner.
+      R.dotMarker(ctx, px + cs * 0.18, py + cs * 0.18, Math.max(1.5, cs * 0.045), 'rgba(0,0,0,0.16)');
+    } else if (cellType === 'weekday') {
+      // Thin underline.
+      ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(px + cs * 0.32, py + cs * 0.82);
+      ctx.lineTo(px + cs * 0.68, py + cs * 0.82);
+      ctx.stroke();
+    }
+    // day cell: no decoration (clean)
   }
 
   // ---- RENDER ----
@@ -387,80 +504,68 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     computeLayout(W, H);
     R.clear(ctx, W, H);
 
-    var pad = 10;
+    var pad = 12;
     var cs = L.cellSize;
 
-    // Back arrow (top-left). Drawn as a chevron pointing left.
+    // --- Back button (circular hit area + chevron) ---
     if (L.backBtn) {
       var bb = L.backBtn;
       var bcx = bb.x + bb.w / 2, bcy = bb.y + bb.h / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.beginPath(); ctx.arc(bcx, bcy, 18, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#333';
       ctx.lineWidth = 2.5;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       ctx.beginPath();
-      ctx.moveTo(bcx + bb.w * 0.18, bcy - bb.h * 0.28);
-      ctx.lineTo(bcx - bb.w * 0.18, bcy);
-      ctx.lineTo(bcx + bb.w * 0.18, bcy + bb.h * 0.28);
+      ctx.moveTo(bcx + 5, bcy - 7);
+      ctx.lineTo(bcx - 5, bcy);
+      ctx.lineTo(bcx + 5, bcy + 7);
       ctx.stroke();
     }
 
-    // Header
-    R.textBold(ctx, B.formatTime(timer), pad, L.headerY, 22, '#333');
-    R.textBold(ctx, diffLabel, W / 2, L.headerY + 2, 16, '#4CAF50', 'center');
-    // Stamina: place left of capsule button to avoid overlap
-    var staText = '\u4F53\u529B ' + stamina.getStamina();
-    var staW = 60, staH = 22;
-    var staX = (menuRect.left || W) - staW - 6;
-    R.roundRect(ctx, staX, L.headerY, staW, staH, 4, '#FFF3E0', '#FFB74D');
-    R.text(ctx, staText, staX + staW / 2, L.headerY + 4, 11, '#E65100', 'center');
-
-    // Count
-    R.text(ctx, '\u5DF2\u653E\u7F6E: ' + dropped.length + ' / ' + puzzle.remainingBlocks.length, W / 2, L.countY, 12, '#888', 'center');
-
-    // Solution count (async)
-    R.text(ctx, solutionCountText, W - pad, L.countY, 12, '#999', 'right');
-
-    // Message
-    if (message) {
-      R.textBold(ctx, message, W / 2, L.msgY, 14, msgIsWin ? '#FF4500' : '#2196F3', 'center');
+    // --- Difficulty (centered main title) ---
+    R.textBold(ctx, diffLabel, W / 2, L.diffY, 22, BRAND_DARK, 'center');
+    if (diffSub) {
+      R.text(ctx, diffSub + ' · 挖 ' + diffCfg.digCount + ' 块',
+        W / 2, L.diffSubY, 11, '#888', 'center');
     }
 
-    // Invite friends button (on win)
-    if (L.inviteBtn) {
-      R.button(ctx, L.inviteBtn.x, L.inviteBtn.y, L.inviteBtn.w, L.inviteBtn.h, '🎯 邀请朋友挑战这一题', '#FF5722', '#fff', 8);
-    }
+    // --- Timer (small, secondary, right of title) ---
+    R.text(ctx, B.formatTime(timer), W - L.staminaW - 14, L.timerY, 13, '#666', 'right');
 
-    // Controls — hint + other future ctrl buttons in L.ctrlBtns
-    for (var ci = 0; ci < L.ctrlBtns.length; ci++) {
-      var cb = L.ctrlBtns[ci];
-      R.button(ctx, cb.x, cb.y, cb.w, cb.h, cb.label, cb.color, '#fff', 4);
-    }
+    // --- Stamina capsule (with recovery countdown) ---
+    var cur = stamina.getStamina();
+    var rs = stamina.getRecoverSeconds();
+    R.roundRect(ctx, L.staminaX, L.staminaY, L.staminaW, L.staminaH, 4, '#FFF8E1', '#FFB300');
+    var stTxt = '体力 ' + cur;
+    if (cur < stamina.MAX_STAMINA) stTxt += '  ↻' + formatMMSS(rs);
+    R.text(ctx, stTxt, L.staminaX + L.staminaW / 2, L.staminaY + 4, 10, '#E65100', 'center');
 
-    // 换题 split-button: solid red background spans both halves; main label on
-    // the left, separator, caret on the right.
-    if (L.switchMainBtn && L.switchCaretBtn) {
-      var mB = L.switchMainBtn, cB = L.switchCaretBtn;
-      var swColor = switchMode === 'manual' ? '#009688' : '#9C27B0';
-      R.roundRect(ctx, mB.x, mB.y, mB.w + cB.w, mB.h, 4, swColor);
-      var swLabel = (switchMode === 'manual' ? '手动换题' : '随机换题') + '(' + L.switchTotalCombos + ')';
-      R.textBold(ctx, swLabel, mB.x + mB.w / 2, mB.y + mB.h / 2, 12, '#fff', 'center', 'middle');
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(cB.x, cB.y + 4);
-      ctx.lineTo(cB.x, cB.y + cB.h - 4);
-      ctx.stroke();
-      R.textBold(ctx, '▾', cB.x + cB.w / 2, cB.y + cB.h / 2, 14, '#fff', 'center', 'middle');
-    }
+    // --- Control row: 提示 / 重开 / 🎲 / 🎯 ---
+    var hintActive = hintedIds.length < palette.length + dropped.length;
+    R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
+    R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
+    // 🎲 random — active when switchMode='random'
+    var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
+    var randomFg = switchMode === 'random' ? '#fff' : '#666';
+    R.button(ctx, L.switchRandomBtn.x, L.switchRandomBtn.y, L.switchRandomBtn.w, L.switchRandomBtn.h, '🎲 随机', randomBg, randomFg, 8);
+    var manualBg = switchMode === 'manual' ? BRAND : '#E0E0E0';
+    var manualFg = switchMode === 'manual' ? '#fff' : '#666';
+    R.button(ctx, L.switchManualBtn.x, L.switchManualBtn.y, L.switchManualBtn.w, L.switchManualBtn.h, '🎯 选题', manualBg, manualFg, 8);
 
+    // --- Board card (padding + soft shadow + thin border) ---
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.08)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+    ctx.fillStyle = '#fff';
+    R.roundRect(ctx, L.boardX - 6, L.boardY - 6, L.boardW + 12, L.boardH + 12, 8, '#fff');
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(L.boardX - 0.5, L.boardY - 0.5, L.boardW + 1, L.boardH + 1);
 
-
-    // Board
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(L.boardX - 2, L.boardY - 2, L.boardW + 4, L.boardH + 4);
-
+    // --- Board cells ---
     var ab = allBlocks();
     for (var by = 0; by < 8; by++) {
       for (var bx = 0; bx < 7; bx++) {
@@ -477,126 +582,207 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
         // Background
         if (blockAt) {
-          ctx.globalAlpha = locked ? 0.6 : 0.9;
+          ctx.globalAlpha = locked ? 0.92 : 0.95;
           ctx.fillStyle = blockAt.color;
           ctx.fillRect(px, py, cs, cs);
           ctx.globalAlpha = 1;
         } else if (isUncov) {
           ctx.fillStyle = B.CELL_COLORS.uncoverable;
           ctx.fillRect(px, py, cs, cs);
+          // Today emphasis: inner ring
+          ctx.strokeStyle = B.CELL_COLORS.uncoverableBorder || '#FF8F00';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 2, py + 2, cs - 4, cs - 4);
+        } else if (cell.t === 'empty') {
+          // Non-game area — diagonal stripes
+          ctx.fillStyle = '#FAFAFA';
+          ctx.fillRect(px, py, cs, cs);
+          R.diagonalStripes(ctx, px, py, cs, cs, 'rgba(0,0,0,0.07)', Math.max(4, cs * 0.16));
         } else {
           ctx.fillStyle = B.CELL_COLORS[cell.t] || '#fff';
           ctx.fillRect(px, py, cs, cs);
         }
 
-        // Border
-        ctx.strokeStyle = blockAt ? (locked ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.3)') : '#000';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(px, py, cs, cs);
+        // Cell decoration (month dot / weekday underline) — only if no block on top.
+        if (!blockAt && !isUncov && cell.t !== 'empty') {
+          drawCellDecoration(ctx, cell.t, px, py, cs);
+        }
 
-        // Label
+        // Border (lightest possible)
+        if (!blockAt) {
+          ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(px, py, cs, cs);
+        }
+
+        // Label (number / month / weekday) — only when not covered
         if (!blockAt && cell.t !== 'empty' && cell.v != null) {
-          R.textBold(ctx, String(cell.v), px + cs / 2, py + cs / 2, Math.max(9, cs * 0.28), '#333', 'center', 'middle');
+          R.textBold(ctx, String(cell.v), px + cs / 2, py + cs / 2,
+            Math.max(9, cs * 0.28), isUncov ? '#fff' : '#333', 'center', 'middle');
         }
       }
     }
 
-    // Preview row: [rotate button][shape area][flip button] with 0.191/0.618/0.191 split.
+    // --- Locked block badges (drawn after cells so they sit on top) ---
+    for (var pp = 0; pp < prePlaced.length; pp++) {
+      var pb = prePlaced[pp];
+      // Find top-left covered cell of this block.
+      var minBy = 99, minBx = 99;
+      for (var ry = 0; ry < pb.shape.length; ry++) {
+        for (var rx = 0; rx < pb.shape[ry].length; rx++) {
+          if (pb.shape[ry][rx] === 1) {
+            if (pb.y + ry < minBy || (pb.y + ry === minBy && pb.x + rx < minBx)) {
+              minBy = pb.y + ry; minBx = pb.x + rx;
+            }
+          }
+        }
+      }
+      var lpx = L.boardX + minBx * cs + 5;
+      var lpy = L.boardY + minBy * cs + 6;
+      R.lockBadge(ctx, lpx, lpy, Math.max(6, cs * 0.22));
+    }
+
+    // --- Preview row ---
     if (selected && !dragging && L.previewShape) {
-      var prevCS = Math.floor(cs * 0.6);
+      var prevCS = Math.floor(cs * 0.55);
       var rB = L.previewRotateBtn, fB = L.previewFlipBtn, sB = L.previewShape;
-      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '\u65CB\u8F6C', '#4CAF50', '#fff', 6);
-      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '\u7FFB\u8F6C', '#2196F3', '#fff', 6);
-      R.roundRect(ctx, sB.x, sB.y, sB.w, sB.h, 6, '#f7f7f7', '#4CAF50');
-      var shapeBlockW = selected.shape[0].length * prevCS;
-      var shapeBlockH = selected.shape.length * prevCS;
-      var shapeBlockX = sB.x + (sB.w - shapeBlockW) / 2;
-      var shapeBlockY = sB.y + (sB.h - shapeBlockH) / 2;
-      R.blockShape(ctx, selected.shape, selected.color, shapeBlockX, shapeBlockY, prevCS);
+      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '↻ 旋转', '#66BB6A', '#fff', 8);
+      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '⇋ 翻转', '#26A69A', '#fff', 8);
+      R.roundRect(ctx, sB.x, sB.y, sB.w, sB.h, 8, BRAND_LIGHT, BRAND);
+      var sbw = selected.shape[0].length * prevCS;
+      var sbh = selected.shape.length * prevCS;
+      var sbx = sB.x + (sB.w - sbw) / 2;
+      var sby = sB.y + (sB.h - sbh) / 2;
+      R.blockShape(ctx, selected.shape, selected.color, sbx, sby, prevCS);
     }
 
-    // Palette
+    // --- Palette (unified cards, no letters, breathing first card on first launch) ---
     if (palette.length > 0) {
-      R.text(ctx, '\u5F85\u653E\u7F6E\u65B9\u5757 (' + palette.length + ')', W / 2, L.paletteY, 14, '#666', 'center');
-      for (var pi = 0; pi < L.palItems.length; pi++) {
-        var item = L.palItems[pi];
+      var nowB = Date.now();
+      var breath = (nowB - breathStart < BREATH_DUR) ? 1 - (nowB - breathStart) / BREATH_DUR : 0;
+      for (var pi2 = 0; pi2 < L.palItems.length; pi2++) {
+        var item = L.palItems[pi2];
         var isSel = selected && selected.id === item.block.id;
+        var isDragOrigin = dragging && dragging.id === item.block.id;
         var isHinted = hintedIds.indexOf(item.block.id) >= 0;
-        var bg = isSel ? '#e8f5e9' : (isHinted ? '#E8F5E9' : '#fff');
-        var border = isSel || isHinted ? '#4CAF50' : '#ddd';
-        R.roundRect(ctx, item.x, item.y, item.w, item.h, 4, bg, border);
-        var lbl = item.block.label + (isHinted ? ' \u2713' : '');
-        R.text(ctx, lbl, item.x + item.w / 2, item.y + 3, 11, '#666', 'center');
-        R.blockShape(ctx, item.block.shape, item.block.color, item.x + 6, item.y + 16, L.palCellSize);
+        // First-card breathing — only on the first palette card, fades over BREATH_DUR.
+        var bScale = 1;
+        if (pi2 === 0 && breath > 0 && !isSel && !dragging) {
+          bScale = 1 + 0.06 * Math.sin((nowB - breathStart) / 90) * breath;
+        }
+        var bg = isSel ? BRAND_LIGHT : (isHinted ? BRAND_LIGHT : '#fff');
+        var border = (isSel || isHinted) ? BRAND : 'rgba(0,0,0,0.12)';
+        var scale = isSel ? 1.06 : bScale;
+
+        ctx.save();
+        var ccx = item.x + item.w / 2, ccy = item.y + item.h / 2;
+        ctx.translate(ccx, ccy);
+        ctx.scale(scale, scale);
+        ctx.translate(-ccx, -ccy);
+        if (isSel) {
+          ctx.shadowColor = 'rgba(76,175,80,0.35)';
+          ctx.shadowBlur = 10;
+          ctx.shadowOffsetY = 2;
+        }
+        R.roundRect(ctx, item.x, item.y, item.w, item.h, 8, bg, border);
+        ctx.restore();
+        if (isSel) {
+          ctx.strokeStyle = BRAND;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(item.x + 0.5, item.y + 0.5, item.w - 1, item.h - 1);
+        }
+
+        // Centered shape; dim if this is the drag origin.
+        var sh = item.block.shape;
+        var palCS = Math.min(
+          Math.floor((item.w - 16) / sh[0].length),
+          Math.floor((item.h - 16) / sh.length)
+        );
+        var sw = sh[0].length * palCS;
+        var sht = sh.length * palCS;
+        var spx = item.x + (item.w - sw) / 2;
+        var spy = item.y + (item.h - sht) / 2;
+        var palAlpha = isDragOrigin ? 0.25 : (isHinted ? 0.85 : 1);
+        R.blockShape(ctx, sh, item.block.color, spx, spy, palCS, palAlpha);
       }
     }
 
-    // Placed list
-    if (dropped.length > 0) {
-      R.text(ctx, '\u5DF2\u653E\u7F6E (\u53CC\u51FB\u68CB\u76D8\u79FB\u9664)', W / 2, L.placedY, 12, '#666', 'center');
-      for (var di = 0; di < L.placedBtns.length; di++) {
-        var db = L.placedBtns[di];
-        R.roundRect(ctx, db.x, db.y, db.w, db.h, 4, db.block.color);
-        R.textBold(ctx, db.block.label, db.x + db.w / 2, db.y + db.h / 2, 12, '#000', 'center', 'middle');
-      }
+    // --- Bottom hint about double-tap to remove ---
+    if (dropped.length > 0 && !isWon) {
+      R.text(ctx, '💡 双击棋盘上的方块可移除',
+        W / 2, L.bottomHintY, 11, '#999', 'center');
     }
 
-    // Hint popup
-    if (hintMode) {
+    // --- Invite button (on win) ---
+    if (L.inviteBtn) {
+      R.button(ctx, L.inviteBtn.x, L.inviteBtn.y, L.inviteBtn.w, L.inviteBtn.h,
+        '🎯 邀请朋友挑战这一题', '#FF7043', '#fff', 8);
+    }
+
+    // --- Hint popup ---
+    if (hintMode && L.hintPopup) {
       R.overlay(ctx, W, H);
       R.roundRect(ctx, L.hintPopup.x, L.hintPopup.y, L.hintPopup.w, L.hintPopup.h, 16, '#fff');
-      R.textBold(ctx, '\u9009\u62E9\u8981\u63D0\u793A\u7684\u65B9\u5757', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 18, '#333', 'center');
-      for (var hi = 0; hi < L.hintItems.length; hi++) {
-        var ht = L.hintItems[hi];
+      R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
+      for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
+        var ht = L.hintItems[hi2];
         var alreadyHinted = hintedIds.indexOf(ht.block.id) >= 0;
-        ctx.globalAlpha = alreadyHinted ? 0.4 : 0.9;
+        ctx.globalAlpha = alreadyHinted ? 0.4 : 0.95;
         R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
-        var htLbl = ht.block.label + (alreadyHinted ? ' \u2713' : '');
-        R.textBold(ctx, htLbl, ht.x + ht.w / 2, ht.y + ht.h / 2, 18, '#fff', 'center', 'middle');
+        if (alreadyHinted) {
+          R.textBold(ctx, '✓', ht.x + ht.w / 2, ht.y + ht.h / 2, 20, '#fff', 'center', 'middle');
+        } else {
+          var ihs = Math.min(
+            Math.floor((ht.w - 12) / ht.block.shape[0].length),
+            Math.floor((ht.h - 12) / ht.block.shape.length)
+          );
+          var ihw = ht.block.shape[0].length * ihs;
+          var ihh = ht.block.shape.length * ihs;
+          R.blockShape(ctx, ht.block.shape, '#fff', ht.x + (ht.w - ihw) / 2, ht.y + (ht.h - ihh) / 2, ihs, 0.9);
+        }
         ctx.globalAlpha = 1;
       }
-      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, '\u53D6\u6D88', '#eee', '#333', 6);
+      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, '取消', '#eee', '#333', 8);
     }
 
-    // Select panel popup
+    // --- Select panel popup ---
     if (selectPanelOpen && L.selectPanel) {
       R.overlay(ctx, W, H);
       var sp = L.selectPanel;
       R.roundRect(ctx, sp.x, sp.y, sp.w, sp.h, 16, '#fff');
-      var totalCombos2 = puzzle.allCombinations.length;
-      R.textBold(ctx, '\u9009\u62E9\u9898\u76EE (\u5171 ' + totalCombos2 + ' \u9898)', sp.x + sp.w / 2, sp.y + 18, 16, '#333', 'center');
+      R.textBold(ctx, '选择题目', sp.x + sp.w / 2, sp.y + 18, 17, '#333', 'center');
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(sp.x, sp.y + 40, sp.w, L.selectVisibleH);
+      ctx.rect(sp.x, sp.y + 44, sp.w, L.selectVisibleH);
       ctx.clip();
 
       var combos2 = puzzle.allCombinations;
       var tCS = 6;
       for (var si2 = 0; si2 < L.selectItems.length; si2++) {
-        var item = L.selectItems[si2];
-        var iy2 = item.y - selectScrollY;
-        if (iy2 + item.h < sp.y + 40 || iy2 > sp.y + 40 + L.selectVisibleH) continue;
-
-        var isCurrent = item.comboIndex === puzzle.currentComboIndex;
-        var borderColor = isCurrent ? '#4CAF50' : '#ddd';
-        var bgColor = isCurrent ? '#E8F5E9' : '#fafafa';
-        R.roundRect(ctx, item.x, iy2, item.w, item.h, 4, bgColor, borderColor);
+        var item2 = L.selectItems[si2];
+        var iy2 = item2.y - selectScrollY;
+        if (iy2 + item2.h < sp.y + 44 || iy2 > sp.y + 44 + L.selectVisibleH) continue;
+        var isCurrent = item2.comboIndex === puzzle.currentComboIndex;
+        var borderColor = isCurrent ? BRAND : 'rgba(0,0,0,0.12)';
+        var bgColor = isCurrent ? BRAND_LIGHT : '#fafafa';
+        R.roundRect(ctx, item2.x, iy2, item2.w, item2.h, 4, bgColor, borderColor);
         if (isCurrent) {
-          ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2;
-          ctx.strokeRect(item.x, iy2, item.w, item.h);
+          ctx.strokeStyle = BRAND; ctx.lineWidth = 2;
+          ctx.strokeRect(item2.x, iy2, item2.w, item2.h);
         }
-
-        var combo = combos2[item.comboIndex];
+        var combo = combos2[item2.comboIndex];
         var sb = puzzle.bases ? puzzle.bases[combo.baseIdx] : puzzle.solvedBoard;
         var letters = combo.letters || combo;
-        var bx0 = item.x + 4, by0 = iy2 + 2;
+        var bx0 = item2.x + 4, by0 = iy2 + 2;
         for (var ty = 0; ty < 8; ty++) {
           for (var tx = 0; tx < 7; tx++) {
             var ch = sb[ty][tx];
             var px2 = bx0 + tx * tCS, py2 = by0 + ty * tCS;
-            if (ch === '#' || ch === '*') {
-              ctx.fillStyle = ch === '*' ? '#F0E68C' : '#eee';
+            if (ch === '#') {
+              ctx.fillStyle = '#eee';
+            } else if (ch === '*') {
+              ctx.fillStyle = '#FFB300';
             } else if (letters.indexOf(ch) >= 0) {
               ctx.fillStyle = '#fff';
             } else {
@@ -609,39 +795,31 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             }
             ctx.fillRect(px2, py2, tCS, tCS);
             ctx.globalAlpha = 1;
-            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-            ctx.lineWidth = 0.3;
-            ctx.strokeRect(px2, py2, tCS, tCS);
           }
         }
-
-        R.text(ctx, '#' + (item.comboIndex + 1), item.x + item.w / 2, iy2 + item.h - 14, 9, '#999', 'center');
-
-        if (wonCombos[item.comboIndex]) {
+        R.text(ctx, '#' + (item2.comboIndex + 1), item2.x + item2.w / 2, iy2 + item2.h - 14, 9, '#999', 'center');
+        if (wonCombos[item2.comboIndex]) {
           var badgeR = 8;
-          var bcx = item.x + item.w - badgeR - 2;
+          var bcx2 = item2.x + item2.w - badgeR - 2;
           var bcy2 = iy2 + badgeR + 2;
           ctx.beginPath();
-          ctx.arc(bcx, bcy2, badgeR, 0, Math.PI * 2);
-          ctx.fillStyle = '#4CAF50';
+          ctx.arc(bcx2, bcy2, badgeR, 0, Math.PI * 2);
+          ctx.fillStyle = BRAND;
           ctx.fill();
           ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 1.5;
-          ctx.lineCap = 'round';
-          ctx.lineJoin = 'round';
+          ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           ctx.beginPath();
-          ctx.moveTo(bcx - badgeR * 0.45, bcy2 + badgeR * 0.05);
-          ctx.lineTo(bcx - badgeR * 0.10, bcy2 + badgeR * 0.40);
-          ctx.lineTo(bcx + badgeR * 0.50, bcy2 - badgeR * 0.35);
+          ctx.moveTo(bcx2 - badgeR * 0.45, bcy2 + badgeR * 0.05);
+          ctx.lineTo(bcx2 - badgeR * 0.10, bcy2 + badgeR * 0.40);
+          ctx.lineTo(bcx2 + badgeR * 0.50, bcy2 - badgeR * 0.35);
           ctx.stroke();
         }
       }
-
       ctx.restore();
-      R.button(ctx, L.selectCloseBtn.x, L.selectCloseBtn.y, L.selectCloseBtn.w, L.selectCloseBtn.h, '\u53D6\u6D88', '#eee', '#333', 6);
+      R.button(ctx, L.selectCloseBtn.x, L.selectCloseBtn.y, L.selectCloseBtn.w, L.selectCloseBtn.h, '取消', '#eee', '#333', 8);
     }
 
-    // Snap landing preview on the board (does not affect the floating ghost).
+    // --- Snap landing preview while dragging ---
     if (dragging && dragHasMoved) {
       var gx = dragPos.x - cs;
       var gy = dragPos.y - cs;
@@ -650,19 +828,125 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (snapCx >= 0 && snapCx < 7 && snapCy >= 0 && snapCy < 8) {
         var valid = B.isValidPlacement(dragging, { x: snapCx, y: snapCy }, allBlocks(), uncov, dragging.id);
         var landColor = valid ? dragging.color : '#bbbbbb';
-        R.blockShape(ctx, dragging.shape, landColor, L.boardX + snapCx * cs, L.boardY + snapCy * cs, cs, 0.35);
+        R.blockShape(ctx, dragging.shape, landColor,
+          L.boardX + snapCx * cs, L.boardY + snapCy * cs, cs, 0.32);
       }
     }
 
-    // Floating drag ghost — follows the finger, no snapping.
+    // --- Floating drag ghost (no snapping, follows finger) ---
     if (dragging && dragHasMoved) {
       R.blockShape(ctx, dragging.shape, dragging.color, dragPos.x - cs, dragPos.y - cs, cs, 0.7);
     }
+
+    // --- Snap animation (placed block sliding from drop position to cell) ---
+    if (snapAnims.length > 0) {
+      var nowS = Date.now();
+      for (var sa = 0; sa < snapAnims.length; sa++) {
+        var a = snapAnims[sa];
+        var t = Math.min(1, (nowS - a.start) / SNAP_DUR);
+        var k = R.easeOutCubic(t);
+        var ax = a.fromX + (a.toX - a.fromX) * k;
+        var ay = a.fromY + (a.toY - a.fromY) * k;
+        // Cover the destination cell with white briefly so the underlying static
+        // block isn't double-drawn.
+        // (Static cell already drawn; we just animate a moving ghost on top.)
+        R.blockShape(ctx, a.shape, a.color, ax, ay, cs, 0.9);
+      }
+    }
+
+    // --- Shake animation (invalid placement) → slide back to origin if known ---
+    if (shake) {
+      var nowK = Date.now();
+      var sk = (nowK - shake.start) / SHAKE_DUR;
+      if (sk < 1) {
+        // First half: shake in place.
+        var amp = Math.sin(sk * Math.PI * 4) * 6 * (1 - sk);
+        R.blockShape(ctx, shake.shape, shake.color, shake.x + amp, shake.y, cs, 0.55);
+      } else if (shake.returnX != null) {
+        // Second phase: ease back to the palette card.
+        var bd = (nowK - shake.start - SHAKE_DUR) / 200;
+        if (bd >= 1) { shake = null; scene.dirty = true; }
+        else {
+          var ke = R.easeOutCubic(bd);
+          var bx = shake.x + (shake.returnX - shake.x) * ke;
+          var by = shake.y + (shake.returnY - shake.y) * ke;
+          R.blockShape(ctx, shake.shape, shake.color, bx, by, cs * (1 - 0.35 * ke), 0.5);
+        }
+      }
+    }
+
+    // --- Win summary card + confetti ---
+    if (isWon && winStats) {
+      var cardW = Math.min(W - 32, 320);
+      var cardH = 132;
+      var cardX = (W - cardW) / 2;
+      var cardY = L.boardY + L.boardH / 2 - cardH / 2;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.20)';
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetY = 4;
+      R.roundRect(ctx, cardX, cardY, cardW, cardH, 14, '#fff');
+      ctx.restore();
+      R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 18, 20, BRAND_DARK, 'center');
+      R.textBold(ctx, B.formatTime(winStats.time),
+        cardX + cardW / 2, cardY + 52, 26, '#333', 'center', 'middle');
+      var sub;
+      if (winStats.isNewPB && winStats.prevPB != null) {
+        sub = '🏆 新纪录！（前最佳 ' + B.formatTime(winStats.prevPB) + '）';
+      } else if (winStats.isNewPB) {
+        sub = '🏆 首次通关本题';
+      } else {
+        sub = '最佳 ' + B.formatTime(progress.getBestTime(puzzle.dateStr, difficulty));
+      }
+      R.text(ctx, sub, cardX + cardW / 2, cardY + 78, 12,
+        winStats.isNewPB ? '#FF8F00' : '#888', 'center');
+      R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
+        cardX + cardW / 2, cardY + 100, 12, '#666', 'center');
+
+      // Confetti
+      var nowC = Date.now();
+      for (var k = 0; k < confetti.length; k++) {
+        var c = confetti[k];
+        if (nowC < c.born) continue;
+        var dt = (nowC - c.born) / 16;
+        c.x += c.vx;
+        c.y += c.vy;
+        c.rot += c.rotV;
+        if (c.y > 1.1) continue;
+        var px = c.x * W, py = c.y * H;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(c.rot);
+        ctx.fillStyle = c.color;
+        ctx.fillRect(-c.size / 2, -c.size / 3, c.size, c.size * 0.6);
+        ctx.restore();
+      }
+      scene.dirty = true;
+    }
+
+    // --- Top floating toast (above everything else) ---
+    if (toast.msg) {
+      var elapsed = Date.now() - toast.start;
+      if (toast.isWin || elapsed < toast.dur) {
+        var tY = L.headerY + 56;
+        var tFont = toast.isWin ? 16 : 14;
+        ctx.font = 'bold ' + tFont + 'px sans-serif';
+        var tw = ctx.measureText(toast.msg).width + 28;
+        var tx = (W - tw) / 2;
+        ctx.shadowColor = 'rgba(0,0,0,0.18)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 2;
+        R.roundRect(ctx, tx, tY, tw, 32, 16, toast.isWin ? BRAND : 'rgba(33,33,33,0.92)');
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        R.textBold(ctx, toast.msg, W / 2, tY + 16, tFont, '#fff', 'center', 'middle');
+      } else {
+        toast.msg = '';
+      }
+    }
   };
 
-  // ---- TOUCH HANDLING ----
+  // ---- TOUCH ----
   scene.onTouchStart = function (x, y) {
-    // Record every touch start for swipe-back / tap-vs-drag detection.
     gestureStart = { x: x, y: y, t: Date.now(), fromEdge: x < 24 };
 
     if (selectPanelOpen) {
@@ -670,39 +954,39 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       selectScrolled = false;
       return;
     }
+    if (helpOpen) return;
     if (hintMode) return;
 
-    // Check palette items
     for (var i = 0; i < L.palItems.length; i++) {
       if (R.hitTest(x, y, L.palItems[i])) {
         dragging = L.palItems[i].block;
         dragHasMoved = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
+        try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
         return;
       }
     }
 
-    // Only the preview *shape area* initiates a drag — the side rotate/flip
-    // buttons stay as taps.
     if (selected && !dragging && L.previewShape) {
       if (R.hitTest(x, y, L.previewShape)) {
         dragging = selected;
         dragHasMoved = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
+        try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
         return;
       }
     }
   };
 
   scene.onTouchMove = function (x, y) {
-    // Panel scroll
     if (selectPanelOpen && L.selectPanel) {
       if (!dragging) {
         var scrollDelta = dragStart.y - y;
         if (Math.abs(scrollDelta) >= DRAG_THRESHOLD) selectScrolled = true;
-        selectScrollY = Math.max(0, Math.min(selectScrollY + scrollDelta * 0.5, Math.max(0, L.selectContentH - L.selectVisibleH)));
+        selectScrollY = Math.max(0, Math.min(selectScrollY + scrollDelta * 0.5,
+          Math.max(0, L.selectContentH - L.selectVisibleH)));
         dragStart = { x: x, y: y };
         scene.dirty = true;
         return;
@@ -719,9 +1003,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // Help overlay click anywhere closes it.
+    if (helpOpen) { helpOpen = false; scene.dirty = true; return; }
+
     // Select panel
     if (selectPanelOpen) {
-      // Treat any gesture that scrolled the list as a scroll, not a tap.
       if (selectScrolled) { selectScrolled = false; return; }
       if (L.selectCloseBtn && R.hitTest(x, y, L.selectCloseBtn)) {
         selectPanelOpen = false; scene.dirty = true; return;
@@ -733,8 +1019,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         for (var si3 = 0; si3 < L.selectItems.length; si3++) {
           var sItem = L.selectItems[si3];
           var adjY = sItem.y - selectScrollY;
-          var adjRect = { x: sItem.x, y: adjY, w: sItem.w, h: sItem.h };
-          if (R.hitTest(x, y, adjRect)) {
+          if (R.hitTest(x, y, { x: sItem.x, y: adjY, w: sItem.w, h: sItem.h })) {
             var newIdx2 = sItem.comboIndex;
             if (newIdx2 === puzzle.currentComboIndex) {
               selectPanelOpen = false; scene.dirty = true; return;
@@ -749,18 +1034,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      for (var hi = 0; hi < L.hintItems.length; hi++) {
-        if (R.hitTest(x, y, L.hintItems[hi])) {
-          var hBlock = L.hintItems[hi].block;
+      for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
+        if (R.hitTest(x, y, L.hintItems[hi3])) {
+          var hBlock = L.hintItems[hi3].block;
           if (hintedIds.indexOf(hBlock.id) >= 0) return;
           var hs = PG.getHintShape(puzzle.solvedBoard, hBlock.label);
           if (!hs) return;
-          // Update shape in palette
-          for (var pi = 0; pi < palette.length; pi++) {
-            if (palette[pi].id === hBlock.id) palette[pi].shape = hs;
+          for (var pi3 = 0; pi3 < palette.length; pi3++) {
+            if (palette[pi3].id === hBlock.id) palette[pi3].shape = hs;
           }
           if (selected && selected.id === hBlock.id) selected.shape = hs;
-          // If placed, remove and restore
           var placed = null;
           for (var di = 0; di < dropped.length; di++) {
             if (dropped[di].id === hBlock.id) { placed = dropped[di]; break; }
@@ -774,30 +1057,27 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           hintedIds.push(hBlock.id);
           hintMode = false;
           scene.dirty = true;
-          showMsg('\u5DF2\u63D0\u793A ' + hBlock.label + ' \u7684\u6B63\u786E\u65B9\u5411');
+          showToast('已提示 ' + hBlock.label + ' 的正确方向');
           return;
         }
       }
       if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) {
         hintMode = false; scene.dirty = true; return;
       }
-      // Click outside popup closes it
       if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) {
         hintMode = false; scene.dirty = true; return;
       }
       return;
     }
 
-    // Handle drag end
+    // Drag end
     if (dragging) {
       if (!dragHasMoved) {
-        // Tap: select block (no message — the preview row already shows it)
         selected = dragging;
         dragging = null;
         scene.dirty = true;
         return;
       }
-      // Drop on board
       var cs = L.cellSize;
       var gx = dragPos.x - cs;
       var gy = dragPos.y - cs;
@@ -805,12 +1085,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cy = Math.round((gy - L.boardY) / cs);
       if (cx >= 0 && cx < 7 && cy >= 0 && cy < 8) {
         if (B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
-          placeBlock(dragging, cx, cy);
+          placeBlock(dragging, cx, cy, dragPos.x - cs, dragPos.y - cs);
         } else {
-          showMsg('\u65E0\u6CD5\u653E\u7F6E\uFF01');
+          var pr = paletteRectFor(dragging.id);
+          var rx = pr ? pr.x + (pr.w - dragging.shape[0].length * cs) / 2 : null;
+          var ry = pr ? pr.y + (pr.h - dragging.shape.length * cs) / 2 : null;
+          triggerShake(dragging, L.boardX + cx * cs, L.boardY + cy * cs, rx, ry);
+          showToast('无法放置！');
         }
       } else {
-        showMsg('\u8D85\u51FA\u68CB\u76D8\u8303\u56F4');
+        showToast('超出棋盘范围');
       }
       dragging = null;
       dragHasMoved = false;
@@ -818,29 +1102,23 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // Invite friends button (visible on win). Must call wx.shareAppMessage
-    // synchronously inside the touch handler — WeChat rejects async calls.
+    // Invite
     if (L.inviteBtn && R.hitTest(x, y, L.inviteBtn)) {
-      try {
-        wx.shareAppMessage(shareState.buildShareData());
-      } catch (e) {}
+      try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
       return;
     }
 
-    // Back arrow (top-left)
+    // Back
     if (L.backBtn && R.hitTest(x, y, L.backBtn)) {
       clearInterval(timerInterval);
       callbacks.onBack();
       return;
     }
 
-    // Preview rotate button (left side of the preview shape)
+    // Preview rotate / flip
     if (L.previewRotateBtn && R.hitTest(x, y, L.previewRotateBtn)) {
       if (selected) {
-        if (hintedIds.indexOf(selected.id) >= 0) {
-          showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A');
-          return;
-        }
+        if (hintedIds.indexOf(selected.id) >= 0) { showToast('该方块方向已锁定'); return; }
         selected.shape = B.rotateShape(selected.shape);
         for (var rp = 0; rp < palette.length; rp++) {
           if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
@@ -849,14 +1127,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
       return;
     }
-
-    // Preview flip button (right side of the preview shape)
     if (L.previewFlipBtn && R.hitTest(x, y, L.previewFlipBtn)) {
       if (selected) {
-        if (hintedIds.indexOf(selected.id) >= 0) {
-          showMsg('\u8BE5\u65B9\u5757\u65B9\u5411\u5DF2\u9501\u5B9A');
-          return;
-        }
+        if (hintedIds.indexOf(selected.id) >= 0) { showToast('该方块方向已锁定'); return; }
         selected.shape = B.flipShape(selected.shape);
         for (var fp = 0; fp < palette.length; fp++) {
           if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
@@ -866,37 +1139,30 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // 换题 split-button: caret toggles mode directly; main body executes current mode.
-    if (L.switchCaretBtn && R.hitTest(x, y, L.switchCaretBtn)) {
-      switchMode = switchMode === 'random' ? 'manual' : 'random';
+    // Control row
+    if (L.hintBtn && R.hitTest(x, y, L.hintBtn)) {
+      hintMode = true; scene.dirty = true; return;
+    }
+    if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
+      if (dropped.length === 0) return;
+      resetAllPlaced();
+      showToast('已重开当前题');
+      return;
+    }
+    if (L.switchRandomBtn && R.hitTest(x, y, L.switchRandomBtn)) {
+      if (switchMode !== 'random') { switchMode = 'random'; scene.dirty = true; return; }
+      confirmAndSwitch(executeRandomSwitch);
+      return;
+    }
+    if (L.switchManualBtn && R.hitTest(x, y, L.switchManualBtn)) {
+      if (switchMode !== 'manual') { switchMode = 'manual'; scene.dirty = true; }
+      selectPanelOpen = true;
+      selectScrollY = 0;
       scene.dirty = true;
       return;
     }
-    if (L.switchMainBtn && R.hitTest(x, y, L.switchMainBtn)) {
-      if (switchMode === 'manual') {
-        // Manual mode: open the combo panel; stamina check happens when a
-        // combo is actually picked (so cancelling the panel costs nothing).
-        selectPanelOpen = true;
-        selectScrollY = 0;
-        scene.dirty = true;
-      } else {
-        confirmAndSwitch(executeRandomSwitch);
-      }
-      return;
-    }
 
-    // Other control buttons (hint, etc.) still go through L.ctrlBtns.
-    for (var ci = 0; ci < L.ctrlBtns.length; ci++) {
-      if (R.hitTest(x, y, L.ctrlBtns[ci])) {
-        var action = L.ctrlBtns[ci].action;
-        if (action === 'hint') {
-          hintMode = true; scene.dirty = true;
-        }
-        return;
-      }
-    }
-
-    // Board cell tap
+    // Board tap (single = place selected; double = remove)
     var cs2 = L.cellSize;
     var tapCX = Math.floor((x - L.boardX) / cs2);
     var tapCY = Math.floor((y - L.boardY) / cs2);
@@ -909,34 +1175,26 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       lastTap = { time: now, x: tapCX, y: tapCY };
 
       if (dblTap) {
-        // Double tap: remove placed block
         var blockAt = B.getBlockAtCell(allBlocks(), tapCX, tapCY);
         if (blockAt && !isPrePlaced(blockAt.id)) {
           removeDropped(blockAt.id);
+        } else if (blockAt && isPrePlaced(blockAt.id)) {
+          showToast('🔒 题面方块不可移除');
         }
         return;
       }
 
-      // Single tap: place selected
       if (!selected) return;
       if (B.isValidPlacement(selected, { x: tapCX, y: tapCY }, allBlocks(), uncov, selected.id)) {
-        placeBlock(selected, tapCX, tapCY);
+        placeBlock(selected, tapCX, tapCY, L.boardX + tapCX * cs2, L.boardY + tapCY * cs2);
       } else {
-        showMsg('\u65E0\u6CD5\u653E\u7F6E\uFF01');
+        triggerShake(selected, L.boardX + tapCX * cs2, L.boardY + tapCY * cs2);
+        showToast('无法放置！');
       }
       return;
     }
 
-    // Placed blocks tap (remove)
-    for (var pi2 = 0; pi2 < L.placedBtns.length; pi2++) {
-      if (R.hitTest(x, y, L.placedBtns[pi2])) {
-        removeDropped(L.placedBtns[pi2].block.id);
-        return;
-      }
-    }
-
-    // Edge-swipe back: touch started within the left edge and moved right
-    // far enough horizontally, with limited vertical drift.
+    // Edge swipe back
     if (gestureStart.fromEdge && !dragging) {
       var sdx = x - gestureStart.x;
       var sdy = Math.abs(y - gestureStart.y);
@@ -952,7 +1210,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   scene.destroy = function () {
     clearInterval(timerInterval);
-    if (msgTimer) clearTimeout(msgTimer);
+    clearInterval(animTimer);
     if (solutionCountTimer) clearTimeout(solutionCountTimer);
   };
 

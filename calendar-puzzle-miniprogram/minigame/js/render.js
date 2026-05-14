@@ -68,6 +68,54 @@ function overlay(ctx, W, H) {
   ctx.fillRect(0, 0, W, H);
 }
 
+// Diagonal stripes — used to mark non-game cells (corners of the board).
+function diagonalStripes(ctx, x, y, w, h, color, spacing) {
+  color = color || 'rgba(0,0,0,0.07)';
+  spacing = spacing || 6;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  var lim = w + h;
+  for (var i = -lim; i < lim; i += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(x + i, y);
+    ctx.lineTo(x + i + h, y + h);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Tiny lock badge in the top-left corner of a cell. cs = cell size.
+function lockBadge(ctx, cx, cy, size) {
+  size = size || 8;
+  var s = size;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  // body
+  ctx.fillRect(cx - s * 0.30, cy - s * 0.05, s * 0.60, s * 0.45);
+  // shackle
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = Math.max(1, s * 0.12);
+  ctx.beginPath();
+  ctx.arc(cx, cy - s * 0.18, s * 0.22, Math.PI, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Small filled circle marker (e.g. month-cell decoration).
+function dotMarker(ctx, cx, cy, r, color) {
+  ctx.fillStyle = color || 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Cubic ease-out for snap animations.
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
 module.exports = {
   clear: clear,
   roundRect: roundRect,
@@ -77,4 +125,8 @@ module.exports = {
   hitTest: hitTest,
   blockShape: blockShape,
   overlay: overlay,
+  diagonalStripes: diagonalStripes,
+  lockBadge: lockBadge,
+  dotMarker: dotMarker,
+  easeOutCubic: easeOutCubic,
 };

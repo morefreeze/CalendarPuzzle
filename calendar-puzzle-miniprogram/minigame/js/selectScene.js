@@ -1,13 +1,17 @@
 // Difficulty selection scene
 var R = require('./render');
 var stamina = require('./stamina');
-var DIFF = require('./puzzleGenerator').DIFFICULTY_CONFIG;
+var progress = require('./progress');
+var PG = require('./puzzleGenerator');
+var DIFF = PG.DIFFICULTY_CONFIG;
 
 module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
   var scene = {};
   scene.dirty = true;
 
   var btnRects = [];
+  var infoBtn = null;
+  var helpOpen = false;
   var message = '';
   var msgTimer = null;
 
@@ -16,6 +20,11 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
     scene.dirty = true;
     if (msgTimer) clearTimeout(msgTimer);
     if (m) msgTimer = setTimeout(function () { message = ''; scene.dirty = true; }, 3000);
+  }
+
+  function formatMMSS(s) {
+    var m = Math.floor(s / 60), sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
   }
 
   scene.render = function (ctx, W, H) {
@@ -27,47 +36,97 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
     var y = contentTop + safeH * 0.04;
 
     // Title
-    R.textBold(ctx, '\u65E5\u5386\u65B9\u5757\u6311\u6218', W / 2, y, 28, '#333', 'center');
+    R.textBold(ctx, '日历方块挑战', W / 2, y, 28, '#333', 'center');
     y += 40;
 
-    // Stamina bar
+    // Stamina capsule with countdown
     var cur = stamina.getStamina();
     var rs = stamina.getRecoverSeconds();
-    var barW = W * 0.7, barH = 50;
-    var barX = (W - barW) / 2;
-    R.roundRect(ctx, barX, y, barW, barH, 10, '#FFF3E0', '#FFB74D');
-    R.textBold(ctx, '\u4F53\u529B: ' + cur + ' / ' + stamina.MAX_STAMINA, W / 2, y + 12, 16, '#E65100', 'center');
+    var capW = W * 0.62, capH = 56;
+    var capX = (W - capW) / 2;
+    R.roundRect(ctx, capX, y, capW, capH, 12, '#FFF8E1', '#FFB300');
+    R.textBold(ctx, '体力 ' + cur + ' / ' + stamina.MAX_STAMINA,
+      capX + 14, y + capH / 2 - 4, 18, '#E65100', 'left', 'middle');
     if (cur < stamina.MAX_STAMINA) {
-      var rd = Math.floor(rs / 60) + ':' + (rs % 60 < 10 ? '0' : '') + (rs % 60);
-      R.text(ctx, '\u6062\u590D\u4E0B\u4E00\u70B9: ' + rd, W / 2, y + 32, 12, '#F57C00', 'center');
+      R.text(ctx, '↻ ' + formatMMSS(rs) + ' 后 +1',
+        capX + capW - 14, y + capH / 2 - 4, 13, '#F57C00', 'right', 'middle');
+    } else {
+      R.text(ctx, '满格', capX + capW - 14, y + capH / 2 - 4, 13, '#2E7D32', 'right', 'middle');
     }
-    y += barH + 15;
+    y += capH + 12;
+
+    // Today completed chip
+    var todayStr = PG.formatDateStr(new Date());
+    var doneToday = progress.countCompletedForDate(todayStr);
+    if (doneToday > 0) {
+      var chipW = 130, chipH = 24;
+      var chipX = (W - chipW) / 2;
+      R.roundRect(ctx, chipX, y, chipW, chipH, 12, '#E8F5E9', '#66BB6A');
+      R.textBold(ctx, '今日已通关 ' + doneToday + ' 题',
+        chipX + chipW / 2, y + chipH / 2 - 1, 12, '#2E7D32', 'center', 'middle');
+      y += chipH + 10;
+    }
+
+    // Subtitle
+    R.text(ctx, '选择难度 · 越往下越烧脑', W / 2, y, 14, '#888', 'center');
+    y += 28;
 
     // Message
     if (message) {
       R.text(ctx, message, W / 2, y, 14, '#2196F3', 'center');
-      y += 25;
+      y += 22;
     }
 
-    // Subtitle
-    R.text(ctx, '\u9009\u62E9\u96BE\u5EA6\u5F00\u59CB\u6E38\u620F', W / 2, y, 16, '#666', 'center');
-    y += 35;
-
-    // Difficulty buttons
+    // Difficulty buttons. Color = saturation graded by difficulty.
     var diffs = ['easy', 'medium', 'hard', 'expert'];
-    var colors = { easy: '#4CAF50', medium: '#FF9800', hard: '#F44336', expert: '#9C27B0' };
-    var btnW = W * 0.65, btnH = 60;
+    var bgs   = { easy: '#66BB6A', medium: '#26A69A', hard: '#5C6BC0', expert: '#7E57C2' };
+    var btnW = Math.min(W * 0.78, 320), btnH = 64;
     btnRects = [];
 
     for (var i = 0; i < diffs.length; i++) {
       var d = diffs[i];
       var cfg = DIFF[d];
       var bx = (W - btnW) / 2;
-      R.roundRect(ctx, bx, y, btnW, btnH, 12, colors[d]);
-      R.textBold(ctx, cfg.label, W / 2, y + 15, 20, '#fff', 'center');
-      R.text(ctx, '\u653E\u7F6E ' + cfg.digCount + ' \u4E2A\u65B9\u5757 | \u6D88\u8017 ' + cfg.digCount + ' \u4F53\u529B', W / 2, y + 40, 12, 'rgba(255,255,255,0.85)', 'center');
+      R.roundRect(ctx, bx, y, btnW, btnH, 14, bgs[d]);
+      R.textBold(ctx, cfg.label, bx + 14, y + 14, 22, '#fff', 'left');
+      R.text(ctx, cfg.sub, bx + 14, y + 38, 12, 'rgba(255,255,255,0.85)', 'left');
+      R.text(ctx, '挖 ' + cfg.digCount + ' 块 · 耗体力 ' + cfg.digCount,
+        bx + btnW - 14, y + btnH / 2 - 6, 12, 'rgba(255,255,255,0.85)', 'right');
       btnRects.push({ x: bx, y: y, w: btnW, h: btnH, diff: d });
-      y += btnH + 15;
+      y += btnH + 12;
+    }
+
+    // Info / rules button (top-right, below capsule menu).
+    var iSize = 32;
+    infoBtn = { x: W - iSize - 12, y: contentTop, w: iSize, h: iSize };
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.beginPath();
+    ctx.arc(infoBtn.x + iSize / 2, infoBtn.y + iSize / 2, iSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    R.textBold(ctx, 'ⓘ', infoBtn.x + iSize / 2, infoBtn.y + iSize / 2 - 1, 18, '#555', 'center', 'middle');
+
+    // Help overlay
+    if (helpOpen) {
+      R.overlay(ctx, W, H);
+      var hW = W * 0.84, hH = 360;
+      var hx = (W - hW) / 2, hy = (H - hH) / 2;
+      R.roundRect(ctx, hx, hy, hW, hH, 16, '#fff');
+      R.textBold(ctx, '怎么玩', hx + hW / 2, hy + 20, 18, '#333', 'center');
+      var lines = [
+        '· 棋盘上保留当月、当日、当日星期三格',
+        '· 把所有方块拖到棋盘其余位置',
+        '· 双击棋盘上方块可移除',
+        '· 选中方块后下方可旋转 / 翻转',
+        '· 提示可锁定某一块的正确方向',
+        '· 换题消耗体力（通关后免费）',
+        '· 已通关的题在手选面板带绿勾',
+      ];
+      for (var li = 0; li < lines.length; li++) {
+        R.text(ctx, lines[li], hx + 20, hy + 56 + li * 28, 14, '#333');
+      }
+      var cbW = 100, cbH = 36;
+      var cbX = hx + (hW - cbW) / 2, cbY = hy + hH - cbH - 16;
+      R.button(ctx, cbX, cbY, cbW, cbH, '知道了', '#66BB6A', '#fff', 8);
     }
   };
 
@@ -75,12 +134,16 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
   scene.onTouchMove = function () {};
 
   scene.onTouchEnd = function (x, y) {
+    if (helpOpen) { helpOpen = false; scene.dirty = true; return; }
+    if (infoBtn && R.hitTest(x, y, infoBtn)) {
+      helpOpen = true; scene.dirty = true; return;
+    }
     for (var i = 0; i < btnRects.length; i++) {
       if (R.hitTest(x, y, btnRects[i])) {
         var d = btnRects[i].diff;
         var cost = DIFF[d].digCount;
         if (!stamina.consumeStamina(cost)) {
-          showMsg('\u4F53\u529B\u4E0D\u8DB3\uFF01\u9700\u8981 ' + cost + ' \u70B9\uFF0C\u5F53\u524D ' + stamina.getStamina() + ' \u70B9');
+          showMsg('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }
         onSelect(d);
@@ -89,9 +152,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
     }
   };
 
-  scene.update = function () {
-    // Stamina recovery updates the display
-  };
+  scene.update = function () {};
 
   return scene;
 };

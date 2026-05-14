@@ -31,11 +31,13 @@ function getBasesFromPack(date) {
   return arr.map(parseBoardStr);
 }
 
+// Difficulty labels map block-count K to a slice-of-life waiting time.
+// The sub-label anchors duration expectation; the label itself is the brand.
 var DIFFICULTY_CONFIG = {
-  easy:   { label: '\u9ED1\u94C1', digCount: 3 },
-  medium: { label: '\u767D\u94F6', digCount: 5 },
-  hard:   { label: '\u9EC4\u91D1', digCount: 7 },
-  expert: { label: '\u94BB\u77F3', digCount: 9 },
+  easy:   { label: '等电梯', sub: '约 30 秒',     digCount: 3 },
+  medium: { label: '等公交', sub: '约 3 分钟', digCount: 5 },
+  hard:   { label: '普通人', sub: '约 10 分钟', digCount: 7 },
+  expert: { label: '蹲坑',       sub: '约 20 分钟', digCount: 9 },
 };
 
 function formatDateStr(d) {
