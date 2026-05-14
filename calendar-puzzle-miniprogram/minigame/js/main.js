@@ -3,6 +3,7 @@ var createSelectScene = require('./selectScene');
 var createGameScene = require('./gameScene');
 var PG = require('./puzzleGenerator');
 var shareState = require('./shareState');
+var progress = require('./progress');
 
 var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
@@ -21,7 +22,27 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
   }, 1000);
 
   if (tryLaunchShared(launchQuery)) return;
+  // First-launch tutorial — unless the user already completed (or skipped) it.
+  if (!progress.isTutorialDone()) {
+    startTutorial();
+    return;
+  }
   goToSelect();
+}
+
+function startTutorial() {
+  if (currentScene && currentScene.destroy) currentScene.destroy();
+  currentScene = null;
+  showLoading();
+  setTimeout(function () {
+    var puz = PG.generateTutorialPuzzle();
+    if (!puz) {
+      progress.markTutorialDone();
+      goToSelect();
+      return;
+    }
+    launchGameScene('easy', puz);
+  }, 50);
 }
 
 function tryLaunchShared(q) {
@@ -56,6 +77,8 @@ function goToSelect() {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = createSelectScene(safeInsets, menuRect, function (difficulty) {
     startGame(difficulty);
+  }, {
+    onReplayTutorial: function () { startTutorial(); },
   });
   currentScene.dirty = true;
 }

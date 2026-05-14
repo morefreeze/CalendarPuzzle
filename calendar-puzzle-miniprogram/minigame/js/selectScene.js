@@ -5,13 +5,15 @@ var progress = require('./progress');
 var PG = require('./puzzleGenerator');
 var DIFF = PG.DIFFICULTY_CONFIG;
 
-module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
+module.exports = function createSelectScene(safeInsets, menuRect, onSelect, callbacks) {
+  callbacks = callbacks || {};
   var scene = {};
   scene.dirty = true;
 
   var btnRects = [];
   var infoBtn = null;
   var helpOpen = false;
+  var replayBtn = null;
   var message = '';
   var msgTimer = null;
 
@@ -108,7 +110,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
     // Help overlay
     if (helpOpen) {
       R.overlay(ctx, W, H);
-      var hW = W * 0.84, hH = 360;
+      var hW = W * 0.84, hH = 400;
       var hx = (W - hW) / 2, hy = (H - hH) / 2;
       R.roundRect(ctx, hx, hy, hW, hH, 16, '#fff');
       R.textBold(ctx, '怎么玩', hx + hW / 2, hy + 20, 18, '#333', 'center');
@@ -116,17 +118,30 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
         '· 棋盘上保留当月、当日、当日星期三格',
         '· 把所有方块拖到棋盘其余位置',
         '· 双击棋盘上方块可移除',
+        '· 长按棋盘上方块可拖到新位置',
         '· 选中方块后下方可旋转 / 翻转',
         '· 提示可锁定某一块的正确方向',
         '· 换题消耗体力（通关后免费）',
         '· 已通关的题在手选面板带绿勾',
       ];
       for (var li = 0; li < lines.length; li++) {
-        R.text(ctx, lines[li], hx + 20, hy + 56 + li * 28, 14, '#333');
+        R.text(ctx, lines[li], hx + 20, hy + 56 + li * 26, 13, '#333');
       }
+      // Replay tutorial button (sits above the "知道了" close button).
+      var rbW = hW - 60, rbH = 36;
+      replayBtn = {
+        x: hx + (hW - rbW) / 2,
+        y: hy + hH - rbH * 2 - 24,
+        w: rbW, h: rbH,
+      };
+      R.button(ctx, replayBtn.x, replayBtn.y, replayBtn.w, replayBtn.h,
+        '🎓 重新体验新手教程', '#FFB300', '#fff', 8);
+
       var cbW = 100, cbH = 36;
       var cbX = hx + (hW - cbW) / 2, cbY = hy + hH - cbH - 16;
       R.button(ctx, cbX, cbY, cbW, cbH, '知道了', '#66BB6A', '#fff', 8);
+    } else {
+      replayBtn = null;
     }
   };
 
@@ -134,7 +149,14 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect) {
   scene.onTouchMove = function () {};
 
   scene.onTouchEnd = function (x, y) {
-    if (helpOpen) { helpOpen = false; scene.dirty = true; return; }
+    if (helpOpen) {
+      if (replayBtn && R.hitTest(x, y, replayBtn)) {
+        helpOpen = false;
+        if (callbacks.onReplayTutorial) callbacks.onReplayTutorial();
+        return;
+      }
+      helpOpen = false; scene.dirty = true; return;
+    }
     if (infoBtn && R.hitTest(x, y, infoBtn)) {
       helpOpen = true; scene.dirty = true; return;
     }

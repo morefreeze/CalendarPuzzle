@@ -116,6 +116,53 @@ function dotMarker(ctx, cx, cy, r, color) {
 // Cubic ease-out for snap animations.
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
+// Trace the perimeter of a block's silhouette (only outer edges of filled
+// cells). Used to highlight a multi-cell pentomino without including the
+// internal concave corners.
+function shapeOutline(ctx, shape, x, y, cellSize, color, dash, lineWidth) {
+  ctx.save();
+  ctx.strokeStyle = color || '#FFB300';
+  ctx.lineWidth = lineWidth || 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (dash) ctx.setLineDash(dash);
+  for (var ry = 0; ry < shape.length; ry++) {
+    for (var cx = 0; cx < shape[ry].length; cx++) {
+      if (shape[ry][cx] !== 1) continue;
+      var px = x + cx * cellSize, py = y + ry * cellSize;
+      // Top edge
+      if (ry === 0 || shape[ry - 1][cx] !== 1) {
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px + cellSize, py);
+        ctx.stroke();
+      }
+      // Bottom edge
+      if (ry === shape.length - 1 || shape[ry + 1][cx] !== 1) {
+        ctx.beginPath();
+        ctx.moveTo(px, py + cellSize);
+        ctx.lineTo(px + cellSize, py + cellSize);
+        ctx.stroke();
+      }
+      // Left edge
+      if (cx === 0 || shape[ry][cx - 1] !== 1) {
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px, py + cellSize);
+        ctx.stroke();
+      }
+      // Right edge
+      if (cx === shape[ry].length - 1 || shape[ry][cx + 1] !== 1) {
+        ctx.beginPath();
+        ctx.moveTo(px + cellSize, py);
+        ctx.lineTo(px + cellSize, py + cellSize);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 module.exports = {
   clear: clear,
   roundRect: roundRect,

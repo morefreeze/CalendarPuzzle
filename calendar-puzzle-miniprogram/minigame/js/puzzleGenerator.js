@@ -34,10 +34,10 @@ function getBasesFromPack(date) {
 // Difficulty labels map block-count K to a slice-of-life waiting time.
 // The sub-label anchors duration expectation; the label itself is the brand.
 var DIFFICULTY_CONFIG = {
-  easy:   { label: '等电梯', sub: '约 30 秒',     digCount: 3 },
-  medium: { label: '等公交', sub: '约 3 分钟', digCount: 5 },
-  hard:   { label: '普通人', sub: '约 10 分钟', digCount: 7 },
-  expert: { label: '蹲坑',       sub: '约 20 分钟', digCount: 9 },
+  easy:   { label: '接水',         sub: '约 30 秒',  digCount: 3 },
+  medium: { label: '泡咖啡',       sub: '约 3 分钟', digCount: 5 },
+  hard:   { label: '开个会',       sub: '约 10 分钟', digCount: 7 },
+  expert: { label: '加班赶报告',   sub: '约 20 分钟', digCount: 9 },
 };
 
 function formatDateStr(d) {
@@ -354,6 +354,234 @@ function generatePuzzle(diff, opts) {
   };
 }
 
+// Enumerate up to 8 unique orientations of a shape (4 rotations × 2 mirrors).
+function _orientations(shape) {
+  var out = [];
+  var seen = {};
+  function key(s) { return s.map(function (r) { return r.join(''); }).join('|'); }
+  function add(s) { var k = key(s); if (!seen[k]) { seen[k] = true; out.push(s); } }
+  var cur = shape;
+  for (var i = 0; i < 4; i++) { add(cur); cur = boardMod.rotateShape(cur); }
+  cur = boardMod.flipShape(shape);
+  for (var j = 0; j < 4; j++) { add(cur); cur = boardMod.rotateShape(cur); }
+  return out;
+}
+
+// Does this block have any legal placement (any orientation × cell) given
+// the current set of placed blocks + uncoverable cells?
+function _hasLegalPlacement(block, allBlocks, uncov) {
+  var oris = _orientations(block.shape);
+  for (var oi = 0; oi < oris.length; oi++) {
+    var probe = {
+      id: block.id, label: block.label, color: block.color,
+      key: block.key, shape: oris[oi],
+    };
+    for (var yy = 0; yy < 8; yy++) {
+      for (var xx = 0; xx < 7; xx++) {
+        if (boardMod.isValidPlacement(probe, { x: xx, y: yy }, allBlocks, uncov)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function _sameShape(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].length !== b[i].length) return false;
+    for (var j = 0; j < a[i].length; j++) if (a[i][j] !== b[i][j]) return false;
+  }
+  return true;
+}
+
+// Try every orientation × cell for `block`. Return the first legal placement
+// that is NOT the solved (x, y, shape). Fall back to any legal placement
+// (including solved) if no distinct one exists.
+function _findLegalPlacement(block, prePlaced, uncov, solvedPlacement) {
+  var oris = _orientations(block.shape);
+  var fallback = null;
+  for (var oi = 0; oi < oris.length; oi++) {
+    var probe = {
+      id: block.id, label: block.label, color: block.color,
+      key: block.key, shape: oris[oi],
+    };
+    for (var yy = 0; yy < 8; yy++) {
+      for (var xx = 0; xx < 7; xx++) {
+        if (boardMod.isValidPlacement(probe, { x: xx, y: yy }, prePlaced, uncov)) {
+          var isSolved = solvedPlacement
+            && xx === solvedPlacement.x
+            && yy === solvedPlacement.y
+            && _sameShape(oris[oi], solvedPlacement.shape);
+          if (!isSolved) return { x: xx, y: yy, shape: oris[oi] };
+          if (!fallback) fallback = { x: xx, y: yy, shape: oris[oi] };
+        }
+      }
+    }
+  }
+  return fallback;
+}
+
+// Build solved placements lookup (block id → {x, y, shape}) from a solved board.
+function _solvedPlacements(sb) {
+  var map = {};
+  var all = boardToPlaced(sb);
+  for (var i = 0; i < all.length; i++) {
+    map[all[i].id] = { x: all[i].x, y: all[i].y, shape: all[i].shape };
+  }
+  return map;
+}
+
+// Strict search for a single (base, combo)'s parts: find (misplaced block,
+// orientation, position) such that placement is legal & non-solved AND
+// exactly one other palette block is placeable / the other unplaceable.
+// Returns { misplaced, placeable, unplaceable } or null.
+function _findStrictTriple(parts, solvedPlacements, uncov) {
+  for (var ri = 0; ri < parts.remainingBlocks.length; ri++) {
+    var cand = parts.remainingBlocks[ri];
+    var oris = _orientations(cand.shape);
+    var sp = solvedPlacements[cand.id];
+    for (var oi = 0; oi < oris.length; oi++) {
+      var probe = {
+        id: cand.id, label: cand.label, color: cand.color,
+        key: cand.key, shape: oris[oi],
+      };
+      for (var yy = 0; yy < 8; yy++) {
+        for (var xx = 0; xx < 7; xx++) {
+          if (!boardMod.isValidPlacement(probe, { x: xx, y: yy },
+            parts.prePlacedBlocks, uncov)) continue;
+          if (sp && xx === sp.x && yy === sp.y
+            && _sameShape(oris[oi], sp.shape)) continue;
+          var droppedTmp = {
+            id: cand.id, label: cand.label, color: cand.color,
+            key: cand.key, shape: oris[oi], x: xx, y: yy,
+          };
+          var state = parts.prePlacedBlocks.concat([droppedTmp]);
+          var others = parts.remainingBlocks.filter(function (b) {
+            return b.id !== cand.id;
+          });
+          var placeable = null, unplaceable = null;
+          for (var oj = 0; oj < others.length; oj++) {
+            if (_hasLegalPlacement(others[oj], state, uncov)) placeable = others[oj];
+            else unplaceable = others[oj];
+          }
+          if (placeable && unplaceable) {
+            return { misplaced: droppedTmp, placeable: placeable, unplaceable: unplaceable };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// Build an "easy" puzzle and pre-misplace one of its remaining blocks at a
+// legal cell that satisfies a strict three-block property:
+//   * misplaced: legal but not the solved (x, y, orientation)
+//   * placeable: another palette block has ≥1 legal placement now
+//   * unplaceable: the third palette block has 0 legal placements now
+// We search across every base × every combo until one satisfies it. If
+// none do, fall back to any-legal-non-solved.
+function generateTutorialPuzzle(date) {
+  date = date || new Date();
+  var bases = getBasesFromPack(date);
+  if (!bases) {
+    var sb = solveBoard(date);
+    if (!sb) return null;
+    bases = [sb];
+  }
+  var digCount = DIFFICULTY_CONFIG.easy.digCount; // 3
+  var uncov = boardMod.getUncoverableCells();
+
+  // ── Strict search: iterate every (base, combo) until the property holds.
+  var winningBase = null, winningCombo = null, winningParts = null, winningTriple = null;
+  for (var bi = 0; bi < bases.length && !winningTriple; bi++) {
+    var sb2 = bases[bi];
+    var letterSets = enumAllDigCombinations(sb2, digCount);
+    if (!letterSets.length) continue;
+    var sps = _solvedPlacements(sb2);
+    for (var li = 0; li < letterSets.length && !winningTriple; li++) {
+      var pts = puzzleFromCombo(sb2, letterSets[li]);
+      var triple = _findStrictTriple(pts, sps, uncov);
+      if (triple) {
+        winningBase = sb2;
+        winningCombo = letterSets[li];
+        winningParts = pts;
+        winningTriple = triple;
+      }
+    }
+  }
+
+  // Default puzzle fields — overwritten by either strict or fallback below.
+  var solvedBoard, combo, parts;
+  var misplacedBlock, misplacedPlacement;
+  var placeableId = null, unplaceableId = null;
+
+  if (winningTriple) {
+    solvedBoard = winningBase;
+    combo = winningCombo;
+    parts = winningParts;
+    misplacedBlock = parts.remainingBlocks.filter(function (b) {
+      return b.id === winningTriple.misplaced.id;
+    })[0];
+    misplacedPlacement = {
+      x: winningTriple.misplaced.x,
+      y: winningTriple.misplaced.y,
+      shape: winningTriple.misplaced.shape,
+    };
+    placeableId = winningTriple.placeable.id;
+    unplaceableId = winningTriple.unplaceable.id;
+  } else {
+    // No (base, combo) satisfies the strict property — use bases[0] +
+    // combos[0] with any-legal-non-solved misplaced placement.
+    solvedBoard = bases[0];
+    var combos0 = enumAllDigCombinations(solvedBoard, digCount);
+    if (!combos0.length) return null;
+    combo = combos0[0];
+    parts = puzzleFromCombo(solvedBoard, combo);
+    var sps0 = _solvedPlacements(solvedBoard);
+    for (var rk = 0; rk < parts.remainingBlocks.length; rk++) {
+      var c2 = parts.remainingBlocks[rk];
+      var p2 = _findLegalPlacement(c2, parts.prePlacedBlocks, uncov, sps0[c2.id]);
+      if (!p2) continue;
+      misplacedBlock = c2;
+      misplacedPlacement = p2;
+      break;
+    }
+    if (!misplacedBlock) {
+      misplacedBlock = parts.remainingBlocks[0];
+      misplacedPlacement = { x: 0, y: 0, shape: misplacedBlock.shape };
+    }
+  }
+
+  var initialDropped = [{
+    id: misplacedBlock.id,
+    label: misplacedBlock.label,
+    color: misplacedBlock.color,
+    key: misplacedBlock.key,
+    shape: misplacedPlacement.shape,
+    x: misplacedPlacement.x,
+    y: misplacedPlacement.y,
+  }];
+
+  return {
+    prePlacedBlocks: parts.prePlacedBlocks,
+    remainingBlocks: parts.remainingBlocks,
+    initialDropped: initialDropped,
+    misplacedId: misplacedBlock.id,
+    placeableId: placeableId,
+    unplaceableId: unplaceableId,
+    difficulty: 'easy',
+    solvedBoard: solvedBoard,
+    bases: bases,
+    allCombinations: [{ baseIdx: 0, letters: combo }],
+    currentComboIndex: 0,
+    dateStr: formatDateStr(date),
+    tutorial: true,
+  };
+}
+
 function getHintShape(sb, label) {
   var minR=99,minC=99,maxR=-1,maxC=-1;
   for(var r=0;r<sb.length;r++) for(var c=0;c<sb[r].length;c++) if(sb[r][c]===label) {
@@ -367,6 +595,7 @@ function getHintShape(sb, label) {
 
 module.exports = {
   generatePuzzle: generatePuzzle,
+  generateTutorialPuzzle: generateTutorialPuzzle,
   getHintShape: getHintShape,
   puzzleFromCombo: puzzleFromCombo,
   countSolutionsForCombo: countSolutionsForCombo,

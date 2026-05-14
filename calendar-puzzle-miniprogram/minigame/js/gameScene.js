@@ -26,7 +26,28 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var prePlaced = puzzle.prePlacedBlocks;
   var dropped = [];
   var palette = puzzle.remainingBlocks.map(function (b) { return B.cloneBlock(b); });
+  // If the puzzle ships pre-misplaced blocks (tutorial mode), seed dropped
+  // and pull those ids out of palette.
+  if (puzzle.initialDropped && puzzle.initialDropped.length) {
+    var seenInDropped = {};
+    for (var idi = 0; idi < puzzle.initialDropped.length; idi++) {
+      dropped.push(B.cloneBlock(puzzle.initialDropped[idi]));
+      seenInDropped[puzzle.initialDropped[idi].id] = true;
+    }
+    palette = palette.filter(function (b) { return !seenInDropped[b.id]; });
+  }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+
+  // ---- Tutorial state machine ----
+  // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
+  // step 2: drag the *placeable* palette block to the board
+  // step 3: double-tap the misplaced block to remove it
+  // step 4: complete the puzzle (rectangular bottom dialog, persists)
+  var tutorialMode = !!puzzle.tutorial;
+  var tutorialStep = tutorialMode ? 1 : 0;
+  var tutorialMisplacedId = puzzle.misplacedId || null;
+  var tutorialPlaceableId = puzzle.placeableId || null;
+  var tutorialUnplaceableId = puzzle.unplaceableId || null;
   var selected = null;
   var timer = 0;
   var isWon = false;
@@ -134,8 +155,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        if (tutorialMode) tutorialStep = 4;
         wonCombos[puzzle.currentComboIndex] = true;
-        progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
+        if (!tutorialMode) {
+          progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
+        }
         var pb = progress.recordTime(puzzle.dateStr, difficulty, timer);
         winStats = {
           time: timer,
@@ -157,6 +181,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     dropped.push(nb);
     palette = palette.filter(function (b) { return b.id !== block.id; });
     selected = null;
+    // Tutorial advance: step 2 (drag a piece) clears as soon as the player
+    // places anything via drag.
+    if (tutorialMode && tutorialStep === 2) tutorialStep = 3;
     // Kick snap animation from the drag-release position to the target cell.
     if (fromX != null && fromY != null && L.cellSize) {
       snapAnims.push({
@@ -183,6 +210,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     delete restored.x; delete restored.y;
     palette.push(restored);
     selected = null;
+    // Tutorial advance: step 3 clears when the player double-taps off the
+    // pre-misplaced block specifically.
+    if (tutorialMode && tutorialStep === 3 && id === tutorialMisplacedId) {
+      tutorialStep = 4;
+    }
     scene.dirty = true;
   }
 
@@ -316,18 +348,31 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
 
-    // Begin main content below the title row.
+    // Begin main content below the title row. Tutorial mode hides the
+    // title / sub / timer / stamina elements but reserves the same vertical
+    // space so the board stays at the regular gameplay Y position.
     var y = L.diffSubY + 22;
 
-    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons
-    var btnH = 36, btnGap = 8;
-    var ctrlBtnW = Math.floor((W - 2 * pad - 3 * btnGap) / 4);
-    L.ctrlY = y;
-    L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
-    L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
-    L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
-    L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
-    y += btnH + 10;
+    // No room reserved for a banner — tutorial bubble overlays whatever
+    // it needs to point at. Skip button is placed inside the bubble (laid
+    // out at render time, not here).
+
+    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons.
+    // Hidden during tutorial mode to keep the focus on the banner step.
+    L.hintBtn = null;
+    L.resetBtn = null;
+    L.switchRandomBtn = null;
+    L.switchManualBtn = null;
+    if (!tutorialMode) {
+      var btnH = 36, btnGap = 8;
+      var ctrlBtnW = Math.floor((W - 2 * pad - 3 * btnGap) / 4);
+      L.ctrlY = y;
+      L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
+      L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
+      L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
+      L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+      y += btnH + 10;
+    }
 
     // Board with breathing padding + shadow
     var safeH = H - padTop - padBottom;
@@ -349,6 +394,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.winCard = null;
     L.winCloseBtn = null;
     L.winNextBtn = null;
+    L.winFinishTutorialBtn = null;
+    L.tutorialBanner = null;
+    L.tutorialSkipBtn = null;
+    L.tutorialNextBtn = null;
+    L.tutorialStep4Dialog = null;
     if (isWon) {
       var ibtnH = 36;
       L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
@@ -503,35 +553,40 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       ctx.stroke();
     }
 
-    // --- Difficulty (centered main title) ---
-    R.textBold(ctx, diffLabel, W / 2, L.diffY, 22, BRAND_DARK, 'center');
-    if (diffSub) {
-      R.text(ctx, diffSub + ' · 挖 ' + diffCfg.digCount + ' 块',
-        W / 2, L.diffSubY, 11, '#888', 'center');
+    // Tutorial mode hides difficulty / sub / timer / stamina so the focus
+    // is purely on the puzzle and the guidance bubble.
+    if (!tutorialMode) {
+      // --- Difficulty (centered main title) ---
+      R.textBold(ctx, diffLabel, W / 2, L.diffY, 22, BRAND_DARK, 'center');
+      if (diffSub) {
+        R.text(ctx, diffSub + ' · 挖 ' + diffCfg.digCount + ' 块',
+          W / 2, L.diffSubY, 11, '#888', 'center');
+      }
+      // --- Timer (small, secondary, right of title) ---
+      R.text(ctx, B.formatTime(timer), W - L.staminaW - 14, L.timerY, 13, '#666', 'right');
+      // --- Stamina capsule (with recovery countdown) ---
+      var cur = stamina.getStamina();
+      var rs = stamina.getRecoverSeconds();
+      R.roundRect(ctx, L.staminaX, L.staminaY, L.staminaW, L.staminaH, 4, '#FFF8E1', '#FFB300');
+      var stTxt = '体力 ' + cur;
+      if (cur < stamina.MAX_STAMINA) stTxt += '  ↻' + formatMMSS(rs);
+      R.text(ctx, stTxt, L.staminaX + L.staminaW / 2, L.staminaY + 4, 10, '#E65100', 'center');
     }
 
-    // --- Timer (small, secondary, right of title) ---
-    R.text(ctx, B.formatTime(timer), W - L.staminaW - 14, L.timerY, 13, '#666', 'right');
+    // (Tutorial bubble is rendered later, after palette + board, so it
+    //  can compute targets from their freshly-laid-out rects.)
 
-    // --- Stamina capsule (with recovery countdown) ---
-    var cur = stamina.getStamina();
-    var rs = stamina.getRecoverSeconds();
-    R.roundRect(ctx, L.staminaX, L.staminaY, L.staminaW, L.staminaH, 4, '#FFF8E1', '#FFB300');
-    var stTxt = '体力 ' + cur;
-    if (cur < stamina.MAX_STAMINA) stTxt += '  ↻' + formatMMSS(rs);
-    R.text(ctx, stTxt, L.staminaX + L.staminaW / 2, L.staminaY + 4, 10, '#E65100', 'center');
-
-    // --- Control row: 提示 / 重开 / 🎲 / 🎯 ---
-    var hintActive = hintedIds.length < palette.length + dropped.length;
-    R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
-    R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
-    // 🎲 random — active when switchMode='random'
-    var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
-    var randomFg = switchMode === 'random' ? '#fff' : '#666';
-    R.button(ctx, L.switchRandomBtn.x, L.switchRandomBtn.y, L.switchRandomBtn.w, L.switchRandomBtn.h, '🎲 随机', randomBg, randomFg, 8);
-    var manualBg = switchMode === 'manual' ? BRAND : '#E0E0E0';
-    var manualFg = switchMode === 'manual' ? '#fff' : '#666';
-    R.button(ctx, L.switchManualBtn.x, L.switchManualBtn.y, L.switchManualBtn.w, L.switchManualBtn.h, '🎯 选题', manualBg, manualFg, 8);
+    // --- Control row: 提示 / 重开 / 🎲 / 🎯 (hidden during tutorial) ---
+    if (L.hintBtn) {
+      R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
+      R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
+      var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
+      var randomFg = switchMode === 'random' ? '#fff' : '#666';
+      R.button(ctx, L.switchRandomBtn.x, L.switchRandomBtn.y, L.switchRandomBtn.w, L.switchRandomBtn.h, '🎲 随机', randomBg, randomFg, 8);
+      var manualBg = switchMode === 'manual' ? BRAND : '#E0E0E0';
+      var manualFg = switchMode === 'manual' ? '#fff' : '#666';
+      R.button(ctx, L.switchManualBtn.x, L.switchManualBtn.y, L.switchManualBtn.w, L.switchManualBtn.h, '🎯 选题', manualBg, manualFg, 8);
+    }
 
     // --- Board card (padding + soft shadow + thin border) ---
     ctx.save();
@@ -792,6 +847,226 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.button(ctx, L.selectCloseBtn.x, L.selectCloseBtn.y, L.selectCloseBtn.w, L.selectCloseBtn.h, '取消', '#eee', '#333', 8);
     }
 
+    // --- Tutorial guidance ---
+    if (tutorialMode && tutorialStep <= 4) {
+      var bpad = 12;
+
+      // Step 4 has a unique form: a persistent rectangular dialog at the
+      // bottom of the screen — no arrow, no target, stays until win/skip.
+      if (tutorialStep === 4) {
+        var dialogH = 76;
+        var dialogY = H - (safeInsets.bottom || 0) - dialogH - 8;
+        L.tutorialStep4Dialog = { x: bpad, y: dialogY, w: W - 2 * bpad, h: dialogH };
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.22)';
+        ctx.shadowBlur = 14;
+        ctx.shadowOffsetY = 4;
+        R.roundRect(ctx, L.tutorialStep4Dialog.x, L.tutorialStep4Dialog.y,
+          L.tutorialStep4Dialog.w, L.tutorialStep4Dialog.h, 12, '#FFFFFF', '#FFB300');
+        ctx.restore();
+        R.textBold(ctx, '步骤 4 / 4 · 完成挑战', L.tutorialStep4Dialog.x + 14,
+          L.tutorialStep4Dialog.y + 10, 12, '#E65100');
+        R.text(ctx, '把剩下的方块都放到合适位置，完成今天的拼图！',
+          L.tutorialStep4Dialog.x + 14, L.tutorialStep4Dialog.y + 36, 13, '#5D4037');
+        var skipW4 = 60, skipH4 = 24;
+        L.tutorialSkipBtn = {
+          x: L.tutorialStep4Dialog.x + L.tutorialStep4Dialog.w - skipW4 - 10,
+          y: L.tutorialStep4Dialog.y + 10,
+          w: skipW4, h: skipH4,
+        };
+        R.roundRect(ctx, L.tutorialSkipBtn.x, L.tutorialSkipBtn.y,
+          L.tutorialSkipBtn.w, L.tutorialSkipBtn.h, 4, '#fff', '#BDBDBD');
+        R.text(ctx, '跳过',
+          L.tutorialSkipBtn.x + L.tutorialSkipBtn.w / 2,
+          L.tutorialSkipBtn.y + L.tutorialSkipBtn.h / 2 - 1,
+          12, '#666', 'center', 'middle');
+      } else {
+        // Steps 1-3 are bubbles with an arrow pointing at a target.
+        var target = null;
+        var stepLabel = '';
+        var stepLines = [];      // wrapped text lines
+        var forcedDir = null;    // 'up' or 'down' to override auto positioning
+        if (tutorialStep === 1) {
+          stepLabel = '步骤 1 / 4 · 游戏目标';
+          stepLines = ['把所有方块拼到棋盘上，', '让今日的标记格（金色）露出来'];
+          var wd = null;
+          for (var ui = 0; ui < uncov.length; ui++) {
+            if (B.boardLayoutData[uncov[ui].y][uncov[ui].x].t === 'weekday') {
+              wd = uncov[ui]; break;
+            }
+          }
+          if (wd && L.cellSize) {
+            target = {
+              x: L.boardX + wd.x * L.cellSize, y: L.boardY + wd.y * L.cellSize,
+              w: L.cellSize, h: L.cellSize,
+            };
+          }
+        } else if (tutorialStep === 2) {
+          stepLabel = '步骤 2 / 4 · 选中并放置';
+          stepLines = [
+            '点击选中方块，可旋转 / 翻转',
+            '然后拖到棋盘的空格里',
+          ];
+          for (var pi3 = 0; pi3 < L.palItems.length; pi3++) {
+            if (L.palItems[pi3].block.id === tutorialPlaceableId) {
+              var pp = L.palItems[pi3];
+              target = { x: pp.x, y: pp.y, w: pp.w, h: pp.h };
+              break;
+            }
+          }
+          if (!target && L.palItems.length > 0) {
+            var pp0 = L.palItems[0];
+            target = { x: pp0.x, y: pp0.y, w: pp0.w, h: pp0.h };
+          }
+          // Bubble goes BELOW the target (below palette) so it doesn't cover
+          // the board or the other palette cards.
+          forcedDir = 'down';
+        } else if (tutorialStep === 3) {
+          stepLabel = '步骤 3 / 4 · 双击移除';
+          stepLines = ['这块放错了 —— 双击它取回 palette'];
+          var mp = null;
+          for (var di2 = 0; di2 < dropped.length; di2++) {
+            if (dropped[di2].id === tutorialMisplacedId) { mp = dropped[di2]; break; }
+          }
+          if (mp && L.cellSize) {
+            target = {
+              x: L.boardX + mp.x * L.cellSize, y: L.boardY + mp.y * L.cellSize,
+              w: mp.shape[0].length * L.cellSize, h: mp.shape.length * L.cellSize,
+              shape: mp.shape,          // <-- enables silhouette outline
+              cellSize: L.cellSize,
+            };
+          }
+        }
+
+        // Target highlight — silhouette outline for shaped targets, otherwise
+        // a rectangular dashed ring.
+        if (target) {
+          ctx.save();
+          ctx.shadowColor = 'rgba(255,179,0,0.9)';
+          ctx.shadowBlur = 14;
+          if (target.shape) {
+            R.shapeOutline(ctx, target.shape, target.x, target.y, target.cellSize,
+              '#FFB300', [6, 4], 3);
+          } else {
+            ctx.strokeStyle = '#FFB300';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([6, 4]);
+            ctx.strokeRect(target.x - 2, target.y - 2, target.w + 4, target.h + 4);
+          }
+          ctx.restore();
+        }
+
+        // Compute bubble height from line count.
+        var lineCount = stepLines.length;
+        var bubbleW = Math.min(W - 2 * bpad, 320);
+        var bubbleH = 16 /*top pad*/ + 14 /*label*/ + 8 + lineCount * 20 + 12 /*bottom pad*/;
+        if (tutorialStep === 1) bubbleH += 40; // room for 下一步 button
+        var bubbleX, bubbleY, tailDir;
+        if (target) {
+          bubbleX = Math.max(bpad, Math.min(
+            target.x + target.w / 2 - bubbleW / 2, W - bubbleW - bpad));
+          if (forcedDir === 'down') {
+            // Place bubble below target (tail points up at the target above).
+            bubbleY = target.y + target.h + 14;
+            tailDir = 'up';
+          } else if (forcedDir === 'up') {
+            bubbleY = target.y - bubbleH - 14;
+            tailDir = 'down';
+          } else if (target.y > H / 2) {
+            bubbleY = target.y - bubbleH - 14;
+            tailDir = 'down';
+          } else {
+            bubbleY = target.y + target.h + 14;
+            tailDir = 'up';
+          }
+          if (bubbleY + bubbleH > H - 8) bubbleY = H - bubbleH - 8;
+          if (bubbleY < 8) bubbleY = 8;
+        } else {
+          bubbleX = (W - bubbleW) / 2;
+          bubbleY = L.headerY + 8;
+          tailDir = null;
+        }
+
+        // Bubble
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.22)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 3;
+        R.roundRect(ctx, bubbleX, bubbleY, bubbleW, bubbleH, 12, '#FFFFFF', '#FFB300');
+        ctx.restore();
+        ctx.strokeStyle = '#FFB300';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bubbleX + 0.5, bubbleY + 0.5, bubbleW - 1, bubbleH - 1);
+
+        // Tail
+        if (tailDir && target) {
+          var tx = Math.max(bubbleX + 22, Math.min(target.x + target.w / 2, bubbleX + bubbleW - 22));
+          ctx.fillStyle = '#FFFFFF';
+          ctx.strokeStyle = '#FFB300';
+          ctx.lineWidth = 2;
+          if (tailDir === 'up') {
+            ctx.beginPath();
+            ctx.moveTo(tx - 10, bubbleY + 1);
+            ctx.lineTo(tx, bubbleY - 10);
+            ctx.lineTo(tx + 10, bubbleY + 1);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(tx - 10, bubbleY);
+            ctx.lineTo(tx, bubbleY - 10);
+            ctx.lineTo(tx + 10, bubbleY);
+            ctx.stroke();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(tx - 10, bubbleY + bubbleH - 1);
+            ctx.lineTo(tx, bubbleY + bubbleH + 10);
+            ctx.lineTo(tx + 10, bubbleY + bubbleH - 1);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(tx - 10, bubbleY + bubbleH);
+            ctx.lineTo(tx, bubbleY + bubbleH + 10);
+            ctx.lineTo(tx + 10, bubbleY + bubbleH);
+            ctx.stroke();
+          }
+        }
+
+        // Body: label + wrapped text lines
+        R.textBold(ctx, stepLabel, bubbleX + 14, bubbleY + 12, 11, '#E65100');
+        for (var ln = 0; ln < stepLines.length; ln++) {
+          R.text(ctx, stepLines[ln], bubbleX + 14, bubbleY + 36 + ln * 20, 13, '#5D4037');
+        }
+
+        // Skip button (top-right of bubble)
+        var skipW = 50, skipH = 20;
+        L.tutorialSkipBtn = {
+          x: bubbleX + bubbleW - skipW - 10,
+          y: bubbleY + 8,
+          w: skipW, h: skipH,
+        };
+        R.roundRect(ctx, L.tutorialSkipBtn.x, L.tutorialSkipBtn.y,
+          L.tutorialSkipBtn.w, L.tutorialSkipBtn.h, 4, '#fff', '#BDBDBD');
+        R.text(ctx, '跳过',
+          L.tutorialSkipBtn.x + L.tutorialSkipBtn.w / 2,
+          L.tutorialSkipBtn.y + L.tutorialSkipBtn.h / 2 - 1,
+          11, '#666', 'center', 'middle');
+
+        // Step 1 has a "下一步" button to advance.
+        if (tutorialStep === 1) {
+          var nbW = 96, nbH = 32;
+          L.tutorialNextBtn = {
+            x: bubbleX + bubbleW - nbW - 14,
+            y: bubbleY + bubbleH - nbH - 10,
+            w: nbW, h: nbH,
+          };
+          R.button(ctx, L.tutorialNextBtn.x, L.tutorialNextBtn.y,
+            L.tutorialNextBtn.w, L.tutorialNextBtn.h, '下一步 →', '#FFB300', '#fff', 8);
+        }
+      }
+    } else {
+      L.tutorialSkipBtn = null;
+      L.tutorialNextBtn = null;
+      L.tutorialStep4Dialog = null;
+    }
+
     // --- Snap landing preview while dragging ---
     if (dragging && dragHasMoved) {
       var gx = dragPos.x - cs;
@@ -867,16 +1142,29 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
         cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
 
-      // Two stacked CTA buttons. 随机下一题 is the primary action
-      // (most players want to keep playing); share is secondary.
+      // Two stacked CTA buttons. In tutorial mode the primary CTA finishes
+      // the tutorial; otherwise it picks a random next puzzle. Share is
+      // always the secondary CTA.
       var sbtnW = cardW - 32, sbtnH = 40, sbtnGap = 10;
-      L.winNextBtn = {
-        x: cardX + (cardW - sbtnW) / 2,
-        y: cardY + cardH - sbtnH * 2 - sbtnGap - 14,
-        w: sbtnW, h: sbtnH,
-      };
-      R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
-        '🎲 随机下一题', BRAND, '#fff', 10);
+      var primaryY = cardY + cardH - sbtnH * 2 - sbtnGap - 14;
+      if (tutorialMode) {
+        L.winFinishTutorialBtn = {
+          x: cardX + (cardW - sbtnW) / 2,
+          y: primaryY,
+          w: sbtnW, h: sbtnH,
+        };
+        R.button(ctx, L.winFinishTutorialBtn.x, L.winFinishTutorialBtn.y,
+          L.winFinishTutorialBtn.w, L.winFinishTutorialBtn.h,
+          '🎓 完成新手教程', BRAND, '#fff', 10);
+      } else {
+        L.winNextBtn = {
+          x: cardX + (cardW - sbtnW) / 2,
+          y: primaryY,
+          w: sbtnW, h: sbtnH,
+        };
+        R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
+          '🎲 随机下一题', BRAND, '#fff', 10);
+      }
       L.shareBtn = {
         x: cardX + (cardW - sbtnW) / 2,
         y: cardY + cardH - sbtnH - 14,
@@ -934,6 +1222,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Modal win card swallows palette drags etc.
     if (isWon && !winCardDismissed && L.winCard) return;
 
+    // Tutorial step 1 is an explainer — only the "下一步" / "跳过" buttons
+    // react. Block drag-starts on palette / board.
+    if (tutorialMode && tutorialStep === 1) return;
+
     if (selectPanelOpen) {
       dragStart = { x: x, y: y };
       selectScrolled = false;
@@ -946,24 +1238,30 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // one. The block is lifted into `dragging` and removed from dropped; on
     // touchEnd we either re-place at the new cell, restore to origin, or
     // (for a quick double-tap) remove to palette.
-    if (L.cellSize && !isWon) {
+    // Disabled in tutorial step 2 so the player can only interact with the
+    // designated placeable palette card.
+    if (tutorialMode && tutorialStep === 2) {
+      // skip board pickup
+    } else if (L.cellSize && !isWon) {
       var bcs = L.cellSize;
       var btx = Math.floor((x - L.boardX) / bcs);
       var bty = Math.floor((y - L.boardY) / bcs);
       if (btx >= 0 && btx < 7 && bty >= 0 && bty < 8 && x >= L.boardX && y >= L.boardY) {
         var blkAt = B.getBlockAtCell(allBlocks(), btx, bty);
         if (blkAt && !isPrePlaced(blkAt.id)) {
+          // Lift a board block — but DON'T remove it from `dropped` yet.
+          // Removal happens on the first onTouchMove past the drag threshold,
+          // so a single tap (no movement) leaves the block visually untouched
+          // and avoids a one-frame disappear/reappear flicker.
           dragging = B.cloneBlock(blkAt);
           dragHasMoved = false;
-          dragEnteredBoard = true; // already on the board
+          dragEnteredBoard = true;
           dragFromBoard = true;
           dragOriginX = blkAt.x;
           dragOriginY = blkAt.y;
-          dropped = dropped.filter(function (b) { return b.id !== blkAt.id; });
           selected = null;
           dragStart = { x: x, y: y };
           dragPos = { x: x, y: y };
-          scene.dirty = true;
           try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
           return;
         }
@@ -972,6 +1270,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     for (var i = 0; i < L.palItems.length; i++) {
       if (R.hitTest(x, y, L.palItems[i])) {
+        // Tutorial step 2 locks all palette cards except the placeable one.
+        if (tutorialMode && tutorialStep === 2 && tutorialPlaceableId
+          && L.palItems[i].block.id !== tutorialPlaceableId) {
+          return;
+        }
         dragging = L.palItems[i].block;
         dragHasMoved = false;
         dragEnteredBoard = false;
@@ -1015,6 +1318,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var dx = x - dragStart.x, dy = y - dragStart.y;
       if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
       dragHasMoved = true;
+      // For a board-origin drag we only commit the "lift" (remove from
+      // `dropped`) once the user has actually moved past the threshold.
+      // A tap that never crosses the threshold won't disturb the board.
+      if (dragFromBoard) {
+        dropped = dropped.filter(function (b) { return b.id !== dragging.id; });
+      }
     }
     // Track whether the drag has snapped to a real grid cell at any point.
     if (!dragEnteredBoard && L.cellSize) {
@@ -1027,12 +1336,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
-    // ── Win modal: × dismisses; 随机下一题 jumps to a new puzzle (free,
-    //    isWon → confirmAndSwitch skips stamina); share shares; tap outside
-    //    dismisses; tap inside (not a button) is swallowed.
+    // ── Win modal: × dismisses; 随机下一题 / 完成新手教程 advances; share
+    //    shares; tap outside dismisses; tap inside (not a button) is swallowed.
     if (isWon && !winCardDismissed && L.winCard) {
       if (L.winCloseBtn && R.hitTest(x, y, L.winCloseBtn)) {
         winCardDismissed = true; scene.dirty = true; return;
+      }
+      if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
+        progress.markTutorialDone();
+        clearInterval(timerInterval);
+        callbacks.onBack();
+        return;
       }
       if (L.winNextBtn && R.hitTest(x, y, L.winNextBtn)) {
         executeRandomSwitch();
@@ -1045,6 +1359,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (!R.hitTest(x, y, L.winCard)) {
         winCardDismissed = true; scene.dirty = true; return;
       }
+      return;
+    }
+
+    // Tutorial skip — works on every step.
+    if (L.tutorialSkipBtn && R.hitTest(x, y, L.tutorialSkipBtn)) {
+      progress.markTutorialDone();
+      clearInterval(timerInterval);
+      callbacks.onBack();
+      return;
+    }
+    // Tutorial step 1 "下一步" — advance to step 2.
+    if (L.tutorialNextBtn && R.hitTest(x, y, L.tutorialNextBtn)) {
+      tutorialStep = 2;
+      scene.dirty = true;
       return;
     }
 
@@ -1120,9 +1448,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // Tap (no move) handling differs by drag origin.
       if (!dragHasMoved) {
         if (dragFromBoard) {
-          // Tap on a placed block: respect the existing double-tap-to-remove
-          // gesture (lifts the block to palette); a single tap restores it
-          // to its origin cell with no visible change.
+          // The block was never lifted (still in `dropped`). A single tap
+          // is a no-op; a double-tap removes the block to the palette.
           var tcs = L.cellSize;
           var tx = Math.floor((x - L.boardX) / tcs);
           var ty = Math.floor((y - L.boardY) / tcs);
@@ -1130,14 +1457,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var dbl = (now - lastTap.time < 350) && lastTap.x === tx && lastTap.y === ty;
           lastTap = { time: now, x: tx, y: ty };
           if (dbl) {
-            var rest = B.cloneBlock(dragging);
-            delete rest.x; delete rest.y;
-            palette.push(rest);
-          } else {
-            var rb = B.cloneBlock(dragging);
-            rb.x = dragOriginX; rb.y = dragOriginY;
-            dropped.push(rb);
+            removeDropped(dragging.id);
           }
+          // single tap: leave the board untouched
         } else {
           // Tap on palette card / preview shape → select.
           selected = dragging;
@@ -1300,5 +1622,5 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (solutionCountTimer) clearTimeout(solutionCountTimer);
   };
 
-  return scene;
+  scene.__getStep = function() { return tutorialStep; }; scene.__setStep = function(v) { tutorialStep = v; }; scene.__placeBlock = placeBlock; return scene;
 };
