@@ -349,6 +349,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.shareBtn = null;
     L.winCard = null;
     L.winCloseBtn = null;
+    L.winNextBtn = null;
     if (isWon) {
       var ibtnH = 36;
       L.inviteBtn = { x: pad, y: y, w: W - 2 * pad, h: ibtnH };
@@ -839,7 +840,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // Dim backdrop — makes the card modal, click-outside dismisses.
       R.overlay(ctx, W, H);
       var cardW = Math.min(W - 32, 320);
-      var cardH = 200;
+      var cardH = 250;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       L.winCard = { x: cardX, y: cardY, w: cardW, h: cardH };
@@ -874,8 +875,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
         cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
 
-      // Share button anchored to the bottom of the card.
-      var sbtnW = cardW - 32, sbtnH = 40;
+      // Two stacked CTA buttons. 随机下一题 is the primary action
+      // (most players want to keep playing); share is secondary.
+      var sbtnW = cardW - 32, sbtnH = 40, sbtnGap = 10;
+      L.winNextBtn = {
+        x: cardX + (cardW - sbtnW) / 2,
+        y: cardY + cardH - sbtnH * 2 - sbtnGap - 14,
+        w: sbtnW, h: sbtnH,
+      };
+      R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
+        '🎲 随机下一题', BRAND, '#fff', 10);
       L.shareBtn = {
         x: cardX + (cardW - sbtnW) / 2,
         y: cardY + cardH - sbtnH - 14,
@@ -996,11 +1005,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
-    // ── Win modal: × button dismisses; share button shares; tap outside
+    // ── Win modal: × dismisses; 随机下一题 jumps to a new puzzle (free,
+    //    isWon → confirmAndSwitch skips stamina); share shares; tap outside
     //    dismisses; tap inside (not a button) is swallowed.
     if (isWon && !winCardDismissed && L.winCard) {
       if (L.winCloseBtn && R.hitTest(x, y, L.winCloseBtn)) {
         winCardDismissed = true; scene.dirty = true; return;
+      }
+      if (L.winNextBtn && R.hitTest(x, y, L.winNextBtn)) {
+        executeRandomSwitch();
+        return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
         try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
@@ -1195,7 +1209,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
       if (!selected) return;
       if (B.isValidPlacement(selected, { x: tapCX, y: tapCY }, allBlocks(), uncov, selected.id)) {
-        placeBlock(selected, tapCX, tapCY, L.boardX + tapCX * cs2, L.boardY + tapCY * cs2);
+        // Instant placement — no snap animation on tap (the from==to ghost
+        // would flicker on top of the freshly-drawn solid block).
+        placeBlock(selected, tapCX, tapCY);
       } else {
         showToast('无法放置！');
       }
