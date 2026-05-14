@@ -176,4 +176,5 @@ module.exports = {
   lockBadge: lockBadge,
   dotMarker: dotMarker,
   easeOutCubic: easeOutCubic,
+  shapeOutline: shapeOutline,
 };
