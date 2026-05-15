@@ -38,11 +38,13 @@ function getBasesFromPack(date) {
 
 // Difficulty labels map block-count K to a slice-of-life waiting time.
 // The sub-label anchors duration expectation; the label itself is the brand.
+// staminaCost defaults to digCount; insomnia overrides it to 0 (free practice).
 var DIFFICULTY_CONFIG = {
-  easy:   { label: '接水',         sub: '约 30 秒',  digCount: 3 },
-  medium: { label: '泡咖啡',       sub: '约 3 分钟', digCount: 5 },
-  hard:   { label: '开个会',       sub: '约 10 分钟', digCount: 7 },
-  expert: { label: '加班赶报告',   sub: '约 20 分钟', digCount: 9 },
+  easy:     { label: '接水',         sub: '约 30 秒',  digCount: 3 },
+  medium:   { label: '泡咖啡',       sub: '约 3 分钟',  digCount: 5 },
+  hard:     { label: '开个会',       sub: '约 10 分钟', digCount: 7 },
+  expert:   { label: '加班赶报告',   sub: '约 20 分钟', digCount: 9 },
+  insomnia: { label: '失眠',         sub: '数方块助眠', digCount: 10, staminaCost: 0 },
 };
 
 function formatDateStr(d) {

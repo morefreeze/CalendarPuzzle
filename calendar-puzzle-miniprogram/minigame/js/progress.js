@@ -78,6 +78,39 @@ function recordTime(dateStr, difficulty, seconds) {
   return { isNew: isNew, prev: prev, current: seconds };
 }
 
+// Insomnia mode: dedup completed placements per-date by canonical board key.
+// Storage shape: { "2026-05-14": ["....U..VV..", "....I..LL.."] }
+var INSOMNIA_KEY = 'calendarPuzzleInsomniaUnique';
+
+function loadInsomnia() {
+  try { var r = wx.getStorageSync(INSOMNIA_KEY); if (r) return JSON.parse(r); } catch (e) {}
+  return {};
+}
+
+function saveInsomnia(d) {
+  try { wx.setStorageSync(INSOMNIA_KEY, JSON.stringify(d)); } catch (e) {}
+}
+
+function getUniqueInsomniaCount(dateStr) {
+  if (!dateStr) return 0;
+  var all = loadInsomnia();
+  var arr = all[dateStr];
+  return arr && arr.length ? arr.length : 0;
+}
+
+// Returns { isNew: bool, count: int }. count is the size of the set AFTER
+// the (possibly noop) insertion.
+function markUniqueInsomnia(dateStr, boardKey) {
+  if (!dateStr || !boardKey) return { isNew: false, count: 0 };
+  var all = loadInsomnia();
+  var arr = all[dateStr] || [];
+  if (arr.indexOf(boardKey) >= 0) return { isNew: false, count: arr.length };
+  arr.push(boardKey);
+  all[dateStr] = arr;
+  saveInsomnia(all);
+  return { isNew: true, count: arr.length };
+}
+
 // First-launch onboarding completion flag.
 var TUTORIAL_KEY = 'calendarPuzzleTutorialDone';
 
@@ -95,6 +128,8 @@ module.exports = {
   countCompletedForDate: countCompletedForDate,
   getBestTime: getBestTime,
   recordTime: recordTime,
+  getUniqueInsomniaCount: getUniqueInsomniaCount,
+  markUniqueInsomnia: markUniqueInsomnia,
   isTutorialDone: isTutorialDone,
   markTutorialDone: markTutorialDone,
 };

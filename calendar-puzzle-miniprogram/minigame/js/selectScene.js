@@ -79,23 +79,59 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
       y += 22;
     }
 
-    // Difficulty buttons. Color = saturation graded by difficulty.
-    var diffs = ['easy', 'medium', 'hard', 'expert'];
-    var bgs   = { easy: '#66BB6A', medium: '#26A69A', hard: '#5C6BC0', expert: '#7E57C2' };
-    var btnW = Math.min(W * 0.78, 320), btnH = 64;
+    // Difficulty buttons. Color = saturation graded by difficulty; insomnia
+    // is the red-alert top tier (0-stamina free practice).
+    var diffs = ['easy', 'medium', 'hard', 'expert', 'insomnia'];
+    var bgs   = {
+      easy: '#66BB6A', medium: '#26A69A', hard: '#5C6BC0',
+      expert: '#7E57C2', insomnia: '#E53935',
+    };
+    var btnW = Math.min(W * 0.78, 320), btnH = 60, btnGap = 10;
+    // Shrink button height if 5 buttons would overflow the remaining space.
+    var availH = H - y - padBottom - 16;
+    var needH = diffs.length * btnH + (diffs.length - 1) * btnGap;
+    if (needH > availH) {
+      btnH = Math.max(44, Math.floor((availH - (diffs.length - 1) * btnGap) / diffs.length));
+    }
     btnRects = [];
 
+    // Inner text positions scale with btnH so we degrade gracefully on small
+    // screens (SE-class). At btnH=60 these resolve to the original 12/36.
+    var labelY = Math.max(8, Math.round(btnH * 0.20));
+    var subY   = Math.max(28, Math.round(btnH * 0.60));
+    var costY  = Math.round(btnH / 2 - 6);
+    var labelSize = btnH < 54 ? 20 : 22;
     for (var i = 0; i < diffs.length; i++) {
       var d = diffs[i];
       var cfg = DIFF[d];
+      var cost = (cfg.staminaCost != null) ? cfg.staminaCost : cfg.digCount;
       var bx = (W - btnW) / 2;
+      // Insomnia badge: shown when the player has discovered ≥1 placement
+      // today. Suppresses the right cost text to keep the layout clean.
+      var insomniaUniq = (d === 'insomnia') ? progress.getUniqueInsomniaCount(todayStr) : 0;
+      var showBadge = insomniaUniq > 0;
+
       R.roundRect(ctx, bx, y, btnW, btnH, 14, bgs[d]);
-      R.textBold(ctx, cfg.label, bx + 14, y + 14, 22, '#fff', 'left');
-      R.text(ctx, cfg.sub, bx + 14, y + 38, 12, 'rgba(255,255,255,0.85)', 'left');
-      R.text(ctx, '挖 ' + cfg.digCount + ' 块 · 耗体力 ' + cfg.digCount,
-        bx + btnW - 14, y + btnH / 2 - 6, 12, 'rgba(255,255,255,0.85)', 'right');
+      R.textBold(ctx, cfg.label, bx + 14, y + labelY, labelSize, '#fff', 'left');
+      R.text(ctx, cfg.sub, bx + 14, y + subY, 12, 'rgba(255,255,255,0.85)', 'left');
+      if (!showBadge) {
+        var costTxt = cost === 0
+          ? '挖 ' + cfg.digCount + ' 块 · 免费'
+          : '挖 ' + cfg.digCount + ' 块 · 耗体力 ' + cost;
+        R.text(ctx, costTxt,
+          bx + btnW - 14, y + costY, 12, 'rgba(255,255,255,0.85)', 'right');
+      } else {
+        var bdgTxt = '今日 ' + insomniaUniq + ' 种';
+        ctx.font = 'bold 12px sans-serif';
+        var bdgW = ctx.measureText(bdgTxt).width + 14;
+        var bdgH = 22;
+        var bdgX = bx + btnW - bdgW - 10;
+        var bdgY = y + (btnH - bdgH) / 2;
+        R.roundRect(ctx, bdgX, bdgY, bdgW, bdgH, 11, '#fff');
+        R.textBold(ctx, bdgTxt, bdgX + bdgW / 2, bdgY + bdgH / 2, 12, '#E53935', 'center', 'middle');
+      }
       btnRects.push({ x: bx, y: y, w: btnW, h: btnH, diff: d });
-      y += btnH + 12;
+      y += btnH + btnGap;
     }
 
     // Info / rules button (top-right, below capsule menu).
@@ -163,8 +199,9 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
     for (var i = 0; i < btnRects.length; i++) {
       if (R.hitTest(x, y, btnRects[i])) {
         var d = btnRects[i].diff;
-        var cost = DIFF[d].digCount;
-        if (!stamina.consumeStamina(cost)) {
+        var cfg = DIFF[d];
+        var cost = (cfg.staminaCost != null) ? cfg.staminaCost : cfg.digCount;
+        if (cost > 0 && !stamina.consumeStamina(cost)) {
           showMsg('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }

@@ -53,14 +53,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var isWon = false;
   var hintMode = false;
   var hintedIds = [];
-  // Resolve uncov from the puzzle's date so a tutorial generated for a
-  // future / past date stays internally consistent (uncov in placement
-  // checks matches uncov in rendering).
-  var puzzleDate = PG.parseDateStr(puzzle.dateStr) || new Date();
-  var uncov = B.getUncoverableCells(puzzleDate);
+  var uncov = B.getUncoverableCells();
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
   var diffLabel = diffCfg.label;
   var diffSub = diffCfg.sub || '';
+  var isInsomnia = difficulty === 'insomnia';
 
   var switchMode = 'random'; // 'random' or 'manual'
   var selectPanelOpen = false;
@@ -154,6 +151,34 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     scene.dirty = true;
   }
 
+  // Canonical 56-char board key. Each cell is the block letter covering it,
+  // '*' for uncoverable (date markers), '#' for board boundary. Same physical
+  // placement → identical key regardless of placement order.
+  function buildBoardKey() {
+    var ab = allBlocks();
+    var grid = new Array(56);
+    for (var i = 0; i < 56; i++) grid[i] = ' ';
+    for (var yy = 0; yy < 8; yy++) {
+      for (var xx = 0; xx < 7; xx++) {
+        if (B.boardLayoutData[yy][xx].t === 'empty') grid[yy * 7 + xx] = '#';
+      }
+    }
+    for (var ui = 0; ui < uncov.length; ui++) {
+      grid[uncov[ui].y * 7 + uncov[ui].x] = '*';
+    }
+    for (var b = 0; b < ab.length; b++) {
+      var bl = ab[b];
+      for (var ry = 0; ry < bl.shape.length; ry++) {
+        for (var cx = 0; cx < bl.shape[ry].length; cx++) {
+          if (bl.shape[ry][cx] === 1) {
+            grid[(bl.y + ry) * 7 + (bl.x + cx)] = bl.label;
+          }
+        }
+      }
+    }
+    return grid.join('');
+  }
+
   function checkWin() {
     if (isWon) return;
     if (dropped.length === puzzle.remainingBlocks.length) {
@@ -165,11 +190,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
         }
         var pb = progress.recordTime(puzzle.dateStr, difficulty, timer);
+        var insomniaUnique = null;
+        if (isInsomnia) {
+          insomniaUnique = progress.markUniqueInsomnia(puzzle.dateStr, buildBoardKey());
+        }
         winStats = {
           time: timer,
           isNewPB: pb.isNew,
           prevPB: pb.prev,
           todayDone: progress.countCompletedForDate(puzzle.dateStr),
+          insomniaUnique: insomniaUnique,
         };
         clearInterval(timerInterval);
         spawnConfetti();
@@ -361,7 +391,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // it needs to point at. Skip button is placed inside the bubble (laid
     // out at render time, not here).
 
-    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons.
+    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons (2 in insomnia
+    // mode, where switching puzzle is conceptually nonexistent).
     // Hidden during tutorial mode to keep the focus on the banner step.
     L.hintBtn = null;
     L.resetBtn = null;
@@ -369,12 +400,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.switchManualBtn = null;
     if (!tutorialMode) {
       var btnH = 36, btnGap = 8;
-      var ctrlBtnW = Math.floor((W - 2 * pad - 3 * btnGap) / 4);
+      var nCtrl = isInsomnia ? 2 : 4;
+      var ctrlBtnW = Math.floor((W - 2 * pad - (nCtrl - 1) * btnGap) / nCtrl);
       L.ctrlY = y;
       L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
       L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
-      L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
-      L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+      if (!isInsomnia) {
+        L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
+        L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+      }
       y += btnH + 10;
     }
 
@@ -584,12 +618,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (L.hintBtn) {
       R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
       R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
-      var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
-      var randomFg = switchMode === 'random' ? '#fff' : '#666';
-      R.button(ctx, L.switchRandomBtn.x, L.switchRandomBtn.y, L.switchRandomBtn.w, L.switchRandomBtn.h, '🎲 随机', randomBg, randomFg, 8);
-      var manualBg = switchMode === 'manual' ? BRAND : '#E0E0E0';
-      var manualFg = switchMode === 'manual' ? '#fff' : '#666';
-      R.button(ctx, L.switchManualBtn.x, L.switchManualBtn.y, L.switchManualBtn.w, L.switchManualBtn.h, '🎯 选题', manualBg, manualFg, 8);
+      if (L.switchRandomBtn) {
+        var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
+        var randomFg = switchMode === 'random' ? '#fff' : '#666';
+        R.button(ctx, L.switchRandomBtn.x, L.switchRandomBtn.y, L.switchRandomBtn.w, L.switchRandomBtn.h, '🎲 随机', randomBg, randomFg, 8);
+        var manualBg = switchMode === 'manual' ? BRAND : '#E0E0E0';
+        var manualFg = switchMode === 'manual' ? '#fff' : '#666';
+        R.button(ctx, L.switchManualBtn.x, L.switchManualBtn.y, L.switchManualBtn.w, L.switchManualBtn.h, '🎯 选题', manualBg, manualFg, 8);
+      }
     }
 
     // --- Board card (padding + soft shadow + thin border) ---
@@ -1143,8 +1179,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
       R.text(ctx, sub, cardX + cardW / 2, cardY + 88, 12,
         winStats.isNewPB ? '#FF8F00' : '#888', 'center');
-      R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
-        cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
+      if (isInsomnia && winStats.insomniaUnique) {
+        var iu = winStats.insomniaUnique;
+        var iuTxt = iu.isNew
+          ? '✨ 新摆法 · 今日已发现 ' + iu.count + ' 种'
+          : '🌙 这种摆法见过了 · 今日 ' + iu.count + ' 种';
+        R.text(ctx, iuTxt, cardX + cardW / 2, cardY + 110, 12,
+          iu.isNew ? '#FF8F00' : '#888', 'center');
+      } else {
+        R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
+          cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
+      }
 
       // Two stacked CTA buttons. In tutorial mode the primary CTA finishes
       // the tutorial; otherwise it picks a random next puzzle. Share is
@@ -1167,7 +1212,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           w: sbtnW, h: sbtnH,
         };
         R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
-          '🎲 随机下一题', BRAND, '#fff', 10);
+          isInsomnia ? '↺ 重开' : '🎲 随机下一题', BRAND, '#fff', 10);
       }
       L.shareBtn = {
         x: cardX + (cardW - sbtnW) / 2,
@@ -1626,5 +1671,5 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (solutionCountTimer) clearTimeout(solutionCountTimer);
   };
 
-  scene.__getStep = function() { return tutorialStep; }; scene.__setStep = function(v) { tutorialStep = v; }; scene.__placeBlock = placeBlock; return scene;
+  return scene;
 };
