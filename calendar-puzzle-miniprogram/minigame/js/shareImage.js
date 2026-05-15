@@ -168,13 +168,21 @@ function generateAndSave(opts, callbacks) {
         if (auth === false) {
           // Already-denied path — push the user to settings instead of
           // calling saveImageToPhotosAlbum (which would silently fail).
-          wx.showModal({
-            title: '需要相册权限',
-            content: '保存分享图需要相册权限，请在设置中开启后重试',
-            confirmText: '去设置',
-            cancelText: '取消',
-            success: function (mr) { if (mr.confirm) wx.openSetting({}); },
-          });
+          // Both wx.showModal and wx.openSetting are wrapped: rare runtime
+          // versions may not implement them and we don't want an
+          // uncaught error to surface to the user.
+          try {
+            wx.showModal({
+              title: '需要相册权限',
+              content: '保存分享图需要相册权限，请在设置中开启后重试',
+              confirmText: '去设置',
+              cancelText: '取消',
+              success: function (mr) {
+                if (!mr.confirm) return;
+                try { wx.openSetting({}); } catch (e) {}
+              },
+            });
+          } catch (e) {}
           err('denied');
           return;
         }

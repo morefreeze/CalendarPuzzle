@@ -357,8 +357,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- Moments share (saves a 750×1000 PNG to the user's photo album,
   //      since mini-games can't post directly to Moments). ----
+  var sharingMoments = false;
   function shareToMoments() {
     if (!winStats) return;
+    // mask:true on showLoading blocks most rapid double-taps, but the
+    // mask only appears after the call returns — guard the gap explicitly.
+    if (sharingMoments) return;
+    sharingMoments = true;
     try { wx.showLoading({ title: '生成中…', mask: true }); } catch (e) {}
     shareImage.generateAndSave({
       difficulty: difficulty,
@@ -368,12 +373,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       dateStr: puzzle.dateStr,
     }, {
       onSuccess: function () {
+        sharingMoments = false;
         try { wx.hideLoading(); } catch (e) {}
         try {
           wx.showToast({ title: '已保存，去朋友圈发图吧', icon: 'success', duration: 2500 });
         } catch (e) {}
       },
       onError: function (reason) {
+        sharingMoments = false;
         try { wx.hideLoading(); } catch (e) {}
         // 'denied' surfaces its own modal; 'cancel' is user-driven (system
         // save dialog cancelled). Both are silent here.
@@ -1184,6 +1191,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cardH = tutorialMode ? 250 : 310;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
+      // Clamp against the bottom safe area so the taller 3-button card
+      // doesn't slide below the home indicator on small phones.
+      var maxCardY = H - (safeInsets.bottom || 0) - cardH - 12;
+      if (cardY > maxCardY) cardY = maxCardY;
       L.winCard = { x: cardX, y: cardY, w: cardW, h: cardH };
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.30)';
