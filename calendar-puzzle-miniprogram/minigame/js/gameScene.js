@@ -543,7 +543,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Hint popup
     if (hintMode) {
       var popW = W * 0.78;
-      var popH = hintTier ? 240 : 290;
+      var popH = 290;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
 
       if (!hintTier) {
@@ -1677,7 +1677,27 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               showToast('该方块方向已提示过'); return;
             }
             if (hintTier === 'medium' && Hint.isCellLocked(hintState, hBlock.id)) {
-              showToast('该方块位置已提示过'); return;
+              // Already hinted. Check if placed at the solved-target origin.
+              var solvedTarget = solvedPlacements[hBlock.id];
+              var placedAtTarget = false;
+              for (var dpi = 0; dpi < dropped.length; dpi++) {
+                if (dropped[dpi].id === hBlock.id
+                    && dropped[dpi].x === solvedTarget.x
+                    && dropped[dpi].y === solvedTarget.y) {
+                  placedAtTarget = true; break;
+                }
+              }
+              if (placedAtTarget) {
+                showToast('该方块已在提示位置');
+                return;
+              }
+              // Allow free re-show. Hint is already rendered on the board persistently;
+              // just close the popup with a confirmation toast. No stamina, no state change.
+              hintMode = false;
+              hintTier = null;
+              scene.dirty = true;
+              showToast('已提示 ' + hBlock.label + ' 的落点');
+              return;
             }
             if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {
               showToast('该方块已强提示'); return;
