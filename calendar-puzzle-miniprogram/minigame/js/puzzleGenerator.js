@@ -431,7 +431,7 @@ function _findLegalPlacement(block, prePlaced, uncov, solvedPlacement) {
 }
 
 // Build solved placements lookup (block id → {x, y, shape}) from a solved board.
-function _solvedPlacements(sb) {
+function solvedPlacements(sb) {
   var map = {};
   var all = boardToPlaced(sb);
   for (var i = 0; i < all.length; i++) {
@@ -513,7 +513,7 @@ function generateTutorialPuzzle(date) {
     var sb2 = bases[bi];
     var letterSets = enumAllDigCombinations(sb2, digCount);
     if (!letterSets.length) continue;
-    var sps = _solvedPlacements(sb2);
+    var sps = solvedPlacements(sb2);
     for (var li = 0; li < letterSets.length && !winningTriple && attempts < MAX_TUTORIAL_ATTEMPTS; li++) {
       attempts++;
       var pts = puzzleFromCombo(sb2, letterSets[li]);
@@ -612,4 +612,5 @@ module.exports = {
   DIFFICULTY_CONFIG: DIFFICULTY_CONFIG,
   formatDateStr: formatDateStr,
   parseDateStr: parseDateStr,
+  solvedPlacements: solvedPlacements,
 };
