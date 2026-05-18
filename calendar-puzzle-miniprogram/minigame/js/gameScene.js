@@ -542,7 +542,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      var popW = W * 0.78, popH = 240;
+      var popW = W * 0.78;
+      var popH = hintTier ? 240 : 290;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
 
       if (!hintTier) {
@@ -888,9 +889,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var alreadyLocked = (hintTier === 'weak' && Hint.isOrientationLocked(hintState, ht.block.id))
                            || (hintTier === 'medium' && Hint.isCellLocked(hintState, ht.block.id))
                            || (hintTier === 'strong' && Hint.isFullyLocked(hintState, ht.block.id));
-          var blockFill = alreadyLocked ? '#ccc' : '#43A047';
-          R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 6, blockFill);
-          R.text(ctx, ht.block.label, ht.x + ht.w / 2, ht.y + ht.h / 2 - 8, 18, '#fff', 'center');
+          ctx.globalAlpha = alreadyLocked ? 0.4 : 0.95;
+          R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
+          if (alreadyLocked) {
+            R.textBold(ctx, '✓', ht.x + ht.w / 2, ht.y + ht.h / 2, 20, '#fff', 'center', 'middle');
+          } else {
+            var ihs = Math.min(
+              Math.floor((ht.w - 12) / ht.block.shape[0].length),
+              Math.floor((ht.h - 12) / ht.block.shape.length)
+            );
+            var ihw = ht.block.shape[0].length * ihs;
+            var ihh = ht.block.shape.length * ihs;
+            R.blockShape(ctx, ht.block.shape, '#fff', ht.x + (ht.w - ihw) / 2, ht.y + (ht.h - ihh) / 2, ihs, 0.9);
+          }
+          ctx.globalAlpha = 1;
         }
       }
 
