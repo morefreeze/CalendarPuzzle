@@ -119,7 +119,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (!isWon) { timer++; scene.dirty = true; }
   }, 1000);
 
-  // Animation tick — kicks render while any animation is active.
+  // Animation tick — kicks render while any animation is active. Without this,
+  // scene.dirty set inside scene.render() is immediately cleared by
+  // main.render's post-render `dirty = false`, so the next rAF tick would skip
+  // drawing entirely — animations would freeze after a single frame.
   var animTimer = setInterval(function () {
     var now = Date.now();
     var alive = false;
@@ -127,6 +130,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (now - a.start < SNAP_DUR) { alive = true; return true; }
       return false;
     });
+    // Confetti must also keep the render loop alive while any piece is still
+    // in view (or waiting to be born). Otherwise the win-burst stalls to a
+    // crawl, advancing only when some unrelated event marks the scene dirty.
+    if (!alive && confetti.length > 0) {
+      for (var ci = 0; ci < confetti.length; ci++) {
+        var pc = confetti[ci];
+        if (now < pc.born || pc.y <= 1.1) { alive = true; break; }
+      }
+    }
     if (alive) scene.dirty = true;
   }, 16);
 
@@ -395,8 +407,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         // 'denied' surfaces its own modal; 'cancel' is user-driven (system
         // save dialog cancelled). Both are silent here.
         if (reason === 'denied' || reason === 'cancel') return;
+        // Distinguish the failing step so the user (and remote diagnosis)
+        // knows which layer broke: image generation vs the actual album save.
+        var msg;
+        if (reason === 'init' || reason === 'render') msg = '图片绘制失败';
+        else if (reason === 'export') msg = '图片生成超时，请重试';
+        else if (reason === 'save') msg = '保存到相册失败';
+        else msg = '保存失败 (' + reason + ')';
         try {
-          wx.showToast({ title: '保存失败，请稍后再试', icon: 'none' });
+          wx.showToast({ title: msg, icon: 'none', duration: 2500 });
         } catch (e) {}
       },
     });
