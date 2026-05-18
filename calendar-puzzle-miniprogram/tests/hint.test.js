@@ -3,7 +3,7 @@ var assert = require('node:assert');
 var H = require('../minigame/js/hint');
 
 test('CAPS and COSTS are the agreed economy', function () {
-  assert.deepStrictEqual(H.CAPS, { weak: 5, strong: 1 });
+  assert.deepStrictEqual(H.CAPS, { weak: 3, medium: 3, strong: 1 });
   assert.deepStrictEqual(H.COSTS, { weak: 1, medium: 2, strong: 6 });
   assert.strictEqual(H.FIRST_WEAK_FREE, true);
 });
@@ -84,9 +84,13 @@ test('applyMedium records target cell, does NOT change palette shape', function 
 
   var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
 
-  assert.deepStrictEqual(res.hintedCell, { x: 3, y: 3 });
+  // Random pick — must be one of the 3 filled cells of the shape at origin (2,3)
+  var validCells = [{ x: 3, y: 3 }, { x: 2, y: 4 }, { x: 3, y: 4 }];
+  var hit = validCells.some(function (c) { return c.x === res.hintedCell.x && c.y === res.hintedCell.y; });
+  assert.ok(hit, 'hintedCell should be one of the filled cells; got ' + JSON.stringify(res.hintedCell));
+
   assert.ok(shapeEq(res.updatedPalette[0].shape, [[1, 1], [0, 1]])); // unchanged
-  assert.deepStrictEqual(res.newState.mediumLocked['X-block'], [{ x: 3, y: 3 }]);
+  assert.strictEqual(res.newState.mediumLocked['X-block'].length, 1);
   assert.strictEqual(res.newState.usedMedium, 1);
 });
 
@@ -153,8 +157,10 @@ test('applyStrong evicts blockers that overlap the target', function () {
 
 test('canUse returns false when cap reached', function () {
   var s = H.createHintState('p1');
-  s.usedWeak = 5;
+  s.usedWeak = 3;
   assert.strictEqual(H.canUse(s, 'weak'), false);
+  s.usedMedium = 3;
+  assert.strictEqual(H.canUse(s, 'medium'), false);
   s.usedStrong = 1;
   assert.strictEqual(H.canUse(s, 'strong'), false);
 });
@@ -178,26 +184,27 @@ test('applyMedium accumulates a new cell on each call to same block', function (
   var state = H.createHintState('p1');
   var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [1, 1]] }];
   var dropped = [];
-  // 4-cell square at origin (5, 5)
   var solved = { 'X-block': { x: 5, y: 5, shape: [[1, 1], [1, 1]] } };
 
-  var r1 = H.applyMedium(state, 'X-block', palette, dropped, solved);
-  assert.deepStrictEqual(r1.hintedCell, { x: 5, y: 5 });
-  assert.strictEqual(r1.newState.mediumLocked['X-block'].length, 1);
+  var cur = state, pal = palette, drp = dropped;
+  var seen = {};
+  for (var i = 0; i < 4; i++) {
+    var r = H.applyMedium(cur, 'X-block', pal, drp, solved);
+    assert.ok(r.hintedCell, 'call ' + i + ' should reveal a cell');
+    var key = r.hintedCell.x + ',' + r.hintedCell.y;
+    assert.ok(!seen[key], 'cell ' + key + ' revealed twice');
+    seen[key] = true;
+    cur = r.newState; pal = r.updatedPalette; drp = r.updatedDropped;
+  }
+  assert.strictEqual(cur.mediumLocked['X-block'].length, 4);
+  assert.strictEqual(H.isMediumExhausted(cur, 'X-block', solved), true);
 
-  var r2 = H.applyMedium(r1.newState, 'X-block', r1.updatedPalette, r1.updatedDropped, solved);
-  assert.deepStrictEqual(r2.hintedCell, { x: 6, y: 5 });
-  assert.strictEqual(r2.newState.mediumLocked['X-block'].length, 2);
+  // 5th call returns null (exhausted)
+  var r5 = H.applyMedium(cur, 'X-block', pal, drp, solved);
+  assert.strictEqual(r5.hintedCell, null);
 
-  var r3 = H.applyMedium(r2.newState, 'X-block', r2.updatedPalette, r2.updatedDropped, solved);
-  assert.deepStrictEqual(r3.hintedCell, { x: 5, y: 6 });
-
-  var r4 = H.applyMedium(r3.newState, 'X-block', r3.updatedPalette, r3.updatedDropped, solved);
-  assert.deepStrictEqual(r4.hintedCell, { x: 6, y: 6 });
-  assert.strictEqual(r4.newState.mediumLocked['X-block'].length, 4);
-
-  assert.strictEqual(H.isMediumExhausted(r4.newState, 'X-block', solved), true);
-  assert.strictEqual(H.isMediumExhausted(r3.newState, 'X-block', solved), false);
+  // All 4 cells of the 2x2 square should have been seen
+  assert.deepStrictEqual(Object.keys(seen).sort(), ['5,5', '5,6', '6,5', '6,6']);
 });
 
 test('applyMedium returns null hintedCell when block exhausted', function () {
@@ -211,11 +218,4 @@ test('applyMedium returns null hintedCell when block exhausted', function () {
 
   var r2 = H.applyMedium(r1.newState, 'X-block', r1.updatedPalette, r1.updatedDropped, solved);
   assert.strictEqual(r2.hintedCell, null);
-});
-
-test('canUse always returns true for medium (no cap)', function () {
-  var s = H.createHintState('p1');
-  s.usedMedium = 99;
-  assert.strictEqual(H.canUse(s, 'medium'), true);
-  assert.strictEqual(H.canUse(s, 'weak'), true);  // still under cap 5
 });

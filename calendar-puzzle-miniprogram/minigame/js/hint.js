@@ -1,6 +1,6 @@
 // 3-tier hint state machine. Pure JS — no wx.* calls. Tested with node --test.
 
-var CAPS = { weak: 5, strong: 1 };
+var CAPS = { weak: 3, medium: 3, strong: 1 };
 var COSTS = { weak: 1, medium: 2, strong: 6 };
 var FIRST_WEAK_FREE = true;
 
@@ -37,8 +37,7 @@ function isFullyLocked(state, blockId) {
 }
 
 function canUse(state, type) {
-  if (!(type in CAPS)) return true; // no cap for this tier (e.g., medium)
-  return countUsed(state, type) < CAPS[type];
+  return countUsed(state, type) < (CAPS[type] || 0);
 }
 
 function _shapeEq(a, b) {
@@ -133,20 +132,21 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
   }
 
-  // Find next unrevealed filled cell (row-major)
-  var newCell = null;
-  for (var dy = 0; dy < target.shape.length && !newCell; dy++) {
-    for (var dx = 0; dx < target.shape[dy].length && !newCell; dx++) {
+  // Collect ALL unrevealed filled cells and pick one uniformly at random
+  var candidates = [];
+  for (var dy = 0; dy < target.shape.length; dy++) {
+    for (var dx = 0; dx < target.shape[dy].length; dx++) {
       if (target.shape[dy][dx] !== 1) continue;
       var cx = target.x + dx, cy = target.y + dy;
       var already = false;
       for (var e = 0; e < existing.length; e++) {
         if (existing[e].x === cx && existing[e].y === cy) { already = true; break; }
       }
-      if (!already) newCell = { x: cx, y: cy };
+      if (!already) candidates.push({ x: cx, y: cy });
     }
   }
-  if (!newCell) return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
+  if (candidates.length === 0) return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
+  var newCell = candidates[Math.floor(Math.random() * candidates.length)];
 
   // Evict block from board if currently placed at wrong origin (same as before)
   var newPalette = palette.map(_cloneBlock);
