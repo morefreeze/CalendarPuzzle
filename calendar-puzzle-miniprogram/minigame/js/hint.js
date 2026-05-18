@@ -100,6 +100,40 @@ function applyWeak(state, blockId, palette, dropped, solvedPlacements) {
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped };
 }
 
+function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
+  var target = solvedPlacements[blockId];
+  if (!target) return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
+
+  var newPalette = palette.map(_cloneBlock);
+  var newDropped = dropped.map(_cloneBlock);
+
+  for (var d = newDropped.length - 1; d >= 0; d--) {
+    if (newDropped[d].id === blockId) {
+      if (newDropped[d].x !== target.x || newDropped[d].y !== target.y) {
+        var ev = _cloneBlock(newDropped[d]);
+        delete ev.x; delete ev.y;
+        newPalette.push(ev);
+        newDropped.splice(d, 1);
+      }
+    }
+  }
+
+  var newMed = Object.assign({}, state.mediumLocked);
+  newMed[blockId] = { x: target.x, y: target.y };
+
+  var newState = {
+    puzzleId: state.puzzleId,
+    weakLocked: state.weakLocked,
+    mediumLocked: newMed,
+    strongLocked: state.strongLocked,
+    usedWeak: state.usedWeak,
+    usedMedium: state.usedMedium + 1,
+    usedStrong: state.usedStrong,
+  };
+
+  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: { x: target.x, y: target.y } };
+}
+
 module.exports = {
   CAPS: CAPS,
   COSTS: COSTS,
@@ -110,4 +144,5 @@ module.exports = {
   isCellLocked: isCellLocked,
   isFullyLocked: isFullyLocked,
   applyWeak: applyWeak,
+  applyMedium: applyMedium,
 };

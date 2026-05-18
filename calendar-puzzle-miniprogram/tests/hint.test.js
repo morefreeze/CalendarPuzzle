@@ -75,3 +75,42 @@ test('applyWeak keeps block on board if already in solved orientation', function
   assert.strictEqual(res.updatedDropped.length, 1);
   assert.deepStrictEqual(res.updatedPalette, []);
 });
+
+test('applyMedium records target cell, does NOT change palette shape', function () {
+  var state = H.createHintState('p1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[0, 1], [1, 1]] } };
+
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
+
+  assert.deepStrictEqual(res.hintedCell, { x: 2, y: 3 });
+  assert.ok(shapeEq(res.updatedPalette[0].shape, [[1, 1], [0, 1]])); // unchanged
+  assert.deepStrictEqual(res.newState.mediumLocked['X-block'], { x: 2, y: 3 });
+  assert.strictEqual(res.newState.usedMedium, 1);
+});
+
+test('applyMedium evicts board block placed at wrong cell', function () {
+  var state = H.createHintState('p1');
+  var palette = [];
+  var dropped = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]], x: 0, y: 0 }];
+  var solved = { 'X-block': { x: 5, y: 5, shape: [[0, 1], [1, 1]] } };
+
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
+
+  assert.deepStrictEqual(res.updatedDropped, []);
+  assert.strictEqual(res.updatedPalette.length, 1);
+  assert.strictEqual(res.updatedPalette[0].x, undefined);
+});
+
+test('applyMedium leaves correctly-positioned block in place', function () {
+  var state = H.createHintState('p1');
+  var palette = [];
+  var dropped = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]], x: 5, y: 5 }];
+  var solved = { 'X-block': { x: 5, y: 5, shape: [[0, 1], [1, 1]] } };
+
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
+
+  assert.strictEqual(res.updatedDropped.length, 1);
+  assert.strictEqual(res.updatedDropped[0].x, 5);
+});
