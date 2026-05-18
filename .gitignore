@@ -135,3 +135,4 @@ ssl/nginx.crt
 ssl/nginx.key
 .vscode/settings.json
 .spec-workflow/session.json
+.worktrees/

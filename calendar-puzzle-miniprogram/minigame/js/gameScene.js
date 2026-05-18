@@ -7,6 +7,7 @@ var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
 var progress = require('./progress');
+var Hint = require('./hint');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -52,7 +53,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var timer = 0;
   var isWon = false;
   var hintMode = false;
-  var hintedIds = [];
+  var hintTier = null;
+  var hintState = Hint.createHintState(
+    puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
+  );
+  var solvedPlacements = PG.solvedPlacements(puzzle.solvedBoard);
   var uncov = B.getUncoverableCells();
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
   var diffLabel = diffCfg.label;
@@ -537,18 +542,35 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      var popW = W * 0.78, popH = H * 0.55;
+      var popW = W * 0.78;
+      var popH = 290;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
-      var candidates = [];
-      for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
-      for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
-      L.hintItems = [];
-      var hx = L.hintPopup.x + 20, hy = L.hintPopup.y + 50;
-      var hSize = 52, hGap = 10;
-      for (var hi = 0; hi < candidates.length; hi++) {
-        if (hx + hSize > L.hintPopup.x + L.hintPopup.w - 20) { hx = L.hintPopup.x + 20; hy += hSize + hGap; }
-        L.hintItems.push({ x: hx, y: hy, w: hSize, h: hSize, block: candidates[hi] });
-        hx += hSize + hGap;
+
+      if (!hintTier) {
+        L.hintTierBtns = [];
+        var rowH = 50, rowGap = 8;
+        var rowY = L.hintPopup.y + 50;
+        var tiers = ['weak', 'medium', 'strong'];
+        for (var ti = 0; ti < tiers.length; ti++) {
+          L.hintTierBtns.push({
+            x: L.hintPopup.x + 20, y: rowY + ti * (rowH + rowGap),
+            w: popW - 40, h: rowH, tier: tiers[ti],
+          });
+        }
+        L.hintItems = [];
+      } else {
+        var candidates = [];
+        for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
+        for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
+        L.hintItems = [];
+        var hx = L.hintPopup.x + 20, hy = L.hintPopup.y + 50;
+        var hSize = 52, hGap = 10;
+        for (var hi = 0; hi < candidates.length; hi++) {
+          if (hx + hSize > L.hintPopup.x + L.hintPopup.w - 20) { hx = L.hintPopup.x + 20; hy += hSize + hGap; }
+          L.hintItems.push({ x: hx, y: hy, w: hSize, h: hSize, block: candidates[hi] });
+          hx += hSize + hGap;
+        }
+        L.hintTierBtns = [];
       }
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
     }
@@ -711,6 +733,29 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           drawCellDecoration(ctx, cell.t, px, py, cs);
         }
 
+        // Medium-hint cell overlay (shows where a block should go, no orientation)
+        for (var ml in hintState.mediumLocked) {
+          var cells = hintState.mediumLocked[ml] || [];
+          for (var ci = 0; ci < cells.length; ci++) {
+            var mlc = cells[ci];
+            if (mlc.x === bx && mlc.y === by) {
+              // Find block color from palette/dropped (each block has a `color` field
+              // from initialBlockTypes; see board.js:15-24)
+              var blkColor = '#888';
+              for (var pp = 0; pp < palette.length; pp++) if (palette[pp].id === ml) blkColor = palette[pp].color || blkColor;
+              for (var dp = 0; dp < dropped.length; dp++) if (dropped[dp].id === ml) blkColor = dropped[dp].color || blkColor;
+              ctx.save();
+              ctx.strokeStyle = blkColor;
+              ctx.lineWidth = 4;
+              ctx.strokeRect(px + 2, py + 2, cs - 4, cs - 4);
+              ctx.fillStyle = blkColor;
+              var d = Math.max(6, Math.floor(cs * 0.18));
+              ctx.fillRect(px + cs / 2 - d / 2, py + cs / 2 - d / 2, d, d);
+              ctx.restore();
+            }
+          }
+        }
+
         // Border (lightest possible)
         if (!blockAt) {
           ctx.strokeStyle = 'rgba(0,0,0,0.08)';
@@ -765,7 +810,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var item = L.palItems[pi2];
         var isSel = selected && selected.id === item.block.id;
         var isDragOrigin = dragging && dragging.id === item.block.id;
-        var isHinted = hintedIds.indexOf(item.block.id) >= 0;
+        var isHinted = Hint.isOrientationLocked(hintState, item.block.id);
         var bg = isSel ? BRAND_LIGHT : (isHinted ? BRAND_LIGHT : '#fff');
         var border = (isSel || isHinted) ? BRAND : 'rgba(0,0,0,0.12)';
         var scale = isSel ? 1.06 : 1;
@@ -819,26 +864,55 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (hintMode && L.hintPopup) {
       R.overlay(ctx, W, H);
       R.roundRect(ctx, L.hintPopup.x, L.hintPopup.y, L.hintPopup.w, L.hintPopup.h, 16, '#fff');
-      R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
-      for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
-        var ht = L.hintItems[hi2];
-        var alreadyHinted = hintedIds.indexOf(ht.block.id) >= 0;
-        ctx.globalAlpha = alreadyHinted ? 0.4 : 0.95;
-        R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
-        if (alreadyHinted) {
-          R.textBold(ctx, '✓', ht.x + ht.w / 2, ht.y + ht.h / 2, 20, '#fff', 'center', 'middle');
-        } else {
-          var ihs = Math.min(
-            Math.floor((ht.w - 12) / ht.block.shape[0].length),
-            Math.floor((ht.h - 12) / ht.block.shape.length)
-          );
-          var ihw = ht.block.shape[0].length * ihs;
-          var ihh = ht.block.shape.length * ihs;
-          R.blockShape(ctx, ht.block.shape, '#fff', ht.x + (ht.w - ihw) / 2, ht.y + (ht.h - ihh) / 2, ihs, 0.9);
+
+      if (!hintTier) {
+        R.textBold(ctx, '选择提示等级', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
+        var tierLabels = {
+          weak:   '弱：揭示方向（旋转+镜像）',
+          medium: '中：揭示落点格子（不告诉方向）',
+          strong: '强：直接放置（自动腾位）',
+        };
+        var costLabels = {
+          weak:   Hint.COSTS.weak + ' 体力 / 关',
+          medium: Hint.COSTS.medium + ' 体力',
+          strong: Hint.COSTS.strong + ' 体力',
+        };
+        for (var ti2 = 0; ti2 < L.hintTierBtns.length; ti2++) {
+          var btn = L.hintTierBtns[ti2];
+          var used = Hint.countUsed(hintState, btn.tier);
+          var cap = Hint.CAPS[btn.tier];
+          var disabled = (cap !== undefined) && used >= cap;
+          var fill = disabled ? '#eee' : (btn.tier === 'strong' ? '#E53935' : btn.tier === 'medium' ? '#FB8C00' : BRAND);
+          R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
+          R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
+          var capStr = (cap !== undefined) ? (used + '/' + cap) : (used + ' 已用');
+          R.text(ctx, costLabels[btn.tier] + '  ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
-        ctx.globalAlpha = 1;
+      } else {
+        R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
+        for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
+          var ht = L.hintItems[hi2];
+          var alreadyLocked = (hintTier === 'weak' && Hint.isOrientationLocked(hintState, ht.block.id))
+                           || (hintTier === 'medium' && Hint.isMediumExhausted(hintState, ht.block.id, solvedPlacements))
+                           || (hintTier === 'strong' && Hint.isFullyLocked(hintState, ht.block.id));
+          ctx.globalAlpha = alreadyLocked ? 0.4 : 0.95;
+          R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
+          if (alreadyLocked) {
+            R.textBold(ctx, '✓', ht.x + ht.w / 2, ht.y + ht.h / 2, 20, '#fff', 'center', 'middle');
+          } else {
+            var ihs = Math.min(
+              Math.floor((ht.w - 12) / ht.block.shape[0].length),
+              Math.floor((ht.h - 12) / ht.block.shape.length)
+            );
+            var ihw = ht.block.shape[0].length * ihs;
+            var ihh = ht.block.shape.length * ihs;
+            R.blockShape(ctx, ht.block.shape, '#fff', ht.x + (ht.w - ihw) / 2, ht.y + (ht.h - ihh) / 2, ihs, 0.9);
+          }
+          ctx.globalAlpha = 1;
+        }
       }
-      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, '取消', '#eee', '#333', 8);
+
+      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
     }
 
     // --- Select panel popup ---
@@ -1384,6 +1458,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var bty = Math.floor((y - L.boardY) / bcs);
       if (btx >= 0 && btx < 7 && bty >= 0 && bty < 8 && x >= L.boardX && y >= L.boardY) {
         var blkAt = B.getBlockAtCell(allBlocks(), btx, bty);
+        if (blkAt && Hint.isFullyLocked(hintState, blkAt.id)) {
+          showToast('该方块由强提示锁定');
+          return;
+        }
         if (blkAt && !isPrePlaced(blkAt.id)) {
           // Lift a board block — but DON'T remove it from `dropped` yet.
           // Removal happens on the first onTouchMove past the drag threshold,
@@ -1466,6 +1544,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // `dropped`) once the user has actually moved past the threshold.
       // A tap that never crosses the threshold won't disturb the board.
       if (dragFromBoard) {
+        if (Hint.isFullyLocked(hintState, dragging.id)) {
+          showToast('该方块由强提示锁定');
+          dragging = null;
+          dragFromBoard = false;
+          dragHasMoved = false;
+          return;
+        }
         dropped = dropped.filter(function (b) { return b.id !== dragging.id; });
       }
     }
@@ -1560,38 +1645,91 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
-        if (R.hitTest(x, y, L.hintItems[hi3])) {
-          var hBlock = L.hintItems[hi3].block;
-          if (hintedIds.indexOf(hBlock.id) >= 0) return;
-          var hs = PG.getHintShape(puzzle.solvedBoard, hBlock.label);
-          if (!hs) return;
-          for (var pi3 = 0; pi3 < palette.length; pi3++) {
-            if (palette[pi3].id === hBlock.id) palette[pi3].shape = hs;
+      // Tier selection
+      if (!hintTier && L.hintTierBtns) {
+        for (var tb = 0; tb < L.hintTierBtns.length; tb++) {
+          if (R.hitTest(x, y, L.hintTierBtns[tb])) {
+            var pickedTier = L.hintTierBtns[tb].tier;
+            if (Hint.countUsed(hintState, pickedTier) >= Hint.CAPS[pickedTier]) {
+              showToast('本关该提示已用完');
+              return;
+            }
+            var cost = Hint.COSTS[pickedTier];
+            if (pickedTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+              cost = 0;
+            }
+            var have = stamina.getStamina();
+            if (have < cost) {
+              showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
+              return;
+            }
+            hintTier = pickedTier;
+            scene.dirty = true;
+            return;
           }
-          if (selected && selected.id === hBlock.id) selected.shape = hs;
-          var placed = null;
-          for (var di = 0; di < dropped.length; di++) {
-            if (dropped[di].id === hBlock.id) { placed = dropped[di]; break; }
+        }
+      }
+      // Block selection
+      if (hintTier) {
+        for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
+          if (R.hitTest(x, y, L.hintItems[hi3])) {
+            var hBlock = L.hintItems[hi3].block;
+            // Per-tier lock check FIRST — don't charge for re-hints
+            if (hintTier === 'weak' && Hint.isOrientationLocked(hintState, hBlock.id)) {
+              showToast('该方块方向已提示过'); return;
+            }
+            if (hintTier === 'medium' && Hint.isMediumExhausted(hintState, hBlock.id, solvedPlacements)) {
+              showToast('该方块所有位置已提示完');
+              return;
+            }
+            if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {
+              showToast('该方块已强提示'); return;
+            }
+            // Now charge stamina and apply
+            var blockCost = Hint.COSTS[hintTier];
+            if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+              blockCost = 0;
+            }
+            if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
+              showToast('体力扣减失败');
+              return;
+            }
+            var res;
+            if (hintTier === 'weak') {
+              res = Hint.applyWeak(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已提示 ' + hBlock.label + ' 的正确方向');
+            } else if (hintTier === 'medium') {
+              res = Hint.applyMedium(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已提示 ' + hBlock.label + ' 的落点');
+            } else {
+              res = Hint.applyStrong(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已为 ' + hBlock.label + ' 落子');
+            }
+            hintState = res.newState;
+            palette = res.updatedPalette;
+            dropped = res.updatedDropped;
+            if (selected) {
+              for (var sp3 = 0; sp3 < palette.length; sp3++) {
+                if (palette[sp3].id === selected.id) selected.shape = palette[sp3].shape;
+              }
+            }
+            hintMode = false;
+            hintTier = null;
+            scene.dirty = true;
+            return;
           }
-          if (placed) {
-            dropped = dropped.filter(function (b) { return b.id !== hBlock.id; });
-            var rest = B.cloneBlock(placed);
-            rest.shape = hs; delete rest.x; delete rest.y;
-            palette.push(rest);
-          }
-          hintedIds.push(hBlock.id);
-          hintMode = false;
-          scene.dirty = true;
-          showToast('已提示 ' + hBlock.label + ' 的正确方向');
-          return;
         }
       }
       if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) {
-        hintMode = false; scene.dirty = true; return;
+        if (hintTier) {
+          hintTier = null;
+        } else {
+          hintMode = false;
+        }
+        scene.dirty = true; return;
       }
       if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) {
-        hintMode = false; scene.dirty = true; return;
+        hintMode = false; hintTier = null; scene.dirty = true; return;
       }
       return;
     }
@@ -1610,7 +1748,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var dbl = (now - lastTap.time < 350) && lastTap.x === tx && lastTap.y === ty;
           lastTap = { time: now, x: tx, y: ty };
           if (dbl) {
-            removeDropped(dragging.id);
+            if (Hint.isFullyLocked(hintState, dragging.id)) {
+              wx.showModal({
+                title: '强提示锁定',
+                content: '这是强提示锁定的方块，不能移除。',
+                showCancel: false,
+              });
+            } else {
+              removeDropped(dragging.id);
+            }
           }
           // single tap: leave the board untouched
         } else {
@@ -1670,7 +1816,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Preview rotate / flip
     if (L.previewRotateBtn && R.hitTest(x, y, L.previewRotateBtn)) {
       if (selected) {
-        if (hintedIds.indexOf(selected.id) >= 0) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
         selected.shape = B.rotateShape(selected.shape);
         for (var rp = 0; rp < palette.length; rp++) {
           if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
@@ -1681,7 +1827,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (L.previewFlipBtn && R.hitTest(x, y, L.previewFlipBtn)) {
       if (selected) {
-        if (hintedIds.indexOf(selected.id) >= 0) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
         selected.shape = B.flipShape(selected.shape);
         for (var fp = 0; fp < palette.length; fp++) {
           if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
@@ -1693,7 +1839,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Control row
     if (L.hintBtn && R.hitTest(x, y, L.hintBtn)) {
-      hintMode = true; scene.dirty = true; return;
+      hintMode = true; hintTier = null; scene.dirty = true; return;
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;
@@ -1728,7 +1874,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
       if (dblTap) {
         var blockAt = B.getBlockAtCell(allBlocks(), tapCX, tapCY);
-        if (blockAt && !isPrePlaced(blockAt.id)) {
+        if (blockAt && Hint.isFullyLocked(hintState, blockAt.id)) {
+          wx.showModal({
+            title: '强提示锁定',
+            content: '这是强提示锁定的方块，不能移除。',
+            showCancel: false,
+          });
+        } else if (blockAt && !isPrePlaced(blockAt.id)) {
           removeDropped(blockAt.id);
         } else if (blockAt && isPrePlaced(blockAt.id)) {
           showToast('🔒 题面方块不可移除');
