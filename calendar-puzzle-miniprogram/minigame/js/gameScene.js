@@ -735,23 +735,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
         // Medium-hint cell overlay (shows where a block should go, no orientation)
         for (var ml in hintState.mediumLocked) {
-          var mlc = hintState.mediumLocked[ml];
-          // The cell (mlc.x, mlc.y) is the block origin. We highlight ONLY the origin cell —
-          // user still doesn't know the shape.
-          if (mlc.x === bx && mlc.y === by) {
-            // Find block color from palette/dropped (each block has a `color` field
-            // from initialBlockTypes; see board.js:15-24)
-            var blkColor = '#888';
-            for (var pp = 0; pp < palette.length; pp++) if (palette[pp].id === ml) blkColor = palette[pp].color || blkColor;
-            for (var dp = 0; dp < dropped.length; dp++) if (dropped[dp].id === ml) blkColor = dropped[dp].color || blkColor;
-            ctx.save();
-            ctx.strokeStyle = blkColor;
-            ctx.lineWidth = 4;
-            ctx.strokeRect(px + 2, py + 2, cs - 4, cs - 4);
-            ctx.fillStyle = blkColor;
-            var d = Math.max(6, Math.floor(cs * 0.18));
-            ctx.fillRect(px + cs / 2 - d / 2, py + cs / 2 - d / 2, d, d);
-            ctx.restore();
+          var cells = hintState.mediumLocked[ml] || [];
+          for (var ci = 0; ci < cells.length; ci++) {
+            var mlc = cells[ci];
+            if (mlc.x === bx && mlc.y === by) {
+              // Find block color from palette/dropped (each block has a `color` field
+              // from initialBlockTypes; see board.js:15-24)
+              var blkColor = '#888';
+              for (var pp = 0; pp < palette.length; pp++) if (palette[pp].id === ml) blkColor = palette[pp].color || blkColor;
+              for (var dp = 0; dp < dropped.length; dp++) if (dropped[dp].id === ml) blkColor = dropped[dp].color || blkColor;
+              ctx.save();
+              ctx.strokeStyle = blkColor;
+              ctx.lineWidth = 4;
+              ctx.strokeRect(px + 2, py + 2, cs - 4, cs - 4);
+              ctx.fillStyle = blkColor;
+              var d = Math.max(6, Math.floor(cs * 0.18));
+              ctx.fillRect(px + cs / 2 - d / 2, py + cs / 2 - d / 2, d, d);
+              ctx.restore();
+            }
           }
         }
 
@@ -880,18 +881,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var btn = L.hintTierBtns[ti2];
           var used = Hint.countUsed(hintState, btn.tier);
           var cap = Hint.CAPS[btn.tier];
-          var disabled = used >= cap;
+          var disabled = (cap !== undefined) && used >= cap;
           var fill = disabled ? '#eee' : (btn.tier === 'strong' ? '#E53935' : btn.tier === 'medium' ? '#FB8C00' : BRAND);
           R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
           R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
-          R.text(ctx, costLabels[btn.tier] + '  ' + used + '/' + cap, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
+          var capStr = (cap !== undefined) ? (used + '/' + cap) : (used + ' 已用');
+          R.text(ctx, costLabels[btn.tier] + '  ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
       } else {
         R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
         for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
           var ht = L.hintItems[hi2];
           var alreadyLocked = (hintTier === 'weak' && Hint.isOrientationLocked(hintState, ht.block.id))
-                           || (hintTier === 'medium' && Hint.isCellLocked(hintState, ht.block.id))
+                           || (hintTier === 'medium' && Hint.isMediumExhausted(hintState, ht.block.id, solvedPlacements))
                            || (hintTier === 'strong' && Hint.isFullyLocked(hintState, ht.block.id));
           ctx.globalAlpha = alreadyLocked ? 0.4 : 0.95;
           R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
@@ -1676,27 +1678,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (hintTier === 'weak' && Hint.isOrientationLocked(hintState, hBlock.id)) {
               showToast('该方块方向已提示过'); return;
             }
-            if (hintTier === 'medium' && Hint.isCellLocked(hintState, hBlock.id)) {
-              // Already hinted. Check if placed at the solved-target origin.
-              var solvedTarget = solvedPlacements[hBlock.id];
-              var placedAtTarget = false;
-              for (var dpi = 0; dpi < dropped.length; dpi++) {
-                if (dropped[dpi].id === hBlock.id
-                    && dropped[dpi].x === solvedTarget.x
-                    && dropped[dpi].y === solvedTarget.y) {
-                  placedAtTarget = true; break;
-                }
-              }
-              if (placedAtTarget) {
-                showToast('该方块已在提示位置');
-                return;
-              }
-              // Allow free re-show. Hint is already rendered on the board persistently;
-              // just close the popup with a confirmation toast. No stamina, no state change.
-              hintMode = false;
-              hintTier = null;
-              scene.dirty = true;
-              showToast('已提示 ' + hBlock.label + ' 的落点');
+            if (hintTier === 'medium' && Hint.isMediumExhausted(hintState, hBlock.id, solvedPlacements)) {
+              showToast('该方块所有位置已提示完');
               return;
             }
             if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {

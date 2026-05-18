@@ -1,6 +1,6 @@
 // 3-tier hint state machine. Pure JS — no wx.* calls. Tested with node --test.
 
-var CAPS = { weak: 5, medium: 3, strong: 1 };
+var CAPS = { weak: 5, strong: 1 };
 var COSTS = { weak: 1, medium: 2, strong: 6 };
 var FIRST_WEAK_FREE = true;
 
@@ -28,8 +28,8 @@ function isOrientationLocked(state, blockId) {
 }
 
 function isCellLocked(state, blockId) {
-  if (state.strongLocked[blockId]) return state.strongLocked[blockId]; // {x,y} stored
-  return state.mediumLocked[blockId] || null;
+  var cells = state.mediumLocked[blockId];
+  return (cells && cells.length) ? cells : null;
 }
 
 function isFullyLocked(state, blockId) {
@@ -37,7 +37,8 @@ function isFullyLocked(state, blockId) {
 }
 
 function canUse(state, type) {
-  return countUsed(state, type) < (CAPS[type] || 0);
+  if (!(type in CAPS)) return true; // no cap for this tier (e.g., medium)
+  return countUsed(state, type) < CAPS[type];
 }
 
 function _shapeEq(a, b) {
@@ -104,13 +105,52 @@ function applyWeak(state, blockId, palette, dropped, solvedPlacements) {
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped };
 }
 
+function _countShape(shape) {
+  var n = 0;
+  for (var i = 0; i < shape.length; i++) {
+    for (var j = 0; j < shape[i].length; j++) {
+      if (shape[i][j] === 1) n++;
+    }
+  }
+  return n;
+}
+
+function isMediumExhausted(state, blockId, solvedPlacements) {
+  var target = solvedPlacements && solvedPlacements[blockId];
+  if (!target) return true;
+  var existing = state.mediumLocked[blockId] || [];
+  return existing.length >= _countShape(target.shape);
+}
+
 function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
   var target = solvedPlacements[blockId];
   if (!target) return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
 
+  var existing = state.mediumLocked[blockId] || [];
+  var totalCells = _countShape(target.shape);
+  if (existing.length >= totalCells) {
+    // Defensive: caller should check isMediumExhausted first
+    return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
+  }
+
+  // Find next unrevealed filled cell (row-major)
+  var newCell = null;
+  for (var dy = 0; dy < target.shape.length && !newCell; dy++) {
+    for (var dx = 0; dx < target.shape[dy].length && !newCell; dx++) {
+      if (target.shape[dy][dx] !== 1) continue;
+      var cx = target.x + dx, cy = target.y + dy;
+      var already = false;
+      for (var e = 0; e < existing.length; e++) {
+        if (existing[e].x === cx && existing[e].y === cy) { already = true; break; }
+      }
+      if (!already) newCell = { x: cx, y: cy };
+    }
+  }
+  if (!newCell) return { newState: state, updatedPalette: palette, updatedDropped: dropped, hintedCell: null };
+
+  // Evict block from board if currently placed at wrong origin (same as before)
   var newPalette = palette.map(_cloneBlock);
   var newDropped = dropped.map(_cloneBlock);
-
   for (var d = newDropped.length - 1; d >= 0; d--) {
     if (newDropped[d].id === blockId) {
       if (newDropped[d].x !== target.x || newDropped[d].y !== target.y) {
@@ -122,10 +162,8 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     }
   }
 
-  var displayCell = _firstFilledCell(target.shape, target.x, target.y);
-
   var newMed = Object.assign({}, state.mediumLocked);
-  newMed[blockId] = displayCell;
+  newMed[blockId] = existing.concat([newCell]);
 
   var newState = {
     puzzleId: state.puzzleId,
@@ -137,7 +175,7 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     usedStrong: state.usedStrong,
   };
 
-  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: displayCell };
+  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: newCell };
 }
 
 function _firstFilledCell(shape, originX, originY) {
@@ -243,6 +281,7 @@ module.exports = {
   isOrientationLocked: isOrientationLocked,
   isCellLocked: isCellLocked,
   isFullyLocked: isFullyLocked,
+  isMediumExhausted: isMediumExhausted,
   applyWeak: applyWeak,
   applyMedium: applyMedium,
   applyStrong: applyStrong,
