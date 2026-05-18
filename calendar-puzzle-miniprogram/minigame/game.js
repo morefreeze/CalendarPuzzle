@@ -88,3 +88,13 @@ wx.showShareMenu({
 wx.onShareAppMessage(function () {
   return shareState.buildShareData();
 });
+
+// Moments (朋友圈) share — only fires when the user taps the capsule menu's
+// "分享到朋友圈" (mini-games have no programmatic wx.shareTimeline). Without
+// this callback the snapshot share carries no query, so receivers land on the
+// home page instead of the specific puzzle.
+if (typeof wx.onShareTimeline === 'function') {
+  wx.onShareTimeline(function () {
+    return shareState.buildShareData();
+  });
+}

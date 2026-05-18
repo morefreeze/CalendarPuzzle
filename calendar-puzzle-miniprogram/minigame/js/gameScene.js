@@ -454,6 +454,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.winCard = null;
     L.winCloseBtn = null;
     L.winNextBtn = null;
+    L.winMomentsBtn = null;
     L.winFinishTutorialBtn = null;
     L.tutorialBanner = null;
     L.tutorialSkipBtn = null;
@@ -1170,9 +1171,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // Dim backdrop — makes the card modal, click-outside dismisses.
       R.overlay(ctx, W, H);
       var cardW = Math.min(W - 32, 320);
-      // Two stacked buttons regardless of mode: tutorial → finish + invite,
-      // regular win → restart + invite. Moments share via the menu capsule.
-      var cardH = 250;
+      // Tutorial stacks 2 (finish + invite). Regular win stacks 3
+      // (restart / moments-hint / invite), so grow the card to match.
+      var cardH = tutorialMode ? 250 : 310;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       // Clamp against the bottom safe area so the taller 3-button card
@@ -1220,10 +1221,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
       }
 
-      // Stacked CTAs — two buttons either way:
-      //   tutorial → [finish, invite],  regular win → [restart, invite].
+      // Stacked CTAs. Tutorial: [finish, invite]. Normal win:
+      // [restart, moments-hint, invite].
       var sbtnW = cardW - 32, sbtnH = 40, sbtnGap = 10;
-      var btnCount = 2;
+      var btnCount = tutorialMode ? 2 : 3;
       var primaryY = cardY + cardH - btnCount * sbtnH - (btnCount - 1) * sbtnGap - 14;
       var btnX = cardX + (cardW - sbtnW) / 2;
       var slotY = function (i) { return primaryY + i * (sbtnH + sbtnGap); };
@@ -1237,6 +1238,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         L.winNextBtn = { x: btnX, y: slotY(0), w: sbtnW, h: sbtnH };
         R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
           isInsomnia ? '↺ 重开' : '🎲 随机下一题', BRAND, '#fff', 10);
+        L.winMomentsBtn = { x: btnX, y: slotY(1), w: sbtnW, h: sbtnH };
+        R.button(ctx, L.winMomentsBtn.x, L.winMomentsBtn.y,
+          L.winMomentsBtn.w, L.winMomentsBtn.h,
+          '📤 分享朋友圈', '#1976D2', '#fff', 10);
       }
       L.shareBtn = { x: btnX, y: slotY(btnCount - 1), w: sbtnW, h: sbtnH };
       R.button(ctx, L.shareBtn.x, L.shareBtn.y, L.shareBtn.w, L.shareBtn.h,
@@ -1432,6 +1437,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
       if (L.winNextBtn && R.hitTest(x, y, L.winNextBtn)) {
         executeRandomSwitch();
+        return;
+      }
+      if (L.winMomentsBtn && R.hitTest(x, y, L.winMomentsBtn)) {
+        // Mini-games have no programmatic wx.shareTimeline — only the user
+        // can trigger Moments share via the capsule menu. wx.onShareTimeline
+        // in game.js makes that share carry our deep-link query.
+        try {
+          wx.showModal({
+            title: '分享到朋友圈',
+            content: '点右上角胶囊菜单 → 「分享到朋友圈」。这一局的题目会带链接，朋友点开直达同一题。',
+            showCancel: false,
+            confirmText: '知道了',
+          });
+        } catch (e) {}
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
