@@ -36,6 +36,70 @@ function isFullyLocked(state, blockId) {
   return !!state.strongLocked[blockId];
 }
 
+function _shapeEq(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].length !== b[i].length) return false;
+    for (var j = 0; j < a[i].length; j++) if (a[i][j] !== b[i][j]) return false;
+  }
+  return true;
+}
+
+function _cloneShape(s) {
+  return s.map(function (row) { return row.slice(); });
+}
+
+function _cloneBlock(b) {
+  var n = {};
+  for (var k in b) {
+    if (k === 'shape') n.shape = _cloneShape(b.shape);
+    else n[k] = b[k];
+  }
+  return n;
+}
+
+function applyWeak(state, blockId, palette, dropped, solvedPlacements) {
+  var target = solvedPlacements[blockId];
+  if (!target) return { newState: state, updatedPalette: palette, updatedDropped: dropped };
+
+  var newPalette = palette.map(_cloneBlock);
+  var newDropped = dropped.map(_cloneBlock);
+
+  // Find block on palette
+  for (var p = 0; p < newPalette.length; p++) {
+    if (newPalette[p].id === blockId) {
+      newPalette[p].shape = _cloneShape(target.shape);
+    }
+  }
+
+  // Find block on board; evict if shape doesn't match solved
+  for (var d = newDropped.length - 1; d >= 0; d--) {
+    if (newDropped[d].id === blockId) {
+      if (!_shapeEq(newDropped[d].shape, target.shape)) {
+        var ev = _cloneBlock(newDropped[d]);
+        ev.shape = _cloneShape(target.shape);
+        delete ev.x; delete ev.y;
+        newPalette.push(ev);
+        newDropped.splice(d, 1);
+      }
+      // already correctly oriented → leave it
+    }
+  }
+
+  var newState = {
+    puzzleId: state.puzzleId,
+    weakLocked: Object.assign({}, state.weakLocked, function () { var o = {}; o[blockId] = true; return o; }()),
+    mediumLocked: state.mediumLocked,
+    strongLocked: state.strongLocked,
+    usedWeak: state.usedWeak + 1,
+    usedMedium: state.usedMedium,
+    usedStrong: state.usedStrong,
+  };
+
+  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped };
+}
+
 module.exports = {
   CAPS: CAPS,
   COSTS: COSTS,
@@ -45,4 +109,5 @@ module.exports = {
   isOrientationLocked: isOrientationLocked,
   isCellLocked: isCellLocked,
   isFullyLocked: isFullyLocked,
+  applyWeak: applyWeak,
 };
