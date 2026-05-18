@@ -106,6 +106,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var dragOriginY = 0;
   var dragStart = { x: 0, y: 0 };
   var dragPos = { x: 0, y: 0 };
+  // Pixel vector from finger to the dragged block's top-left (origin) cell.
+  // Palette / preview grabs use a fixed (cs, cs) — finger one cell down-right of
+  // origin, matching the legacy ghost layout. Board grabs capture the actual
+  // grip so the cell under the finger at pickup stays under the finger.
+  var dragGripOffset = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
   var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
 
@@ -1148,8 +1153,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // --- Snap landing preview while dragging ---
     if (dragging && dragHasMoved) {
-      var gx = dragPos.x - cs;
-      var gy = dragPos.y - cs;
+      var gx = dragPos.x - dragGripOffset.x;
+      var gy = dragPos.y - dragGripOffset.y;
       var snapCx = Math.round((gx - L.boardX) / cs);
       var snapCy = Math.round((gy - L.boardY) / cs);
       if (snapCx >= 0 && snapCx < 7 && snapCy >= 0 && snapCy < 8) {
@@ -1162,7 +1167,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // --- Floating drag ghost (no snapping, follows finger) ---
     if (dragging && dragHasMoved) {
-      R.blockShape(ctx, dragging.shape, dragging.color, dragPos.x - cs, dragPos.y - cs, cs, 0.7);
+      R.blockShape(ctx, dragging.shape, dragging.color,
+        dragPos.x - dragGripOffset.x, dragPos.y - dragGripOffset.y, cs, 0.7);
     }
 
     // --- Snap animation (placed block sliding from drop position to cell) ---
@@ -1351,6 +1357,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           selected = null;
           dragStart = { x: x, y: y };
           dragPos = { x: x, y: y };
+          // Capture pixel offset from finger to the block's top-left cell so
+          // the same point of the block tracks the finger during drag.
+          dragGripOffset = {
+            x: x - (L.boardX + blkAt.x * bcs),
+            y: y - (L.boardY + blkAt.y * bcs),
+          };
           try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
           return;
         }
@@ -1370,6 +1382,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         dragFromBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
+        dragGripOffset = { x: L.cellSize, y: L.cellSize };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
         return;
       }
@@ -1383,6 +1396,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         dragFromBoard = false;
         dragStart = { x: x, y: y };
         dragPos = { x: x, y: y };
+        dragGripOffset = { x: L.cellSize, y: L.cellSize };
         try { wx.vibrateShort && wx.vibrateShort({ type: 'light' }); } catch (e) {}
         return;
       }
@@ -1417,8 +1431,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Track whether the drag has snapped to a real grid cell at any point.
     if (!dragEnteredBoard && L.cellSize) {
       var ccs = L.cellSize;
-      var scx = Math.round((dragPos.x - ccs - L.boardX) / ccs);
-      var scy = Math.round((dragPos.y - ccs - L.boardY) / ccs);
+      var scx = Math.round((dragPos.x - dragGripOffset.x - L.boardX) / ccs);
+      var scy = Math.round((dragPos.y - dragGripOffset.y - L.boardY) / ccs);
       if (scx >= 0 && scx < 7 && scy >= 0 && scy < 8) dragEnteredBoard = true;
     }
     scene.dirty = true;
@@ -1563,14 +1577,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       var cs = L.cellSize;
-      var gx = dragPos.x - cs;
-      var gy = dragPos.y - cs;
+      var gx = dragPos.x - dragGripOffset.x;
+      var gy = dragPos.y - dragGripOffset.y;
       var cx = Math.round((gx - L.boardX) / cs);
       var cy = Math.round((gy - L.boardY) / cs);
       var onBoard = cx >= 0 && cx < 7 && cy >= 0 && cy < 8;
       var placed = false;
       if (onBoard && B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
-        placeBlock(dragging, cx, cy, dragPos.x - cs, dragPos.y - cs);
+        placeBlock(dragging, cx, cy, gx, gy);
         placed = true;
       } else if (onBoard) {
         showToast('无法放置！');
