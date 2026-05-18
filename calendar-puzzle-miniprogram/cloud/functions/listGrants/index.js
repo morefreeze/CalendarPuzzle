@@ -16,20 +16,22 @@ exports.main = async function (event, context, _cloudOverride) {
   var balance = { weak: 0, medium: 0, strong: 0 };
   var used = { weak: 0, medium: 0, strong: 0 };
 
+  var promises = [];
   for (var i = 0; i < TYPES.length; i++) {
-    var t = TYPES[i];
-    var b = await db.collection('hintGrants').where({
-      openid: openid, type: t, usedAt: null,
-    }).count();
-    balance[t] = b.total;
-
-    if (puzzleId) {
-      var u = await db.collection('hintGrants').where({
-        openid: openid, type: t, usedInPuzzle: puzzleId,
-      }).count();
-      used[t] = u.total;
-    }
+    (function (tt) {
+      promises.push(
+        db.collection('hintGrants').where({ openid: openid, type: tt, usedAt: null }).count()
+          .then(function (r) { balance[tt] = r.total; })
+      );
+      if (puzzleId) {
+        promises.push(
+          db.collection('hintGrants').where({ openid: openid, type: tt, usedInPuzzle: puzzleId }).count()
+            .then(function (r) { used[tt] = r.total; })
+        );
+      }
+    })(TYPES[i]);
   }
+  await Promise.all(promises);
 
   return { ok: true, balance: balance, used: used };
 };

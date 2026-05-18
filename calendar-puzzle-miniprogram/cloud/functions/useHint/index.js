@@ -1,4 +1,7 @@
-// Atomically claims an unused hint voucher of given type for the current puzzle.
+// Claims an unused hint voucher of given type for the current puzzle.
+// Single-action (NOT transactional): under concurrent calls (e.g. double-tap),
+// two requests can both pass the cap check and both claim — accepted risk for
+// mini-game scale per Plan 2a §race-condition self-review note.
 // Enforces per-puzzle cap before claiming. Returns the consumed grant's _id.
 
 var CAPS = { weak: 3, medium: 3, strong: 1 };
