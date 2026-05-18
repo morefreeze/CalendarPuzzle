@@ -1526,6 +1526,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // `dropped`) once the user has actually moved past the threshold.
       // A tap that never crosses the threshold won't disturb the board.
       if (dragFromBoard) {
+        if (Hint.isFullyLocked(hintState, dragging.id)) {
+          showToast('该方块由强提示锁定');
+          dragging = null;
+          dragFromBoard = false;
+          dragHasMoved = false;
+          return;
+        }
         dropped = dropped.filter(function (b) { return b.id !== dragging.id; });
       }
     }
@@ -1630,13 +1637,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               return;
             }
             var cost = Hint.COSTS[pickedTier];
+            if (pickedTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+              cost = 0;
+            }
             var have = stamina.getStamina();
             if (have < cost) {
               showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
-              return;
-            }
-            if (!stamina.consumeStamina(cost)) {
-              showToast('体力扣减失败');
               return;
             }
             hintTier = pickedTier;
@@ -1650,6 +1656,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
           if (R.hitTest(x, y, L.hintItems[hi3])) {
             var hBlock = L.hintItems[hi3].block;
+            var blockCost = Hint.COSTS[hintTier];
+            if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+              blockCost = 0;
+            }
+            if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
+              showToast('体力扣减失败');
+              return;
+            }
             var res;
             if (hintTier === 'weak') {
               if (Hint.isOrientationLocked(hintState, hBlock.id)) { showToast('该方块方向已提示过'); return; }
