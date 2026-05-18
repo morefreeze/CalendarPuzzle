@@ -114,3 +114,39 @@ test('applyMedium leaves correctly-positioned block in place', function () {
   assert.strictEqual(res.updatedDropped.length, 1);
   assert.strictEqual(res.updatedDropped[0].x, 5);
 });
+
+test('applyStrong places block at solved location with solved shape', function () {
+  var state = H.createHintState('p1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[0, 1], [1, 1]] } };
+
+  var res = H.applyStrong(state, 'X-block', palette, dropped, solved);
+
+  assert.deepStrictEqual(res.updatedPalette, []);
+  assert.strictEqual(res.updatedDropped.length, 1);
+  assert.strictEqual(res.updatedDropped[0].id, 'X-block');
+  assert.strictEqual(res.updatedDropped[0].x, 2);
+  assert.strictEqual(res.updatedDropped[0].y, 3);
+  assert.ok(shapeEq(res.updatedDropped[0].shape, [[0, 1], [1, 1]]));
+  assert.strictEqual(res.newState.strongLocked['X-block'].x, 2);
+  assert.strictEqual(res.newState.usedStrong, 1);
+  assert.deepStrictEqual(res.evictedIds, []);
+});
+
+test('applyStrong evicts blockers that overlap the target', function () {
+  var state = H.createHintState('p1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  // Y-block is currently placed and overlaps cell (2,3)
+  var dropped = [{ id: 'Y-block', label: 'Y', shape: [[1, 1]], x: 2, y: 3 }];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[0, 1], [1, 1]] } };
+
+  var res = H.applyStrong(state, 'X-block', palette, dropped, solved);
+
+  assert.deepStrictEqual(res.evictedIds, ['Y-block']);
+  // X-block placed
+  assert.strictEqual(res.updatedDropped.length, 1);
+  assert.strictEqual(res.updatedDropped[0].id, 'X-block');
+  // Y-block back in palette
+  assert.ok(res.updatedPalette.some(function (b) { return b.id === 'Y-block'; }));
+});
