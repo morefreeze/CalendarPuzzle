@@ -77,6 +77,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var snapAnims = [];
   // Confetti pieces seeded on win
   var confetti = [];
+  var confettiLastTick = 0;
   var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
   var winCardDismissed = false;
 
@@ -145,15 +146,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       confetti.push({
         x: Math.random(),                  // 0..1 of canvas W
         y: -Math.random() * 0.15,          // start just above viewport
-        vx: (Math.random() - 0.5) * 0.024, // horizontal drift (2× faster)
-        vy: 0.022 + Math.random() * 0.028, // fall rate ~3× faster than before
+        // Velocities below are in canvas-units / second — frame-rate independent.
+        // Combined with gravity in the render step, a piece traverses the full
+        // viewport in ~0.7–0.85s and the whole burst clears in ~1s.
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: 0.6 + Math.random() * 0.4,
         rot: Math.random() * Math.PI * 2,
-        rotV: (Math.random() - 0.5) * 0.35,
+        rotV: (Math.random() - 0.5) * 8,   // radians / sec
         size: 7 + Math.random() * 7,
         color: colors[Math.floor(Math.random() * colors.length)],
-        born: Date.now() + Math.random() * 120, // all spawned within 120ms
+        born: Date.now() + Math.random() * 200, // all spawned within 200ms
       });
     }
+    confettiLastTick = Date.now();
     scene.dirty = true;
   }
 
@@ -1268,15 +1273,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.button(ctx, L.shareBtn.x, L.shareBtn.y, L.shareBtn.w, L.shareBtn.h,
         '🎯 邀请朋友挑战这一题', '#FF7043', '#fff', 10);
 
-      // Confetti
+      // Confetti — time-stepped so the fall feels right regardless of fps.
       var nowC = Date.now();
+      // Cap dt at 50ms so a backgrounded tab doesn't fling every piece
+      // off-screen in a single resume frame.
+      var cdt = Math.min(0.05, Math.max(0, (nowC - confettiLastTick) / 1000));
+      confettiLastTick = nowC;
+      var gravity = 2.2; // canvas-units / sec^2
       for (var k = 0; k < confetti.length; k++) {
         var c = confetti[k];
         if (nowC < c.born) continue;
-        var dt = (nowC - c.born) / 16;
-        c.x += c.vx;
-        c.y += c.vy;
-        c.rot += c.rotV;
+        c.vy += gravity * cdt;
+        c.x += c.vx * cdt;
+        c.y += c.vy * cdt;
+        c.rot += c.rotV * cdt;
         if (c.y > 1.1) continue;
         var px = c.x * W, py = c.y * H;
         ctx.save();
