@@ -732,6 +732,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           drawCellDecoration(ctx, cell.t, px, py, cs);
         }
 
+        // Medium-hint cell overlay (shows where a block should go, no orientation)
+        for (var ml in hintState.mediumLocked) {
+          var mlc = hintState.mediumLocked[ml];
+          // The cell (mlc.x, mlc.y) is the block origin. We highlight ONLY the origin cell —
+          // user still doesn't know the shape.
+          if (mlc.x === bx && mlc.y === by) {
+            // Find block color from palette/dropped (each block has a `color` field
+            // from initialBlockTypes; see board.js:15-24)
+            var blkColor = '#888';
+            for (var pp = 0; pp < palette.length; pp++) if (palette[pp].id === ml) blkColor = palette[pp].color || blkColor;
+            for (var dp = 0; dp < dropped.length; dp++) if (dropped[dp].id === ml) blkColor = dropped[dp].color || blkColor;
+            ctx.save();
+            ctx.globalAlpha = 0.35;
+            R.roundRect(ctx, px, py, cs, cs, 4, blkColor);
+            ctx.restore();
+          }
+        }
+
         // Border (lightest possible)
         if (!blockAt) {
           ctx.strokeStyle = 'rgba(0,0,0,0.08)';
