@@ -129,14 +129,46 @@ function _renderToTempFile(opts, onTempPath, onError) {
   var ctx;
   try { ctx = canvas.getContext('2d'); } catch (e) { onError('init'); return; }
   try { drawShareCard(ctx, opts); } catch (e) { onError('render'); return; }
-  wx.canvasToTempFilePath({
-    canvas: canvas,
+
+  // Watchdog: some mini-game runtimes silently drop success/fail for off-screen
+  // canvasToTempFilePath. Without this, the caller's wx.showLoading would never
+  // hide and the UI would feel hung.
+  var settled = false;
+  var watchdog = setTimeout(function () {
+    if (settled) return;
+    settled = true;
+    onError('export');
+  }, 10000);
+  function done(fn, arg) {
+    if (settled) return;
+    settled = true;
+    clearTimeout(watchdog);
+    fn(arg);
+  }
+
+  var params = {
     x: 0, y: 0, width: SHARE_W, height: SHARE_H,
     destWidth: SHARE_W, destHeight: SHARE_H,
     fileType: 'png',
-    success: function (res) { onTempPath(res.tempFilePath); },
-    fail: function () { onError('export'); },
-  });
+    success: function (res) { done(onTempPath, res.tempFilePath); },
+    fail: function () { done(onError, 'export'); },
+  };
+
+  // Prefer the Canvas-method form (canonical mini-game API). Fall back to the
+  // wx.* form only if the runtime doesn't expose it. Both can throw synchronously
+  // on unsupported runtime versions — wrap both.
+  try {
+    if (typeof canvas.toTempFilePath === 'function') {
+      canvas.toTempFilePath(params);
+    } else if (typeof wx.canvasToTempFilePath === 'function') {
+      params.canvas = canvas;
+      wx.canvasToTempFilePath(params);
+    } else {
+      done(onError, 'export');
+    }
+  } catch (e) {
+    done(onError, 'export');
+  }
 }
 
 function _saveWithAuth(filePath, onSuccess, onError) {
