@@ -113,6 +113,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var dragGripOffset = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
   var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
+  // When > Date.now(), draw a pulsing arrow at the capsule menu pointing to
+  // "分享到朋友圈". Set on 📤 button tap; auto-clears on timeout.
+  var momentsHintUntil = 0;
 
   var timerInterval = setInterval(function () {
     if (!isWon) { timer++; scene.dirty = true; }
@@ -138,6 +141,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         if (now < pc.born || pc.y <= 1.1) { alive = true; break; }
       }
     }
+    // Keep ticking while the moments-share arrow is pulsing.
+    if (!alive && momentsHintUntil > now) alive = true;
     if (alive) scene.dirty = true;
   }, 16);
 
@@ -1271,6 +1276,58 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         ctx.restore();
       }
       scene.dirty = true;
+
+      // --- Moments-share hint: pulsing arrow + label pointing at the capsule
+      //     menu (the only place mini-games can trigger 朋友圈 share). ---
+      if (momentsHintUntil > nowC && menuRect && menuRect.bottom > 0) {
+        var capCx = (menuRect.left + menuRect.right) / 2;
+        var capBottom = menuRect.bottom;
+        // 1s period sine, normalized 0..1.
+        var phase = ((nowC % 1000) / 1000) * Math.PI * 2;
+        var pulseR = 26 + Math.sin(phase) * 5;
+        var arrowBob = Math.sin(phase) * 6;
+        var hintColor = '#FFD700';
+
+        ctx.save();
+        // Halo around the capsule (sits behind the system capsule visually).
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.85)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(capCx, (menuRect.top + menuRect.bottom) / 2, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Vertical arrow shaft below the capsule, tip pointing up.
+        var tipY = capBottom + 12 + arrowBob;
+        var tailY = tipY + 42;
+        ctx.strokeStyle = hintColor;
+        ctx.fillStyle = hintColor;
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(capCx, tailY);
+        ctx.lineTo(capCx, tipY);
+        ctx.stroke();
+        // Arrowhead triangle.
+        ctx.beginPath();
+        ctx.moveTo(capCx, tipY - 2);
+        ctx.lineTo(capCx - 9, tipY + 12);
+        ctx.lineTo(capCx + 9, tipY + 12);
+        ctx.closePath();
+        ctx.fill();
+
+        // Label below the arrow.
+        var lbl = '点这里 → 分享到朋友圈';
+        ctx.font = 'bold 13px sans-serif';
+        var lblPad = 12;
+        var lblW = ctx.measureText(lbl).width + lblPad * 2;
+        var lblH = 28;
+        var lblX = Math.max(8, Math.min(W - lblW - 8, capCx - lblW / 2));
+        var lblY = tailY + 8;
+        R.roundRect(ctx, lblX, lblY, lblW, lblH, lblH / 2, 'rgba(33,33,33,0.92)');
+        R.textBold(ctx, lbl, lblX + lblW / 2, lblY + lblH / 2, 13,
+          hintColor, 'center', 'middle');
+        ctx.restore();
+      }
     }
 
     // --- Top floating toast (above everything else) ---
@@ -1441,16 +1498,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
       if (L.winMomentsBtn && R.hitTest(x, y, L.winMomentsBtn)) {
         // Mini-games have no programmatic wx.shareTimeline — only the user
-        // can trigger Moments share via the capsule menu. wx.onShareTimeline
-        // in game.js makes that share carry our deep-link query.
-        try {
-          wx.showModal({
-            title: '分享到朋友圈',
-            content: '点右上角胶囊菜单 → 「分享到朋友圈」。这一局的题目会带链接，朋友点开直达同一题。',
-            showCancel: false,
-            confirmText: '知道了',
-          });
-        } catch (e) {}
+        // can trigger Moments share via the capsule menu. Flash a pulsing
+        // arrow at the capsule for 6s. wx.onShareTimeline in game.js makes
+        // the resulting share carry our deep-link query.
+        momentsHintUntil = Date.now() + 6000;
+        scene.dirty = true;
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
