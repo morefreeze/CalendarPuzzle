@@ -1440,6 +1440,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var bty = Math.floor((y - L.boardY) / bcs);
       if (btx >= 0 && btx < 7 && bty >= 0 && bty < 8 && x >= L.boardX && y >= L.boardY) {
         var blkAt = B.getBlockAtCell(allBlocks(), btx, bty);
+        if (blkAt && Hint.isFullyLocked(hintState, blkAt.id)) {
+          showToast('该方块由强提示锁定');
+          return;
+        }
         if (blkAt && !isPrePlaced(blkAt.id)) {
           // Lift a board block — but DON'T remove it from `dropped` yet.
           // Removal happens on the first onTouchMove past the drag threshold,
@@ -1703,7 +1707,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var dbl = (now - lastTap.time < 350) && lastTap.x === tx && lastTap.y === ty;
           lastTap = { time: now, x: tx, y: ty };
           if (dbl) {
-            removeDropped(dragging.id);
+            if (Hint.isFullyLocked(hintState, dragging.id)) {
+              wx.showModal({
+                title: '强提示锁定',
+                content: '这是强提示锁定的方块，不能移除。',
+                showCancel: false,
+              });
+            } else {
+              removeDropped(dragging.id);
+            }
           }
           // single tap: leave the board untouched
         } else {
@@ -1821,7 +1833,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
       if (dblTap) {
         var blockAt = B.getBlockAtCell(allBlocks(), tapCX, tapCY);
-        if (blockAt && !isPrePlaced(blockAt.id)) {
+        if (blockAt && Hint.isFullyLocked(hintState, blockAt.id)) {
+          wx.showModal({
+            title: '强提示锁定',
+            content: '这是强提示锁定的方块，不能移除。',
+            showCancel: false,
+          });
+        } else if (blockAt && !isPrePlaced(blockAt.id)) {
           removeDropped(blockAt.id);
         } else if (blockAt && isPrePlaced(blockAt.id)) {
           showToast('🔒 题面方块不可移除');
