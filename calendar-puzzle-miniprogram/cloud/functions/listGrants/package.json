@@ -1,0 +1,9 @@
+{
+  "name": "listGrants",
+  "version": "1.0.0",
+  "description": "Read voucher balance + per-puzzle used count",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}
