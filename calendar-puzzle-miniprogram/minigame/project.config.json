@@ -27,6 +27,7 @@
     }
   },
   "compileType": "game",
+  "cloudfunctionRoot": "../cloud/functions/",
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [],
