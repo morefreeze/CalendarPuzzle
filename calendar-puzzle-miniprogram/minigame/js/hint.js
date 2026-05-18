@@ -122,8 +122,10 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     }
   }
 
+  var displayCell = _firstFilledCell(target.shape, target.x, target.y);
+
   var newMed = Object.assign({}, state.mediumLocked);
-  newMed[blockId] = { x: target.x, y: target.y };
+  newMed[blockId] = displayCell;
 
   var newState = {
     puzzleId: state.puzzleId,
@@ -135,7 +137,16 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     usedStrong: state.usedStrong,
   };
 
-  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: { x: target.x, y: target.y } };
+  return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: displayCell };
+}
+
+function _firstFilledCell(shape, originX, originY) {
+  for (var dy = 0; dy < shape.length; dy++) {
+    for (var dx = 0; dx < shape[dy].length; dx++) {
+      if (shape[dy][dx] === 1) return { x: originX + dx, y: originY + dy };
+    }
+  }
+  return { x: originX, y: originY }; // fallback (shouldn't happen for valid shapes)
 }
 
 function _cellsOf(block) {

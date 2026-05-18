@@ -84,9 +84,9 @@ test('applyMedium records target cell, does NOT change palette shape', function 
 
   var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
 
-  assert.deepStrictEqual(res.hintedCell, { x: 2, y: 3 });
+  assert.deepStrictEqual(res.hintedCell, { x: 3, y: 3 });
   assert.ok(shapeEq(res.updatedPalette[0].shape, [[1, 1], [0, 1]])); // unchanged
-  assert.deepStrictEqual(res.newState.mediumLocked['X-block'], { x: 2, y: 3 });
+  assert.deepStrictEqual(res.newState.mediumLocked['X-block'], { x: 3, y: 3 });
   assert.strictEqual(res.newState.usedMedium, 1);
 });
 

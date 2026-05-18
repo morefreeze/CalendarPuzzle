@@ -745,8 +745,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             for (var pp = 0; pp < palette.length; pp++) if (palette[pp].id === ml) blkColor = palette[pp].color || blkColor;
             for (var dp = 0; dp < dropped.length; dp++) if (dropped[dp].id === ml) blkColor = dropped[dp].color || blkColor;
             ctx.save();
-            ctx.globalAlpha = 0.35;
-            R.roundRect(ctx, px, py, cs, cs, 4, blkColor);
+            ctx.strokeStyle = blkColor;
+            ctx.lineWidth = 4;
+            ctx.strokeRect(px + 2, py + 2, cs - 4, cs - 4);
+            ctx.fillStyle = blkColor;
+            var d = Math.max(6, Math.floor(cs * 0.18));
+            ctx.fillRect(px + cs / 2 - d / 2, py + cs / 2 - d / 2, d, d);
             ctx.restore();
           }
         }
@@ -1668,6 +1672,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
           if (R.hitTest(x, y, L.hintItems[hi3])) {
             var hBlock = L.hintItems[hi3].block;
+            // Per-tier lock check FIRST — don't charge for re-hints
+            if (hintTier === 'weak' && Hint.isOrientationLocked(hintState, hBlock.id)) {
+              showToast('该方块方向已提示过'); return;
+            }
+            if (hintTier === 'medium' && Hint.isCellLocked(hintState, hBlock.id)) {
+              showToast('该方块位置已提示过'); return;
+            }
+            if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {
+              showToast('该方块已强提示'); return;
+            }
+            // Now charge stamina and apply
             var blockCost = Hint.COSTS[hintTier];
             if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
               blockCost = 0;
@@ -1678,15 +1693,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             }
             var res;
             if (hintTier === 'weak') {
-              if (Hint.isOrientationLocked(hintState, hBlock.id)) { showToast('该方块方向已提示过'); return; }
               res = Hint.applyWeak(hintState, hBlock.id, palette, dropped, solvedPlacements);
               showToast('已提示 ' + hBlock.label + ' 的正确方向');
             } else if (hintTier === 'medium') {
-              if (Hint.isCellLocked(hintState, hBlock.id)) { showToast('该方块位置已提示过'); return; }
               res = Hint.applyMedium(hintState, hBlock.id, palette, dropped, solvedPlacements);
               showToast('已提示 ' + hBlock.label + ' 的落点');
             } else {
-              if (Hint.isFullyLocked(hintState, hBlock.id)) { showToast('该方块已强提示'); return; }
               res = Hint.applyStrong(hintState, hBlock.id, palette, dropped, solvedPlacements);
               showToast('已为 ' + hBlock.label + ' 落子');
             }
