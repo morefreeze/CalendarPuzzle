@@ -1798,7 +1798,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Control row
     if (L.hintBtn && R.hitTest(x, y, L.hintBtn)) {
-      hintMode = true; scene.dirty = true; return;
+      hintMode = true; hintTier = null; scene.dirty = true; return;
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;
