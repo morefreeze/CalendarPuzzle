@@ -6,7 +6,6 @@ var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
-var shareImage = require('./shareImage');
 var progress = require('./progress');
 var initialBlockTypes = B.initialBlockTypes;
 
@@ -377,50 +376,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     return m + ':' + (sec < 10 ? '0' : '') + sec;
   }
 
-  // ---- Moments share (saves a 750×1000 PNG to the user's photo album,
-  //      since mini-games can't post directly to Moments). ----
-  var sharingMoments = false;
-  function shareToMoments() {
-    if (!winStats) return;
-    // mask:true on showLoading blocks most rapid double-taps, but the
-    // mask only appears after the call returns — guard the gap explicitly.
-    if (sharingMoments) return;
-    sharingMoments = true;
-    try { wx.showLoading({ title: '生成中…', mask: true }); } catch (e) {}
-    shareImage.generateAndSave({
-      difficulty: difficulty,
-      blocks: allBlocks(),
-      uncov: uncov,
-      time: winStats.time,
-      dateStr: puzzle.dateStr,
-    }, {
-      onSuccess: function () {
-        sharingMoments = false;
-        try { wx.hideLoading(); } catch (e) {}
-        try {
-          wx.showToast({ title: '已保存，去朋友圈发图吧', icon: 'success', duration: 2500 });
-        } catch (e) {}
-      },
-      onError: function (reason) {
-        sharingMoments = false;
-        try { wx.hideLoading(); } catch (e) {}
-        // 'denied' surfaces its own modal; 'cancel' is user-driven (system
-        // save dialog cancelled). Both are silent here.
-        if (reason === 'denied' || reason === 'cancel') return;
-        // Distinguish the failing step so the user (and remote diagnosis)
-        // knows which layer broke: image generation vs the actual album save.
-        var msg;
-        if (reason === 'init' || reason === 'render') msg = '图片绘制失败';
-        else if (reason === 'export') msg = '图片生成超时，请重试';
-        else if (reason === 'save') msg = '保存到相册失败';
-        else msg = '保存失败 (' + reason + ')';
-        try {
-          wx.showToast({ title: msg, icon: 'none', duration: 2500 });
-        } catch (e) {}
-      },
-    });
-  }
-
   // ---- LAYOUT ----
   function computeLayout(W, H) {
     var padTop = safeInsets.top || 0;
@@ -499,7 +454,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.winCard = null;
     L.winCloseBtn = null;
     L.winNextBtn = null;
-    L.winMomentsBtn = null;
     L.winFinishTutorialBtn = null;
     L.tutorialBanner = null;
     L.tutorialSkipBtn = null;
@@ -1216,9 +1170,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // Dim backdrop — makes the card modal, click-outside dismisses.
       R.overlay(ctx, W, H);
       var cardW = Math.min(W - 32, 320);
-      // Tutorial keeps 2 buttons (finish + share); regular wins now stack
-      // 3 (restart / moments / invite-friend), so grow the card to match.
-      var cardH = tutorialMode ? 250 : 310;
+      // Two stacked buttons regardless of mode: tutorial → finish + invite,
+      // regular win → restart + invite. Moments share via the menu capsule.
+      var cardH = 250;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       // Clamp against the bottom safe area so the taller 3-button card
@@ -1266,10 +1220,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
       }
 
-      // Stacked CTAs. Tutorial: [finish, invite]. Normal win:
-      // [restart, moments-share, invite].
+      // Stacked CTAs — two buttons either way:
+      //   tutorial → [finish, invite],  regular win → [restart, invite].
       var sbtnW = cardW - 32, sbtnH = 40, sbtnGap = 10;
-      var btnCount = tutorialMode ? 2 : 3;
+      var btnCount = 2;
       var primaryY = cardY + cardH - btnCount * sbtnH - (btnCount - 1) * sbtnGap - 14;
       var btnX = cardX + (cardW - sbtnW) / 2;
       var slotY = function (i) { return primaryY + i * (sbtnH + sbtnGap); };
@@ -1283,10 +1237,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         L.winNextBtn = { x: btnX, y: slotY(0), w: sbtnW, h: sbtnH };
         R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
           isInsomnia ? '↺ 重开' : '🎲 随机下一题', BRAND, '#fff', 10);
-        L.winMomentsBtn = { x: btnX, y: slotY(1), w: sbtnW, h: sbtnH };
-        R.button(ctx, L.winMomentsBtn.x, L.winMomentsBtn.y,
-          L.winMomentsBtn.w, L.winMomentsBtn.h,
-          '📷 分享朋友圈', '#1976D2', '#fff', 10);
       }
       L.shareBtn = { x: btnX, y: slotY(btnCount - 1), w: sbtnW, h: sbtnH };
       R.button(ctx, L.shareBtn.x, L.shareBtn.y, L.shareBtn.w, L.shareBtn.h,
@@ -1482,10 +1432,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
       if (L.winNextBtn && R.hitTest(x, y, L.winNextBtn)) {
         executeRandomSwitch();
-        return;
-      }
-      if (L.winMomentsBtn && R.hitTest(x, y, L.winMomentsBtn)) {
-        shareToMoments();
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
