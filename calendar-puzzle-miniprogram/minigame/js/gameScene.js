@@ -53,6 +53,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var timer = 0;
   var isWon = false;
   var hintMode = false;
+  var hintTier = null;
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
@@ -541,18 +542,34 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      var popW = W * 0.78, popH = H * 0.55;
+      var popW = W * 0.78, popH = 240;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
-      var candidates = [];
-      for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
-      for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
-      L.hintItems = [];
-      var hx = L.hintPopup.x + 20, hy = L.hintPopup.y + 50;
-      var hSize = 52, hGap = 10;
-      for (var hi = 0; hi < candidates.length; hi++) {
-        if (hx + hSize > L.hintPopup.x + L.hintPopup.w - 20) { hx = L.hintPopup.x + 20; hy += hSize + hGap; }
-        L.hintItems.push({ x: hx, y: hy, w: hSize, h: hSize, block: candidates[hi] });
-        hx += hSize + hGap;
+
+      if (!hintTier) {
+        L.hintTierBtns = [];
+        var rowH = 50, rowGap = 8;
+        var rowY = L.hintPopup.y + 50;
+        var tiers = ['weak', 'medium', 'strong'];
+        for (var ti = 0; ti < tiers.length; ti++) {
+          L.hintTierBtns.push({
+            x: L.hintPopup.x + 20, y: rowY + ti * (rowH + rowGap),
+            w: popW - 40, h: rowH, tier: tiers[ti],
+          });
+        }
+        L.hintItems = [];
+      } else {
+        var candidates = [];
+        for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
+        for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
+        L.hintItems = [];
+        var hx = L.hintPopup.x + 20, hy = L.hintPopup.y + 50;
+        var hSize = 52, hGap = 10;
+        for (var hi = 0; hi < candidates.length; hi++) {
+          if (hx + hSize > L.hintPopup.x + L.hintPopup.w - 20) { hx = L.hintPopup.x + 20; hy += hSize + hGap; }
+          L.hintItems.push({ x: hx, y: hy, w: hSize, h: hSize, block: candidates[hi] });
+          hx += hSize + hGap;
+        }
+        L.hintTierBtns = [];
       }
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
     }
@@ -823,26 +840,43 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (hintMode && L.hintPopup) {
       R.overlay(ctx, W, H);
       R.roundRect(ctx, L.hintPopup.x, L.hintPopup.y, L.hintPopup.w, L.hintPopup.h, 16, '#fff');
-      R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
-      for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
-        var ht = L.hintItems[hi2];
-        var alreadyHinted = Hint.isOrientationLocked(hintState, ht.block.id);
-        ctx.globalAlpha = alreadyHinted ? 0.4 : 0.95;
-        R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 10, ht.block.color);
-        if (alreadyHinted) {
-          R.textBold(ctx, '✓', ht.x + ht.w / 2, ht.y + ht.h / 2, 20, '#fff', 'center', 'middle');
-        } else {
-          var ihs = Math.min(
-            Math.floor((ht.w - 12) / ht.block.shape[0].length),
-            Math.floor((ht.h - 12) / ht.block.shape.length)
-          );
-          var ihw = ht.block.shape[0].length * ihs;
-          var ihh = ht.block.shape.length * ihs;
-          R.blockShape(ctx, ht.block.shape, '#fff', ht.x + (ht.w - ihw) / 2, ht.y + (ht.h - ihh) / 2, ihs, 0.9);
+
+      if (!hintTier) {
+        R.textBold(ctx, '选择提示等级', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
+        var tierLabels = {
+          weak:   '弱：揭示方向（旋转+镜像）',
+          medium: '中：揭示落点格子（不告诉方向）',
+          strong: '强：直接放置（自动腾位）',
+        };
+        var costLabels = {
+          weak:   Hint.COSTS.weak + ' 体力 / 关',
+          medium: Hint.COSTS.medium + ' 体力',
+          strong: Hint.COSTS.strong + ' 体力',
+        };
+        for (var ti2 = 0; ti2 < L.hintTierBtns.length; ti2++) {
+          var btn = L.hintTierBtns[ti2];
+          var used = Hint.countUsed(hintState, btn.tier);
+          var cap = Hint.CAPS[btn.tier];
+          var disabled = used >= cap;
+          var fill = disabled ? '#eee' : (btn.tier === 'strong' ? '#E53935' : btn.tier === 'medium' ? '#FB8C00' : BRAND);
+          R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
+          R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
+          R.text(ctx, costLabels[btn.tier] + '  ' + used + '/' + cap, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
-        ctx.globalAlpha = 1;
+      } else {
+        R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
+        for (var hi2 = 0; hi2 < L.hintItems.length; hi2++) {
+          var ht = L.hintItems[hi2];
+          var alreadyLocked = (hintTier === 'weak' && Hint.isOrientationLocked(hintState, ht.block.id))
+                           || (hintTier === 'medium' && Hint.isCellLocked(hintState, ht.block.id))
+                           || (hintTier === 'strong' && Hint.isFullyLocked(hintState, ht.block.id));
+          var blockFill = alreadyLocked ? '#ccc' : '#43A047';
+          R.roundRect(ctx, ht.x, ht.y, ht.w, ht.h, 6, blockFill);
+          R.text(ctx, ht.block.label, ht.x + ht.w / 2, ht.y + ht.h / 2 - 8, 18, '#fff', 'center');
+        }
       }
-      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, '取消', '#eee', '#333', 8);
+
+      R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
     }
 
     // --- Select panel popup ---
@@ -1564,27 +1598,76 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
-        if (R.hitTest(x, y, L.hintItems[hi3])) {
-          var hBlock = L.hintItems[hi3].block;
-          if (Hint.isOrientationLocked(hintState, hBlock.id)) return;
-          var res = Hint.applyWeak(hintState, hBlock.id, palette, dropped, solvedPlacements);
-          hintState = res.newState;
-          palette = res.updatedPalette;
-          dropped = res.updatedDropped;
-          if (selected && selected.id === hBlock.id) {
-            for (var sp2 = 0; sp2 < palette.length; sp2++) {
-              if (palette[sp2].id === hBlock.id) selected.shape = palette[sp2].shape;
+      // Tier selection
+      if (!hintTier && L.hintTierBtns) {
+        for (var tb = 0; tb < L.hintTierBtns.length; tb++) {
+          if (R.hitTest(x, y, L.hintTierBtns[tb])) {
+            var pickedTier = L.hintTierBtns[tb].tier;
+            if (Hint.countUsed(hintState, pickedTier) >= Hint.CAPS[pickedTier]) {
+              showToast('本关该提示已用完');
+              return;
             }
+            var cost = Hint.COSTS[pickedTier];
+            var have = stamina.getStamina();
+            if (have < cost) {
+              showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
+              return;
+            }
+            if (!stamina.consumeStamina(cost)) {
+              showToast('体力扣减失败');
+              return;
+            }
+            hintTier = pickedTier;
+            scene.dirty = true;
+            return;
           }
-          hintMode = false;
-          scene.dirty = true;
-          showToast('已提示 ' + hBlock.label + ' 的正确方向');
-          return;
         }
       }
-      if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) { hintMode = false; scene.dirty = true; return; }
-      if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) { hintMode = false; scene.dirty = true; return; }
+      // Block selection
+      if (hintTier) {
+        for (var hi3 = 0; hi3 < L.hintItems.length; hi3++) {
+          if (R.hitTest(x, y, L.hintItems[hi3])) {
+            var hBlock = L.hintItems[hi3].block;
+            var res;
+            if (hintTier === 'weak') {
+              if (Hint.isOrientationLocked(hintState, hBlock.id)) { showToast('该方块方向已提示过'); return; }
+              res = Hint.applyWeak(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已提示 ' + hBlock.label + ' 的正确方向');
+            } else if (hintTier === 'medium') {
+              if (Hint.isCellLocked(hintState, hBlock.id)) { showToast('该方块位置已提示过'); return; }
+              res = Hint.applyMedium(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已提示 ' + hBlock.label + ' 的落点');
+            } else {
+              if (Hint.isFullyLocked(hintState, hBlock.id)) { showToast('该方块已强提示'); return; }
+              res = Hint.applyStrong(hintState, hBlock.id, palette, dropped, solvedPlacements);
+              showToast('已为 ' + hBlock.label + ' 落子');
+            }
+            hintState = res.newState;
+            palette = res.updatedPalette;
+            dropped = res.updatedDropped;
+            if (selected) {
+              for (var sp3 = 0; sp3 < palette.length; sp3++) {
+                if (palette[sp3].id === selected.id) selected.shape = palette[sp3].shape;
+              }
+            }
+            hintMode = false;
+            hintTier = null;
+            scene.dirty = true;
+            return;
+          }
+        }
+      }
+      if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) {
+        if (hintTier) {
+          hintTier = null;
+        } else {
+          hintMode = false;
+        }
+        scene.dirty = true; return;
+      }
+      if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) {
+        hintMode = false; hintTier = null; scene.dirty = true; return;
+      }
       return;
     }
 
