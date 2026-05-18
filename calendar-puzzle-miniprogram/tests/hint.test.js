@@ -150,3 +150,25 @@ test('applyStrong evicts blockers that overlap the target', function () {
   // Y-block back in palette
   assert.ok(res.updatedPalette.some(function (b) { return b.id === 'Y-block'; }));
 });
+
+test('canUse returns false when cap reached', function () {
+  var s = H.createHintState('p1');
+  s.usedWeak = 5;
+  assert.strictEqual(H.canUse(s, 'weak'), false);
+  assert.strictEqual(H.canUse(s, 'medium'), true);
+});
+
+test('isOrientationLocked true after weak applied', function () {
+  var s = H.createHintState('p1');
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1]] } };
+  var r = H.applyWeak(s, 'X-block', [{ id: 'X-block', label: 'X', shape: [[1]] }], [], solved);
+  assert.strictEqual(H.isOrientationLocked(r.newState, 'X-block'), true);
+  assert.strictEqual(H.isOrientationLocked(r.newState, 'Y-block'), false);
+});
+
+test('isFullyLocked true after strong applied', function () {
+  var s = H.createHintState('p1');
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1]] } };
+  var r = H.applyStrong(s, 'X-block', [{ id: 'X-block', label: 'X', shape: [[1]] }], [], solved);
+  assert.strictEqual(H.isFullyLocked(r.newState, 'X-block'), true);
+});

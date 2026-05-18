@@ -36,6 +36,10 @@ function isFullyLocked(state, blockId) {
   return !!state.strongLocked[blockId];
 }
 
+function canUse(state, type) {
+  return countUsed(state, type) < (CAPS[type] || 0);
+}
+
 function _shapeEq(a, b) {
   if (!a || !b) return false;
   if (a.length !== b.length) return false;
@@ -224,6 +228,7 @@ module.exports = {
   FIRST_WEAK_FREE: FIRST_WEAK_FREE,
   createHintState: createHintState,
   countUsed: countUsed,
+  canUse: canUse,
   isOrientationLocked: isOrientationLocked,
   isCellLocked: isCellLocked,
   isFullyLocked: isFullyLocked,
