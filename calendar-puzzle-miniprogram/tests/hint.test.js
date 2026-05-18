@@ -4,7 +4,7 @@ var H = require('../minigame/js/hint');
 
 test('CAPS and COSTS are the agreed economy', function () {
   assert.deepStrictEqual(H.CAPS, { weak: 5, medium: 3, strong: 1 });
-  assert.deepStrictEqual(H.COSTS, { weak: 1, medium: 3, strong: 6 });
+  assert.deepStrictEqual(H.COSTS, { weak: 1, medium: 2, strong: 6 });
   assert.strictEqual(H.FIRST_WEAK_FREE, true);
 });
 

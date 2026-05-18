@@ -1,7 +1,7 @@
 // 3-tier hint state machine. Pure JS — no wx.* calls. Tested with node --test.
 
 var CAPS = { weak: 5, medium: 3, strong: 1 };
-var COSTS = { weak: 1, medium: 3, strong: 6 };
+var COSTS = { weak: 1, medium: 2, strong: 6 };
 var FIRST_WEAK_FREE = true;
 
 function createHintState(puzzleId) {
