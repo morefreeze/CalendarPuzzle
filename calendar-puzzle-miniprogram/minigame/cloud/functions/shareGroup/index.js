@@ -2,41 +2,19 @@
 // issues one 'medium','share' hintGrant. Best-effort: shareLog insert + hintGrants insert
 // are two non-atomic writes; if the second fails, the dedup will still hold (slight
 // player loss of one voucher; cloud function logs surface this).
+// NOTE: getOpenData is stubbed to fail post wx-server-sdk removal — shareGroup's
+// real-device decrypt path is non-functional until openapi integration lands.
 
-function makeCloud(event) {
-  // 用 @cloudbase/node-sdk 替代 wx-server-sdk (新 runtime 下 wx-server-sdk 的
-  // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
-  // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
-  var tcb = require('@cloudbase/node-sdk');
-  var app;
-  try {
-    app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  } catch (e) {
-    try { app = tcb.init(); } catch (e2) {}
+var _app;
+function _getApp() {
+  if (!_app) {
+    var tcb = require('@cloudbase/node-sdk');
+    _app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
   }
-  if (!app || typeof app.database !== 'function') {
-    throw new Error('@cloudbase/node-sdk init failed: ' + (app ? Object.keys(app).join(',') : 'null app'));
-  }
-  var ui = (event && event.userInfo) || {};
-  return {
-    database: function () { return app.database(); },
-    serverDate: function () { return app.database().serverDate(); },
-    getWXContext: function () {
-      return {
-        OPENID: ui.openId || ui.OPENID || '',
-        APPID: ui.appId || ui.APPID || '',
-      };
-    },
-    getOpenData: function () {
-      // wx-server-sdk 的 getOpenData 已移除. shareGroup 的 encryptedData 解密
-      // 走 @cloudbase/node-sdk 的 openapi 需要另外接 (follow-up); 现在先报错.
-      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
-    },
-  };
+  return _app;
 }
 
-exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride || makeCloud(event);
+async function _impl(event, cloud) {
   var encryptedData = event && event.encryptedData;
   var iv = event && event.iv;
   if (!encryptedData || !iv) return { ok: false, err: 'invalid-input' };
@@ -85,4 +63,28 @@ exports.main = async function (event, context, _cloudOverride) {
   });
 
   return { ok: true, granted: { type: 'medium', source: 'share' } };
+}
+
+function makeCloud(event) {
+  var ui = (event && event.userInfo) || {};
+  var app = _getApp();
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+    getOpenData: function () {
+      // wx-server-sdk's getOpenData removed; real-device decrypt path is a follow-up.
+      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
+    },
+  };
+}
+
+exports.main = async function (event, context) {
+  return _impl(event, makeCloud(event));
 };
+exports._impl = _impl;

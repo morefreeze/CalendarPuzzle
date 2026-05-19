@@ -28,7 +28,7 @@ test('helpInvite: helper gets weak; inviter gets 1 medium/help on N=1', async fu
   mock.setMockContext({ OPENID: 'helper1' });
   await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
   var t = tokenFor('inviter1');
-  var r = await helpInvite.main({ inviter: 'inviter1', t: t }, {}, mock);
+  var r = await helpInvite._impl({ inviter: 'inviter1', t: t }, mock);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.inviterNickname, 'Inv');
   assert.deepStrictEqual(r.granted, { type: 'weak', source: 'helperGift' });
@@ -49,7 +49,7 @@ test('helpInvite: N=3 inviter has 3 medium/help (one per helper)', async functio
   await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
   for (var i = 1; i <= 3; i++) {
     mock.setMockContext({ OPENID: 'helper' + i });
-    await helpInvite.main({ inviter: 'inviter1', t: tokenFor('inviter1') }, {}, mock);
+    await helpInvite._impl({ inviter: 'inviter1', t: tokenFor('inviter1') }, mock);
   }
   var inviterGrants = await mock.database().collection('hintGrants').where({ openid: 'inviter1' }).get();
   assert.strictEqual(inviterGrants.data.length, 3);
@@ -63,7 +63,7 @@ test('helpInvite: N=3 inviter has 3 medium/help (one per helper)', async functio
 test('helpInvite: self-help rejected', async function () {
   setup();
   mock.setMockContext({ OPENID: 'alice' });
-  var r = await helpInvite.main({ inviter: 'alice', t: tokenFor('alice') }, {}, mock);
+  var r = await helpInvite._impl({ inviter: 'alice', t: tokenFor('alice') }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'self-help');
 });
@@ -71,7 +71,7 @@ test('helpInvite: self-help rejected', async function () {
 test('helpInvite: bad token rejected', async function () {
   setup();
   mock.setMockContext({ OPENID: 'helper1' });
-  var r = await helpInvite.main({ inviter: 'inviter1', t: 'badtoken' }, {}, mock);
+  var r = await helpInvite._impl({ inviter: 'inviter1', t: 'badtoken' }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'bad-token');
 });
@@ -81,8 +81,8 @@ test('helpInvite: duplicate same helper same day rejected', async function () {
   await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
   mock.setMockContext({ OPENID: 'helper1' });
   var t = tokenFor('inviter1');
-  await helpInvite.main({ inviter: 'inviter1', t: t }, {}, mock);
-  var r = await helpInvite.main({ inviter: 'inviter1', t: t }, {}, mock);
+  await helpInvite._impl({ inviter: 'inviter1', t: t }, mock);
+  var r = await helpInvite._impl({ inviter: 'inviter1', t: t }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'duplicate');
 });
@@ -90,7 +90,7 @@ test('helpInvite: duplicate same helper same day rejected', async function () {
 test('helpInvite: inviter without users row gets fallback nickname "Ta"', async function () {
   setup();
   mock.setMockContext({ OPENID: 'helper1' });
-  var r = await helpInvite.main({ inviter: 'nobody', t: tokenFor('nobody') }, {}, mock);
+  var r = await helpInvite._impl({ inviter: 'nobody', t: tokenFor('nobody') }, mock);
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.inviterNickname, 'Ta');
 });
@@ -100,7 +100,7 @@ test('helpInvite: missing HELP_TOKEN_SECRET returns server-misconfigured', async
   mock.setUniqueIndex('helpLog', ['inviter', 'helper', 'dateStr']);
   delete process.env.HELP_TOKEN_SECRET;
   mock.setMockContext({ OPENID: 'helper1' });
-  var r = await helpInvite.main({ inviter: 'inviter1', t: 'anytoken' }, {}, mock);
+  var r = await helpInvite._impl({ inviter: 'inviter1', t: 'anytoken' }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'server-misconfigured');
 });

@@ -4,43 +4,19 @@
 // mini-game scale per Plan 2a §race-condition self-review note.
 // Enforces per-puzzle cap before claiming. Returns the consumed grant's _id.
 
+var _app;
+function _getApp() {
+  if (!_app) {
+    var tcb = require('@cloudbase/node-sdk');
+    _app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+  }
+  return _app;
+}
+
 var CAPS = { weak: 3, medium: 3, strong: 1 };
 var VALID_TYPES = { weak: 1, medium: 1, strong: 1 };
 
-function makeCloud(event) {
-  // 用 @cloudbase/node-sdk 替代 wx-server-sdk (新 runtime 下 wx-server-sdk 的
-  // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
-  // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
-  var tcb = require('@cloudbase/node-sdk');
-  var app;
-  try {
-    app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  } catch (e) {
-    try { app = tcb.init(); } catch (e2) {}
-  }
-  if (!app || typeof app.database !== 'function') {
-    throw new Error('@cloudbase/node-sdk init failed: ' + (app ? Object.keys(app).join(',') : 'null app'));
-  }
-  var ui = (event && event.userInfo) || {};
-  return {
-    database: function () { return app.database(); },
-    serverDate: function () { return app.database().serverDate(); },
-    getWXContext: function () {
-      return {
-        OPENID: ui.openId || ui.OPENID || '',
-        APPID: ui.appId || ui.APPID || '',
-      };
-    },
-    getOpenData: function () {
-      // wx-server-sdk 的 getOpenData 已移除. shareGroup 的 encryptedData 解密
-      // 走 @cloudbase/node-sdk 的 openapi 需要另外接 (follow-up); 现在先报错.
-      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
-    },
-  };
-}
-
-exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride || makeCloud(event);
+async function _impl(event, cloud) {
   var type = event && event.type;
   var puzzleId = event && event.puzzleId;
   if (!type || !VALID_TYPES[type]) return { ok: false, reason: 'invalid-type' };
@@ -68,4 +44,24 @@ exports.main = async function (event, context, _cloudOverride) {
     data: { usedAt: db.serverDate(), usedInPuzzle: puzzleId },
   });
   return { ok: true, grantId: grantId };
+}
+
+function makeCloud(event) {
+  var ui = (event && event.userInfo) || {};
+  var app = _getApp();
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+  };
+}
+
+exports.main = async function (event, context) {
+  return _impl(event, makeCloud(event));
 };
+exports._impl = _impl;

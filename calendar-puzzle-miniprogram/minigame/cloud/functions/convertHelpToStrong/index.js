@@ -7,40 +7,22 @@
 // strong row, a crash could leave the player short. Acceptable per the same
 // best-effort pattern as helpInvite + shareGroup.
 
-function makeCloud(event) {
-  // 用 @cloudbase/node-sdk 替代 wx-server-sdk (新 runtime 下 wx-server-sdk 的
-  // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
-  // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
-  var tcb = require('@cloudbase/node-sdk');
-  var app;
-  try {
-    app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  } catch (e) {
-    try { app = tcb.init(); } catch (e2) {}
+var _app;
+function _getApp() {
+  if (!_app) {
+    var tcb = require('@cloudbase/node-sdk');
+    _app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
   }
-  if (!app || typeof app.database !== 'function') {
-    throw new Error('@cloudbase/node-sdk init failed: ' + (app ? Object.keys(app).join(',') : 'null app'));
-  }
-  var ui = (event && event.userInfo) || {};
-  return {
-    database: function () { return app.database(); },
-    serverDate: function () { return app.database().serverDate(); },
-    getWXContext: function () {
-      return {
-        OPENID: ui.openId || ui.OPENID || '',
-        APPID: ui.appId || ui.APPID || '',
-      };
-    },
-    getOpenData: function () {
-      // wx-server-sdk 的 getOpenData 已移除. shareGroup 的 encryptedData 解密
-      // 走 @cloudbase/node-sdk 的 openapi 需要另外接 (follow-up); 现在先报错.
-      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
-    },
-  };
+  return _app;
 }
 
-exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride || makeCloud(event);
+function _extractGrantId(addRes) {
+  if (!addRes) return '';
+  return addRes._id || addRes.id ||
+    (addRes.result && (addRes.result._id || addRes.result.id)) || '';
+}
+
+async function _impl(event, cloud) {
   var db = cloud.database();
   var openid = cloud.getWXContext().OPENID;
 
@@ -70,5 +52,30 @@ exports.main = async function (event, context, _cloudOverride) {
     },
   });
 
-  return { ok: true, grantId: inserted._id, granted: { type: 'strong', source: 'help' } };
+  return {
+    ok: true,
+    grantId: _extractGrantId(inserted),
+    granted: { type: 'strong', source: 'help' },
+  };
+}
+
+function makeCloud(event) {
+  var ui = (event && event.userInfo) || {};
+  var app = _getApp();
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+  };
+}
+
+exports.main = async function (event, context) {
+  return _impl(event, makeCloud(event));
 };
+exports._impl = _impl;
+exports._extractGrantId = _extractGrantId;

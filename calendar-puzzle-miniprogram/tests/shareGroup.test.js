@@ -18,7 +18,7 @@ function setup() {
 test('shareGroup: success — decrypts, logs, grants medium share voucher', async function () {
   setup();
   mock.setMockOpenData('enc1', 'iv1', { openGId: 'group_A' });
-  var r = await shareGroup.main({ encryptedData: 'enc1', iv: 'iv1' }, {}, mock);
+  var r = await shareGroup._impl({ encryptedData: 'enc1', iv: 'iv1' }, mock);
   assert.strictEqual(r.ok, true);
   assert.deepStrictEqual(r.granted, { type: 'medium', source: 'share' });
 
@@ -34,8 +34,8 @@ test('shareGroup: success — decrypts, logs, grants medium share voucher', asyn
 test('shareGroup: duplicate — same openid/group/day rejected', async function () {
   setup();
   mock.setMockOpenData('enc1', 'iv1', { openGId: 'group_A' });
-  await shareGroup.main({ encryptedData: 'enc1', iv: 'iv1' }, {}, mock);
-  var r = await shareGroup.main({ encryptedData: 'enc1', iv: 'iv1' }, {}, mock);
+  await shareGroup._impl({ encryptedData: 'enc1', iv: 'iv1' }, mock);
+  var r = await shareGroup._impl({ encryptedData: 'enc1', iv: 'iv1' }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'duplicate');
 
@@ -47,8 +47,8 @@ test('shareGroup: different groups same day both succeed', async function () {
   setup();
   mock.setMockOpenData('enc1', 'iv1', { openGId: 'group_A' });
   mock.setMockOpenData('enc2', 'iv2', { openGId: 'group_B' });
-  await shareGroup.main({ encryptedData: 'enc1', iv: 'iv1' }, {}, mock);
-  var r = await shareGroup.main({ encryptedData: 'enc2', iv: 'iv2' }, {}, mock);
+  await shareGroup._impl({ encryptedData: 'enc1', iv: 'iv1' }, mock);
+  var r = await shareGroup._impl({ encryptedData: 'enc2', iv: 'iv2' }, mock);
   assert.strictEqual(r.ok, true);
 
   var grants = await mock.database().collection('hintGrants').where({ openid: 'alice', source: 'share' }).get();
@@ -57,14 +57,14 @@ test('shareGroup: different groups same day both succeed', async function () {
 
 test('shareGroup: decrypt failure returns decrypt-failed', async function () {
   setup();
-  var r = await shareGroup.main({ encryptedData: 'unknown', iv: 'iv' }, {}, mock);
+  var r = await shareGroup._impl({ encryptedData: 'unknown', iv: 'iv' }, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'decrypt-failed');
 });
 
 test('shareGroup: missing input returns invalid-input', async function () {
   setup();
-  var r = await shareGroup.main({}, {}, mock);
+  var r = await shareGroup._impl({}, mock);
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.err, 'invalid-input');
 });

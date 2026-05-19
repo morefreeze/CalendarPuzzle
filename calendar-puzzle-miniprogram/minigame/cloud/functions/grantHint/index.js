@@ -1,57 +1,35 @@
-// Inserts a hintGrants row. Diagnostic version: SDK inline (no wrapper)
-// + console.log to trace where init goes wrong on cloudbase runtime.
+// Inserts a hintGrants row. The voucher is unused (usedAt=null) until useHint consumes it.
+// Source-specific gating (e.g. "only grant 'share' after server-verified group share")
+// happens UPSTREAM in the calling cloud function (shareGroup, helpInvite, etc.).
+// This function trusts its caller — only validates type/source enum.
+
+var _app;
+function _getApp() {
+  if (!_app) {
+    var tcb = require('@cloudbase/node-sdk');
+    _app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+  }
+  return _app;
+}
 
 var VALID_TYPES = { weak: 1, medium: 1, strong: 1 };
 var VALID_SOURCES = { free: 1, stamina: 1, share: 1, help: 1, ad: 1, helperGift: 1 };
 
-exports.main = async function (event, context, _cloudOverride) {
-  // Test path (cloud-mock injected as 3rd arg)
-  if (_cloudOverride) {
-    var c = _cloudOverride;
-    var t = event && event.type;
-    var s = event && event.source;
-    if (!t || !VALID_TYPES[t]) return { ok: false, reason: 'invalid-type' };
-    if (!s || !VALID_SOURCES[s]) return { ok: false, reason: 'invalid-source' };
-    var ins = await c.database().collection('hintGrants').add({
-      data: {
-        openid: c.getWXContext().OPENID,
-        type: t, source: s,
-        grantedAt: c.database().serverDate(),
-        usedAt: null, usedInPuzzle: null,
-      },
-    });
-    return { ok: true, grantId: ins._id };
-  }
+function _extractGrantId(addRes) {
+  if (!addRes) return '';
+  return addRes._id || addRes.id ||
+    (addRes.result && (addRes.result._id || addRes.result.id)) || '';
+}
 
-  // Production path: pure @cloudbase/node-sdk, inline (no wrapper)
-  console.log('[grantHint] before require');
-  var tcb = require('@cloudbase/node-sdk');
-  console.log('[grantHint] tcb type:', typeof tcb, 'keys:', tcb && Object.keys(tcb).slice(0, 20).join(','));
-  var app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  console.log('[grantHint] app type:', typeof app, 'keys:', app && Object.keys(app).slice(0, 20).join(','));
-  console.log('[grantHint] app.database type:', typeof (app && app.database));
-
-  if (!app || typeof app.database !== 'function') {
-    return {
-      ok: false,
-      reason: 'sdk-init-failed',
-      diag: app ? Object.keys(app).join(',') : 'null app',
-      tcbKeys: tcb ? Object.keys(tcb).join(',') : 'null tcb',
-    };
-  }
-
-  var db = app.database();
-  console.log('[grantHint] db type:', typeof db, 'has collection:', typeof db.collection);
-
+async function _impl(event, cloud) {
   var type = event && event.type;
   var source = event && event.source;
   if (!type || !VALID_TYPES[type]) return { ok: false, reason: 'invalid-type' };
   if (!source || !VALID_SOURCES[source]) return { ok: false, reason: 'invalid-source' };
 
-  var ui = (event && event.userInfo) || {};
-  var openid = ui.openId || ui.OPENID || '';
-
-  var insert = await db.collection('hintGrants').add({
+  var db = cloud.database();
+  var openid = cloud.getWXContext().OPENID;
+  var ret = await db.collection('hintGrants').add({
     data: {
       openid: openid,
       type: type,
@@ -61,5 +39,26 @@ exports.main = async function (event, context, _cloudOverride) {
       usedInPuzzle: null,
     },
   });
-  return { ok: true, grantId: insert._id };
+  return { ok: true, grantId: _extractGrantId(ret) };
+}
+
+function makeCloud(event) {
+  var ui = (event && event.userInfo) || {};
+  var app = _getApp();
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+  };
+}
+
+exports.main = async function (event, context) {
+  return _impl(event, makeCloud(event));
 };
+exports._impl = _impl;
+exports._extractGrantId = _extractGrantId;

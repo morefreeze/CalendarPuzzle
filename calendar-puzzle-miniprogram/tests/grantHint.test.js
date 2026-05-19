@@ -6,7 +6,7 @@ var grantHint = require('../minigame/cloud/functions/grantHint/index');
 test('grantHint inserts a row with correct fields', async function () {
   mock.reset();
   mock.setMockContext({ OPENID: 'user1' });
-  var res = await grantHint.main({ type: 'weak', source: 'ad' }, {}, mock);
+  var res = await grantHint._impl({ type: 'weak', source: 'ad' }, mock);
   assert.strictEqual(res.ok, true);
   assert.ok(res.grantId);
 
@@ -22,20 +22,20 @@ test('grantHint inserts a row with correct fields', async function () {
 
 test('grantHint rejects invalid type', async function () {
   mock.reset();
-  var res = await grantHint.main({ type: 'huge', source: 'ad' }, {}, mock);
+  var res = await grantHint._impl({ type: 'huge', source: 'ad' }, mock);
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, 'invalid-type');
 });
 
 test('grantHint rejects invalid source', async function () {
   mock.reset();
-  var res = await grantHint.main({ type: 'weak', source: 'haxor' }, {}, mock);
+  var res = await grantHint._impl({ type: 'weak', source: 'haxor' }, mock);
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.reason, 'invalid-source');
 });
 
 test('grantHint requires both type and source', async function () {
   mock.reset();
-  var res = await grantHint.main({ type: 'weak' }, {}, mock);
+  var res = await grantHint._impl({ type: 'weak' }, mock);
   assert.strictEqual(res.ok, false);
 });
