@@ -9,6 +9,7 @@ var shareState = require('./shareState');
 var progress = require('./progress');
 var Hint = require('./hint');
 var Voucher = require('./voucher');
+var cloudClient = require('./cloudClient');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -55,9 +56,73 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var isWon = false;
   var hintMode = false;
   var hintTier = null;
+  // 二级 "获取路径" submenu — opens when both stamina and social voucher fall short.
+  var sourceMenuOpen = false;
+  var sourceMenuTier = null;
+  // When non-null, the block-selection branch consumes a voucher instead of stamina.
+  // Value is the source label used for pendingUse telemetry ('share'|'help'|'helperGift').
+  var usingVoucherSource = null;
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
+  function currentPuzzleId() {
+    return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
+  }
+
+  function triggerShareGroup() {
+    if (!cloudClient.getOpenid()) { showToast('需要网络'); return; }
+    var share = shareState.buildShareData();
+    wx.shareAppMessage({
+      withShareTicket: true,
+      title: share.title,
+      query: share.query,
+      success: function (res) {
+        if (!res || !res.shareTickets || !res.shareTickets[0]) {
+          showToast('请分享到群聊');
+          return;
+        }
+        wx.getShareInfo({
+          shareTicket: res.shareTickets[0],
+          success: function (info) {
+            cloudClient.shareGroup(info.encryptedData, info.iv).then(function (r) {
+              if (r && r.ok) {
+                voucher.applyGranted('medium', 'share');
+                showToast('+1 张中提示');
+                voucher.reconcile(cloudClient, currentPuzzleId());
+                sourceMenuOpen = false; sourceMenuTier = null;
+                scene.dirty = true;
+              } else if (r && r.err === 'duplicate') {
+                showToast('今天这个群已经分享过');
+              } else {
+                showToast('换券失败：' + ((r && r.err) || '未知'));
+              }
+            }, function () { showToast('网络异常'); });
+          },
+          fail: function () { showToast('分享信息获取失败'); },
+        });
+      },
+      fail: function () { /* user cancelled */ },
+    });
+  }
+
+  function triggerHelpInvite() {
+    var openid = cloudClient.getOpenid();
+    var token = cloudClient.getHelpToken();
+    if (!openid || !token) { showToast('需要网络'); return; }
+    shareState.setInviterContext({ inviter: openid, t: token });
+    var share = shareState.buildShareData();
+    wx.shareAppMessage({
+      title: share.title,
+      query: share.query,
+      success: function () { /* user shared */ },
+      fail: function () { /* cancelled */ },
+      complete: function () {
+        shareState.clearInviterContext();
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true;
+      },
+    });
+  }
   var wxStorage = {
     getItem: function (k) { return wx.getStorageSync(k) || null; },
     setItem: function (k, v) { wx.setStorageSync(k, v); },
@@ -582,6 +647,29 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
     }
 
+    // 二级 "获取路径" submenu (medium → 群分享 / strong → 邀请助力)
+    if (sourceMenuOpen) {
+      var smW = 300, smH = 210;
+      L.sourceMenu = { x: (W - smW) / 2, y: (H - smH) / 2, w: smW, h: smH };
+      L.sourceMenuBtns = [];
+      var sbx = L.sourceMenu.x + 20;
+      var sby = L.sourceMenu.y + 70;
+      var sbw = smW - 40;
+      var sbh = 38;
+      if (sourceMenuTier === 'medium') {
+        L.sourceMenuBtns.push({ kind: 'share', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+      } else if (sourceMenuTier === 'strong') {
+        L.sourceMenuBtns.push({ kind: 'help', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+      }
+      L.sourceMenuCancelBtn = { x: L.sourceMenu.x + (smW - 90) / 2, y: L.sourceMenu.y + smH - 46, w: 90, h: 34 };
+    } else {
+      L.sourceMenu = null;
+      L.sourceMenuBtns = [];
+      L.sourceMenuCancelBtn = null;
+    }
+
     // Select panel
     if (selectPanelOpen) {
       var spW = W * 0.92, spH = H * 0.78;
@@ -925,6 +1013,27 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
 
       R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
+    }
+
+    // --- 获取路径 二级 menu ---
+    if (sourceMenuOpen && L.sourceMenu) {
+      R.overlay(ctx, W, H);
+      var sm = L.sourceMenu;
+      R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
+      var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
+      R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
+      R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 48, 12, '#666', 'left');
+      for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
+        var smbtn = L.sourceMenuBtns[sbi];
+        var lbl;
+        if (smbtn.kind === 'share') lbl = '群分享换 1 张中提示';
+        else if (smbtn.kind === 'help') lbl = '邀请好友助力（每 2 位 +1 强提示）';
+        else lbl = '';
+        R.button(ctx, smbtn.x, smbtn.y, smbtn.w, smbtn.h, lbl, BRAND, '#fff', 8);
+      }
+      if (L.sourceMenuCancelBtn) {
+        R.button(ctx, L.sourceMenuCancelBtn.x, L.sourceMenuCancelBtn.y, L.sourceMenuCancelBtn.w, L.sourceMenuCancelBtn.h, '取消', '#eee', '#333', 8);
+      }
     }
 
     // --- Select panel popup ---
@@ -1657,6 +1766,22 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
+      // 获取路径 二级 menu click handling (when stamina & voucher both fall short)
+      if (sourceMenuOpen) {
+        for (var sbk = 0; sbk < (L.sourceMenuBtns || []).length; sbk++) {
+          var sbtn = L.sourceMenuBtns[sbk];
+          if (R.hitTest(x, y, sbtn)) {
+            if (sbtn.kind === 'share') triggerShareGroup();
+            else if (sbtn.kind === 'help') triggerHelpInvite();
+            return;
+          }
+        }
+        if (L.sourceMenuCancelBtn && R.hitTest(x, y, L.sourceMenuCancelBtn)) {
+          sourceMenuOpen = false; sourceMenuTier = null;
+          scene.dirty = true; return;
+        }
+        return; // swallow other clicks while submenu is open
+      }
       // Tier selection
       if (!hintTier && L.hintTierBtns) {
         for (var tb = 0; tb < L.hintTierBtns.length; tb++) {
@@ -1671,11 +1796,30 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               cost = 0;
             }
             var have = stamina.getStamina();
-            if (have < cost) {
+            if (have >= cost) {
+              // stamina path (default)
+              usingVoucherSource = null;
+              hintTier = pickedTier;
+              scene.dirty = true;
+              return;
+            }
+            if (voucher.canUseSocial(pickedTier)) {
+              // voucher path — block selection consumes a voucher instead of stamina
+              usingVoucherSource = pickedTier === 'medium' ? 'share'
+                : pickedTier === 'strong' ? 'help'
+                : 'helperGift';
+              hintTier = pickedTier;
+              scene.dirty = true;
+              return;
+            }
+            // Neither stamina nor voucher → 获取路径 二级 menu
+            // weak tier has no social path yet — fall back to old toast
+            if (pickedTier === 'weak') {
               showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
               return;
             }
-            hintTier = pickedTier;
+            sourceMenuTier = pickedTier;
+            sourceMenuOpen = true;
             scene.dirty = true;
             return;
           }
@@ -1697,14 +1841,22 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {
               showToast('该方块已强提示'); return;
             }
-            // Now charge stamina and apply
-            var blockCost = Hint.COSTS[hintTier];
-            if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
-              blockCost = 0;
-            }
-            if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
-              showToast('体力扣减失败');
-              return;
+            // Charge — either stamina (default) or a social voucher (when usingVoucherSource set)
+            if (usingVoucherSource) {
+              var pidUse = currentPuzzleId();
+              voucher.applyUsed(hintTier, usingVoucherSource, pidUse);
+              cloudClient.useHint(hintTier, pidUse).then(function (r) {
+                if (!r || !r.ok) voucher.reconcile(cloudClient, pidUse);
+              }, function () { /* network: pendingUse retains entry */ });
+            } else {
+              var blockCost = Hint.COSTS[hintTier];
+              if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+                blockCost = 0;
+              }
+              if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
+                showToast('体力扣减失败');
+                return;
+              }
             }
             var res;
             if (hintTier === 'weak') {
@@ -1727,6 +1879,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             }
             hintMode = false;
             hintTier = null;
+            usingVoucherSource = null;
             scene.dirty = true;
             return;
           }
@@ -1735,13 +1888,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) {
         if (hintTier) {
           hintTier = null;
+          usingVoucherSource = null;
         } else {
           hintMode = false;
         }
         scene.dirty = true; return;
       }
       if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) {
-        hintMode = false; hintTier = null; scene.dirty = true; return;
+        hintMode = false; hintTier = null; usingVoucherSource = null;
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true; return;
       }
       return;
     }
