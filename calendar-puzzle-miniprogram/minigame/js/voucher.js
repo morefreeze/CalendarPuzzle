@@ -10,6 +10,7 @@ function emptyState() {
     fetchedAt: 0,
     balance: { weak: 0, medium: 0, strong: 0 },
     pendingUse: [],
+    // pendingGrant reserved for offline grant retry (plan 2b ads path) — not used yet.
     pendingGrant: [],
   };
 }
@@ -21,6 +22,14 @@ function _read(storage) {
     var parsed = JSON.parse(raw);
     var base = emptyState();
     for (var k in parsed) base[k] = parsed[k];
+    // Deep-defend balance: parsed may be from an older schema missing keys.
+    if (parsed.balance) {
+      base.balance = {
+        weak: parsed.balance.weak || 0,
+        medium: parsed.balance.medium || 0,
+        strong: parsed.balance.strong || 0,
+      };
+    }
     return base;
   } catch (e) {
     return emptyState();

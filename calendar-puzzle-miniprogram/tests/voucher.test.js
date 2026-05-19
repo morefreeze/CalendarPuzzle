@@ -124,3 +124,19 @@ test('voucher: reconcile network failure leaves balance untouched', async functi
   await v.reconcile(fakeClient, 'p1');
   assert.strictEqual(v.getBalance().weak, 1);
 });
+
+test('voucher: malformed JSON in storage falls back to empty state', function () {
+  var s = fakeStorage();
+  s.setItem(V.STORAGE_KEY, '{not json');
+  var v = V.create({ storage: s });
+  assert.deepStrictEqual(v.getBalance(), { weak: 0, medium: 0, strong: 0 });
+  assert.strictEqual(v.getPendingUse().length, 0);
+});
+
+test('voucher: partial balance schema in storage backfills missing keys', function () {
+  var s = fakeStorage();
+  s.setItem(V.STORAGE_KEY, JSON.stringify({ balance: { weak: 2 } }));
+  var v = V.create({ storage: s });
+  assert.deepStrictEqual(v.getBalance(), { weak: 2, medium: 0, strong: 0 });
+  assert.strictEqual(v.displayBalance('medium'), 0);
+});
