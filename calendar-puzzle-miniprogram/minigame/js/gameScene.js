@@ -968,7 +968,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           strong: '强：直接放置（自动腾位）',
         };
         var costLabels = {
-          weak:   Hint.COSTS.weak + ' 体力 / 关',
+          weak:   Hint.COSTS.weak + ' 体力',
           medium: Hint.COSTS.medium + ' 体力',
           strong: Hint.COSTS.strong + ' 体力',
         };
