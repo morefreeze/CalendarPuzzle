@@ -9,6 +9,11 @@ function emptyState() {
     openid: null,
     fetchedAt: 0,
     balance: { weak: 0, medium: 0, strong: 0 },
+    // Subset of unused medium vouchers that came from 助力 — convertible to
+    // strong via convertHelpToStrong. Always ≤ balance.medium.
+    helpMediumBalance: 0,
+    // Last-7-day helpLog entries where I am inviter. Used to show "好友已助力 N 位".
+    recentHelps: [],
     pendingUse: [],
     // pendingGrant reserved for offline grant retry (plan 2b ads path) — not used yet.
     pendingGrant: [],
@@ -86,6 +91,38 @@ function create(opts) {
     _write(storage, state);
   }
 
+  function setHelpMediumBalance(n) {
+    state.helpMediumBalance = n || 0;
+    _write(storage, state);
+  }
+
+  function getHelpMediumBalance() {
+    return state.helpMediumBalance || 0;
+  }
+
+  function setRecentHelps(arr) {
+    state.recentHelps = Array.isArray(arr) ? arr.slice() : [];
+    _write(storage, state);
+  }
+
+  function getRecentHelps() {
+    return (state.recentHelps || []).slice();
+  }
+
+  // Count of helps where I am inviter, today (local calendar date).
+  function getHelpsTodayCount() {
+    var d = new Date();
+    var y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+    var startOfDay = new Date(y, m, day).getTime();
+    var endOfDay = startOfDay + 24 * 60 * 60 * 1000;
+    var n = 0;
+    var arr = state.recentHelps || [];
+    for (var i = 0; i < arr.length; i++) {
+      if (typeof arr[i].ts === 'number' && arr[i].ts >= startOfDay && arr[i].ts < endOfDay) n++;
+    }
+    return n;
+  }
+
   function _removeFromQueue(item) {
     for (var i = 0; i < state.pendingUse.length; i++) {
       var p = state.pendingUse[i];
@@ -124,9 +161,10 @@ function create(opts) {
   function reconcile(client, puzzleId) {
     if (!client || !client.listGrants) return Promise.resolve();
     return client.listGrants(puzzleId).then(function (r) {
-      if (r && r.ok && r.balance) {
-        setBalance(r.balance);
-      }
+      if (!r || !r.ok) return;
+      if (r.balance) setBalance(r.balance);
+      if (typeof r.helpMediumBalance === 'number') setHelpMediumBalance(r.helpMediumBalance);
+      if (Array.isArray(r.recentHelps)) setRecentHelps(r.recentHelps);
     }, function () { /* ignore */ });
   }
 
@@ -141,6 +179,11 @@ function create(opts) {
     applyGranted: applyGranted,
     applyUsed: applyUsed,
     setBalance: setBalance,
+    setHelpMediumBalance: setHelpMediumBalance,
+    getHelpMediumBalance: getHelpMediumBalance,
+    setRecentHelps: setRecentHelps,
+    getRecentHelps: getRecentHelps,
+    getHelpsTodayCount: getHelpsTodayCount,
     flushPendingUse: flushPendingUse,
     reconcile: reconcile,
     getOpenid: getOpenid,

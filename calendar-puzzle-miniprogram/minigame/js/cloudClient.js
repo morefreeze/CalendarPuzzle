@@ -67,6 +67,10 @@ function helpInvite(inviter, t) {
   return _call('helpInvite', { inviter: inviter, t: t });
 }
 
+function convertHelpToStrong() {
+  return _call('convertHelpToStrong', {});
+}
+
 module.exports = {
   init: init,
   login: login,
@@ -77,5 +81,6 @@ module.exports = {
   listGrants: listGrants,
   shareGroup: shareGroup,
   helpInvite: helpInvite,
+  convertHelpToStrong: convertHelpToStrong,
   CLOUD_ENV: CLOUD_ENV,
 };

@@ -140,3 +140,45 @@ test('voucher: partial balance schema in storage backfills missing keys', functi
   assert.deepStrictEqual(v.getBalance(), { weak: 2, medium: 0, strong: 0 });
   assert.strictEqual(v.displayBalance('medium'), 0);
 });
+
+test('voucher: helpMediumBalance default 0, set/get round-trips', function () {
+  var v = V.create({ storage: fakeStorage() });
+  assert.strictEqual(v.getHelpMediumBalance(), 0);
+  v.setHelpMediumBalance(3);
+  assert.strictEqual(v.getHelpMediumBalance(), 3);
+});
+
+test('voucher: reconcile pulls helpMediumBalance + recentHelps from listGrants', async function () {
+  var v = V.create({ storage: fakeStorage() });
+  var now = Date.now();
+  var fakeClient = {
+    listGrants: function () {
+      return Promise.resolve({
+        ok: true,
+        balance: { weak: 0, medium: 3, strong: 1 },
+        helpMediumBalance: 2,
+        recentHelps: [
+          { helper: 'h1', helperNickname: 'A', ts: now - 1000 },
+          { helper: 'h2', helperNickname: 'B', ts: now - 2000 },
+        ],
+      });
+    },
+  };
+  await v.reconcile(fakeClient, 'p1');
+  assert.deepStrictEqual(v.getBalance(), { weak: 0, medium: 3, strong: 1 });
+  assert.strictEqual(v.getHelpMediumBalance(), 2);
+  assert.strictEqual(v.getRecentHelps().length, 2);
+  assert.strictEqual(v.getHelpsTodayCount(), 2);
+});
+
+test('voucher: getHelpsTodayCount filters by local-day boundaries', function () {
+  var v = V.create({ storage: fakeStorage() });
+  var d = new Date();
+  var startOfToday = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  v.setRecentHelps([
+    { helper: 'h1', helperNickname: 'A', ts: startOfToday + 60000 },        // today
+    { helper: 'h2', helperNickname: 'B', ts: startOfToday + 120000 },        // today
+    { helper: 'h3', helperNickname: 'C', ts: startOfToday - 86400000 },      // yesterday
+  ]);
+  assert.strictEqual(v.getHelpsTodayCount(), 2);
+});
