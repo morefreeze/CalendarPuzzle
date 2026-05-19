@@ -13,7 +13,7 @@ var _app;
 function _getApp() {
   if (!_app) {
     var tcb = require('@cloudbase/node-sdk');
-    _app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+    _app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
   }
   return _app;
 }
