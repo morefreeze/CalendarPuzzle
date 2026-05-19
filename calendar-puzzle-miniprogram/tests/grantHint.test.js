@@ -1,7 +1,7 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var mock = require('./cloud-mock');
-var grantHint = require('../cloud/functions/grantHint/index');
+var grantHint = require('../minigame/cloud/functions/grantHint/index');
 
 test('grantHint inserts a row with correct fields', async function () {
   mock.reset();

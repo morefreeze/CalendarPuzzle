@@ -1,7 +1,7 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var mock = require('./cloud-mock');
-var login = require('../cloud/functions/login/index');
+var login = require('../minigame/cloud/functions/login/index');
 
 test('login creates a user row on first call for new openid', async function () {
   mock.reset();

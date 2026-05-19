@@ -1,8 +1,8 @@
 var test = require('node:test');
 var assert = require('node:assert');
 var mock = require('./cloud-mock');
-var grantHint = require('../cloud/functions/grantHint/index');
-var useHint = require('../cloud/functions/useHint/index');
+var grantHint = require('../minigame/cloud/functions/grantHint/index');
+var useHint = require('../minigame/cloud/functions/useHint/index');
 
 async function seedGrants(n, type, source) {
   for (var i = 0; i < n; i++) {
