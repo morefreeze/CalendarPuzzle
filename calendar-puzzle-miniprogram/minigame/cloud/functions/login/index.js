@@ -14,24 +14,30 @@ function todayStr() {
     String(d.getDate()).padStart(2, '0');
 }
 
-function makeHybridCloud() {
-  // Production: wx-server-sdk for getWXContext/getOpenData (WeChat-specific),
-  // @cloudbase/node-sdk for database (wx-server-sdk's cloud.database() is
-  // broken in newer cloud runtimes — see plan 2c+2d ops notes).
-  var wxSdk = require('wx-server-sdk');
+function makeCloud(event) {
+  // 用 @cloudbase/node-sdk 替代 wx-server-sdk (新 runtime 下 wx-server-sdk 的
+  // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
+  // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
   var tcb = require('@cloudbase/node-sdk');
-  wxSdk.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
   var app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  var ui = (event && event.userInfo) || {};
   return {
     database: function () { return app.database(); },
     serverDate: function () { return app.database().serverDate(); },
-    getWXContext: function () { return wxSdk.getWXContext(); },
-    getOpenData: function (opts) { return wxSdk.getOpenData(opts); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+    getOpenData: function () {
+      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
+    },
   };
 }
 
 exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride || makeHybridCloud();
+  var cloud = _cloudOverride || makeCloud(event);
   var db = cloud.database();
   var openid = cloud.getWXContext().OPENID;
   var nickname = event && event.nickname;

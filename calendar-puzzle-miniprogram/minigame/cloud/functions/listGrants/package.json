@@ -4,7 +4,6 @@
   "description": "Read voucher balance + per-puzzle used count",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest",
     "@cloudbase/node-sdk": "latest"
   }
 }

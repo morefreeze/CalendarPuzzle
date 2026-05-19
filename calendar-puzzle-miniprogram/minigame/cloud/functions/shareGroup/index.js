@@ -3,21 +3,32 @@
 // are two non-atomic writes; if the second fails, the dedup will still hold (slight
 // player loss of one voucher; cloud function logs surface this).
 
-function makeHybridCloud() {
-  var wxSdk = require('wx-server-sdk');
+function makeCloud(event) {
+  // 用 @cloudbase/node-sdk 替代 wx-server-sdk (新 runtime 下 wx-server-sdk 的
+  // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
+  // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
   var tcb = require('@cloudbase/node-sdk');
-  wxSdk.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
   var app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  var ui = (event && event.userInfo) || {};
   return {
     database: function () { return app.database(); },
     serverDate: function () { return app.database().serverDate(); },
-    getWXContext: function () { return wxSdk.getWXContext(); },
-    getOpenData: function (opts) { return wxSdk.getOpenData(opts); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+    getOpenData: function () {
+      // wx-server-sdk 的 getOpenData 已移除. shareGroup 的 encryptedData 解密
+      // 走 @cloudbase/node-sdk 的 openapi 需要另外接 (follow-up); 现在先报错.
+      return Promise.reject(new Error('getOpenData not available post wx-server-sdk removal'));
+    },
   };
 }
 
 exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride || makeHybridCloud();
+  var cloud = _cloudOverride || makeCloud(event);
   var encryptedData = event && event.encryptedData;
   var iv = event && event.iv;
   if (!encryptedData || !iv) return { ok: false, err: 'invalid-input' };

@@ -4,7 +4,6 @@
   "description": "Decrypt group share + dedup + grant medium share voucher",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest",
     "@cloudbase/node-sdk": "latest"
   }
 }

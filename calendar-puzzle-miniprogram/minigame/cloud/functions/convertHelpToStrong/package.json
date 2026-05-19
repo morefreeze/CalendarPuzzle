@@ -4,7 +4,6 @@
   "description": "Burn 2 unused medium/help vouchers → mint 1 strong/help voucher",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "latest",
     "@cloudbase/node-sdk": "latest"
   }
 }
