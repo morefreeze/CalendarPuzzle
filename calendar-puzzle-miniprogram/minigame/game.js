@@ -1,6 +1,7 @@
 // WeChat Mini Game entry point
 var main = require('./js/main');
 var shareState = require('./js/shareState');
+var cloudClient = require('./js/cloudClient'); // bundled for Plan 2b/c/d
 
 // Create canvas
 var canvas = wx.createCanvas();

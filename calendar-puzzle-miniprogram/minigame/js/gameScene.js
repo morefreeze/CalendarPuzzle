@@ -885,8 +885,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var fill = disabled ? '#eee' : (btn.tier === 'strong' ? '#E53935' : btn.tier === 'medium' ? '#FB8C00' : BRAND);
           R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
           R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
-          var capStr = (cap !== undefined) ? (used + '/' + cap) : (used + ' 已用');
-          R.text(ctx, costLabels[btn.tier] + '  ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
+          var capStr;
+          if (disabled) capStr = '本关已用完 · 下关重置';
+          else if (cap !== undefined) capStr = '本关已用 ' + used;
+          else capStr = '已用 ' + used;
+          R.text(ctx, costLabels[btn.tier] + ' · ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
       } else {
         R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
@@ -1651,7 +1654,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           if (R.hitTest(x, y, L.hintTierBtns[tb])) {
             var pickedTier = L.hintTierBtns[tb].tier;
             if (Hint.countUsed(hintState, pickedTier) >= Hint.CAPS[pickedTier]) {
-              showToast('本关该提示已用完');
+              showToast('本关该提示已用完（下关重置）');
               return;
             }
             var cost = Hint.COSTS[pickedTier];
