@@ -1,7 +1,9 @@
-// Returns per-tier balance (unused voucher count) and per-puzzle used count.
+// Returns per-tier balance + per-puzzle used count + recentHelps (last 7 days)
+// for the calling user.
 // puzzleId is optional; if omitted, used counts are all 0.
 
 var TYPES = ['weak', 'medium', 'strong'];
+var SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 exports.main = async function (event, context, _cloudOverride) {
   var cloud = _cloudOverride;
@@ -33,5 +35,28 @@ exports.main = async function (event, context, _cloudOverride) {
   }
   await Promise.all(promises);
 
-  return { ok: true, balance: balance, used: used };
+  var cutoff = Date.now() - SEVEN_DAYS_MS;
+  var helpRes = await db.collection('helpLog').where({ inviter: openid }).get();
+  var recent = (helpRes.data || []).filter(function (row) {
+    var t = row.createdAt instanceof Date ? row.createdAt.getTime() : Date.parse(row.createdAt);
+    return !isNaN(t) && t >= cutoff;
+  });
+  var nickById = {};
+  if (recent.length > 0) {
+    var helperIds = recent.map(function (r) { return r.helper; });
+    for (var j = 0; j < helperIds.length; j++) {
+      var uRes = await db.collection('users').where({ openid: helperIds[j] }).get();
+      var row = uRes.data && uRes.data[0];
+      nickById[helperIds[j]] = (row && row.nickname) || 'Ta';
+    }
+  }
+  var recentHelps = recent.map(function (r) {
+    return {
+      helper: r.helper,
+      helperNickname: nickById[r.helper] || 'Ta',
+      ts: r.createdAt instanceof Date ? r.createdAt.getTime() : Date.parse(r.createdAt),
+    };
+  });
+
+  return { ok: true, balance: balance, used: used, recentHelps: recentHelps };
 };
