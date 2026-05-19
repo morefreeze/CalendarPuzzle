@@ -4,6 +4,7 @@
   "description": "Verify HMAC + helpLog dedup + double-grant (helper weak, inviter strong on even)",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "^2.6.3"
+    "wx-server-sdk": "latest",
+    "@cloudbase/node-sdk": "latest"
   }
 }

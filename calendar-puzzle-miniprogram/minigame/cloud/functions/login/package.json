@@ -4,6 +4,7 @@
   "description": "openid resolution + user upsert",
   "main": "index.js",
   "dependencies": {
-    "wx-server-sdk": "^2.6.3"
+    "wx-server-sdk": "latest",
+    "@cloudbase/node-sdk": "latest"
   }
 }

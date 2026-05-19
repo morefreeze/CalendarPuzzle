@@ -3,12 +3,21 @@
 // are two non-atomic writes; if the second fails, the dedup will still hold (slight
 // player loss of one voucher; cloud function logs surface this).
 
+function makeHybridCloud() {
+  var wxSdk = require('wx-server-sdk');
+  var tcb = require('@cloudbase/node-sdk');
+  wxSdk.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+  var app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () { return wxSdk.getWXContext(); },
+    getOpenData: function (opts) { return wxSdk.getOpenData(opts); },
+  };
+}
+
 exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride;
-  if (!cloud) {
-    cloud = require('wx-server-sdk');
-    cloud.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  }
+  var cloud = _cloudOverride || makeHybridCloud();
   var encryptedData = event && event.encryptedData;
   var iv = event && event.iv;
   if (!encryptedData || !iv) return { ok: false, err: 'invalid-input' };

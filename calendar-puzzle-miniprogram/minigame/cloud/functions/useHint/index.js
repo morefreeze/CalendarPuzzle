@@ -7,12 +7,21 @@
 var CAPS = { weak: 3, medium: 3, strong: 1 };
 var VALID_TYPES = { weak: 1, medium: 1, strong: 1 };
 
+function makeHybridCloud() {
+  var wxSdk = require('wx-server-sdk');
+  var tcb = require('@cloudbase/node-sdk');
+  wxSdk.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+  var app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () { return wxSdk.getWXContext(); },
+    getOpenData: function (opts) { return wxSdk.getOpenData(opts); },
+  };
+}
+
 exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride;
-  if (!cloud) {
-    cloud = require('wx-server-sdk');
-    cloud.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  }
+  var cloud = _cloudOverride || makeHybridCloud();
   var type = event && event.type;
   var puzzleId = event && event.puzzleId;
   if (!type || !VALID_TYPES[type]) return { ok: false, reason: 'invalid-type' };
