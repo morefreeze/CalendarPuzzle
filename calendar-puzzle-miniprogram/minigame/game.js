@@ -2,6 +2,8 @@
 var main = require('./js/main');
 var shareState = require('./js/shareState');
 var cloudClient = require('./js/cloudClient'); // force-bundle for Plan 2b/c/d + console smoke
+// Debug exposure for console smoke testing — remove or guard before final release
+if (typeof GameGlobal !== 'undefined') GameGlobal.__cc = cloudClient;
 
 // Create canvas
 var canvas = wx.createCanvas();
