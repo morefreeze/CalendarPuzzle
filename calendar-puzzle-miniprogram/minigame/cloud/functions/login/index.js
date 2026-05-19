@@ -5,6 +5,8 @@
 
 var crypto = require('crypto');
 
+// MUST match helpInvite/index.js::todayStr — load-bearing for HMAC parity.
+// Local timezone, YYYY-MM-DD.
 function todayStr() {
   var d = new Date();
   return d.getFullYear() + '-' +

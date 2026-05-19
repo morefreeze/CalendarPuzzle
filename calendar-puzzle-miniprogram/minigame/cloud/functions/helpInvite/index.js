@@ -11,6 +11,8 @@
 
 var crypto = require('crypto');
 
+// MUST match login/index.js::todayStr — load-bearing for HMAC parity.
+// Local timezone, YYYY-MM-DD.
 function todayStr() {
   var d = new Date();
   return d.getFullYear() + '-' +
