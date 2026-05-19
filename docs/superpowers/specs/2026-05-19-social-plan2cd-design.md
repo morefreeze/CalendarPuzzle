@@ -300,6 +300,12 @@ if (q.inviter && q.t) {
 
 ### 6.4 云端 `helpInvite({inviter, t})`
 
+> **Implementation revision (2026-05-19)**: 助力经济从"累计 2 次 → 1 张强"
+> 改为"每位 +1 张中"。强提示通过显式 `convertHelpToStrong` 兑换（2 张
+> 助力中 → 1 张强）。原因：每位助力都立即有奖励，避免"白等"挫败感。
+> 只有 source='help' 的中提示可被兑换，保护 source='share' 等其他来源
+> 的 UX 价值。
+
 ```
 1. helper = CONTEXT.OPENID
 2. inviter === helper → {ok:false, err:'self-help'}
@@ -307,14 +313,26 @@ if (q.inviter && q.t) {
    timingSafeEqual(expectT, t) === false → {ok:false, err:'bad-token'}
 4. 插入 helpLog (inviter, helper, dateStr=today, createdAt)
    ↳ unique index 冲突 → {ok:false, err:'duplicate'}
-5. query helpLog where inviter=X and dateStr=today → 总数 N
-6. db.hintGrants 插入 (openid=helper, type='weak', source='helperGift',...)
-7. if N % 2 === 0:
-     db.hintGrants 插入 (openid=inviter, type='strong', source='help',...)
-8. inviterNickname = db.users.where(openid:inviter).nickname || 'Ta'
-9. return {ok:true, inviterNickname,
+5. db.hintGrants 插入 (openid=helper, type='weak', source='helperGift',...)
+6. db.hintGrants 插入 (openid=inviter, type='medium', source='help',...)
+7. inviterNickname = db.users.where(openid:inviter).nickname || 'Ta'
+8. return {ok:true, inviterNickname,
            granted:{type:'weak', source:'helperGift'}}
 ```
+
+### 6.4b 云端 `convertHelpToStrong({})`（新增）
+
+```
+1. openid = CONTEXT.OPENID
+2. 查找 2 张未用的 (type='medium', source='help', usedAt=null) 行，按时间排序
+3. 不足 2 张 → {ok:false, err:'insufficient-help-credits'}
+4. 把这 2 行 update: usedAt=now, usedInPuzzle='__converted_to_strong'
+5. 插入新 hintGrants (openid, type='strong', source='help', usedAt=null)
+6. return {ok:true, granted:{type:'strong', source:'help'}}
+```
+
+非原子：step 4 后、step 5 前崩溃会让玩家亏 2 张中。可接受（同 shareGroup
+/ helpInvite 的最佳努力模式）。
 
 **token 防重放**：HMAC 包含 dateStr → 隔天链接自动失效。本日内同一 inviter 的 token 重复可用（reuse 即同一 inviter 多次分享给不同 helper），由 helpLog 唯一索引去重。
 
