@@ -35,5 +35,6 @@
   },
   "isGameTourist": false,
   "editorSetting": {},
-  "libVersion": "3.15.0"
+  "libVersion": "3.15.0",
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
 }
