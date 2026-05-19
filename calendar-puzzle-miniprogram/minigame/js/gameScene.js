@@ -8,6 +8,7 @@ var stamina = require('./stamina');
 var shareState = require('./shareState');
 var progress = require('./progress');
 var Hint = require('./hint');
+var Voucher = require('./voucher');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -57,6 +58,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
+  var wxStorage = {
+    getItem: function (k) { return wx.getStorageSync(k) || null; },
+    setItem: function (k, v) { wx.setStorageSync(k, v); },
+    removeItem: function (k) { wx.removeStorageSync(k); },
+  };
+  var voucher = (GameGlobal && GameGlobal.voucher) || Voucher.create({ storage: wxStorage });
   var solvedPlacements = PG.solvedPlacements(puzzle.solvedBoard);
   var uncov = B.getUncoverableCells();
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
@@ -889,7 +896,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           if (disabled) capStr = '本关已用完 · 下关重置';
           else if (cap !== undefined) capStr = '本关已用 ' + used;
           else capStr = '已用 ' + used;
-          R.text(ctx, costLabels[btn.tier] + ' · ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
+          var voucherBal = voucher.displayBalance(btn.tier);
+          var bottomLine = costLabels[btn.tier] + ' · 剩余 ' + voucherBal + ' · ' + capStr;
+          R.text(ctx, bottomLine, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
       } else {
         R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
