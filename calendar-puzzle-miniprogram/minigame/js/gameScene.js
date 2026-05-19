@@ -981,9 +981,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
           R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
           var capStr;
-          if (disabled) capStr = '本关已用完 · 下关重置';
-          else if (cap !== undefined) capStr = '本关已用 ' + used;
+          if (cap !== undefined) capStr = '本关 ' + used + '/' + cap;
           else capStr = '已用 ' + used;
+          if (disabled) capStr += ' · 下关重置';
           var voucherBal = voucher.displayBalance(btn.tier);
           var bottomLine = costLabels[btn.tier] + ' · 剩余 ' + voucherBal + ' · ' + capStr;
           R.text(ctx, bottomLine, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
