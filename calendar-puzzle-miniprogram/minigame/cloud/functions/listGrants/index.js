@@ -7,7 +7,7 @@ exports.main = async function (event, context, _cloudOverride) {
   var cloud = _cloudOverride;
   if (!cloud) {
     cloud = require('wx-server-sdk');
-    cloud.init();
+    cloud.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
   }
   var puzzleId = event && event.puzzleId;
   var db = cloud.database();
