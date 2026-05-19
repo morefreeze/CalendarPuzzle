@@ -123,6 +123,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       },
     });
   }
+
+  function triggerConvertHelpToStrong() {
+    if (!cloudClient.getOpenid()) { showToast('需要网络'); return; }
+    cloudClient.convertHelpToStrong().then(function (r) {
+      if (r && r.ok) {
+        voucher.applyGranted('strong', 'help');
+        // Reconcile to pick up cloud truth (medium balance dropped by 2, helpMediumBalance dropped by 2).
+        voucher.reconcile(cloudClient, currentPuzzleId());
+        showToast('+1 张强提示');
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true;
+      } else if (r && r.err === 'insufficient-help-credits') {
+        showToast('需要 2 张助力中提示');
+      } else {
+        showToast('兑换失败：' + ((r && r.err) || '未知'));
+      }
+    }, function () { showToast('网络异常'); });
+  }
   var wxStorage = {
     getItem: function (k) { return wx.getStorageSync(k) || null; },
     setItem: function (k, v) { wx.setStorageSync(k, v); },
@@ -645,23 +663,41 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         L.hintTierBtns = [];
       }
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
+      // 常驻"邀请好友助力"入口（仅 tier 选择层显示，块选择层隐藏）
+      if (!hintTier) {
+        L.tierFooterInviteBtn = {
+          x: L.hintPopup.x + 20,
+          y: L.hintPopup.y + popH - 88,
+          w: popW - 40,
+          h: 30,
+        };
+      } else {
+        L.tierFooterInviteBtn = null;
+      }
     }
 
-    // 二级 "获取路径" submenu (medium → 群分享 / strong → 邀请助力)
+    // 二级 "获取路径" submenu
     if (sourceMenuOpen) {
-      var smW = 300, smH = 210;
+      var smW = 320, smH = 290;
       L.sourceMenu = { x: (W - smW) / 2, y: (H - smH) / 2, w: smW, h: smH };
       L.sourceMenuBtns = [];
       var sbx = L.sourceMenu.x + 20;
-      var sby = L.sourceMenu.y + 70;
+      var sby = L.sourceMenu.y + 90;
       var sbw = smW - 40;
       var sbh = 38;
+      var helpMed = voucher.getHelpMediumBalance();
       if (sourceMenuTier === 'medium') {
         L.sourceMenuBtns.push({ kind: 'share', x: sbx, y: sby, w: sbw, h: sbh });
         sby += sbh + 10;
-      } else if (sourceMenuTier === 'strong') {
-        L.sourceMenuBtns.push({ kind: 'help', x: sbx, y: sby, w: sbw, h: sbh });
+        L.sourceMenuBtns.push({ kind: 'invite-help', x: sbx, y: sby, w: sbw, h: sbh });
         sby += sbh + 10;
+      } else if (sourceMenuTier === 'strong') {
+        L.sourceMenuBtns.push({ kind: 'invite-help', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+        if (helpMed >= 2) {
+          L.sourceMenuBtns.push({ kind: 'convert', x: sbx, y: sby, w: sbw, h: sbh });
+          sby += sbh + 10;
+        }
       }
       L.sourceMenuCancelBtn = { x: L.sourceMenu.x + (smW - 90) / 2, y: L.sourceMenu.y + smH - 46, w: 90, h: 34 };
     } else {
@@ -1012,6 +1048,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         }
       }
 
+      // 常驻"邀请好友助力"入口（点开二级 menu，可看 stats + convert）
+      if (L.tierFooterInviteBtn) {
+        var footerHelps = voucher.getHelpsTodayCount();
+        var footerHelpMed = voucher.getHelpMediumBalance();
+        var footerLbl = '👥 邀请好友助力（已助力 ' + footerHelps + ' 位';
+        if (footerHelpMed >= 2) footerLbl += ' · 可换 ' + Math.floor(footerHelpMed / 2) + ' 张强';
+        footerLbl += '）';
+        R.roundRect(ctx, L.tierFooterInviteBtn.x, L.tierFooterInviteBtn.y,
+          L.tierFooterInviteBtn.w, L.tierFooterInviteBtn.h, 6, '#E8F5E9', BRAND);
+        R.text(ctx, footerLbl,
+          L.tierFooterInviteBtn.x + L.tierFooterInviteBtn.w / 2,
+          L.tierFooterInviteBtn.y + L.tierFooterInviteBtn.h / 2,
+          12, BRAND_DARK, 'center', 'middle');
+      }
       R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
     }
 
@@ -1022,12 +1072,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
       var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
       R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
-      R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 48, 12, '#666', 'left');
+      // Stat line: 好友已助力 N 位 · 持有助力中 M 张
+      var helpsTodayN = voucher.getHelpsTodayCount();
+      var helpMedN = voucher.getHelpMediumBalance();
+      R.text(ctx, '好友已助力 ' + helpsTodayN + ' 位 · 持有助力中 ' + helpMedN + ' 张',
+        sm.x + sm.w / 2, sm.y + 50, 12, '#666', 'center');
+      R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 72, 12, '#999', 'left');
       for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
         var smbtn = L.sourceMenuBtns[sbi];
         var lbl;
         if (smbtn.kind === 'share') lbl = '群分享换 1 张中提示';
-        else if (smbtn.kind === 'help') lbl = '邀请好友助力（每 2 位 +1 强提示）';
+        else if (smbtn.kind === 'invite-help') lbl = '邀请好友助力（每位 +1 张中提示）';
+        else if (smbtn.kind === 'convert') lbl = '🔄 用 2 张助力中换 1 张强提示';
         else lbl = '';
         R.button(ctx, smbtn.x, smbtn.y, smbtn.w, smbtn.h, lbl, BRAND, '#fff', 8);
       }
@@ -1766,13 +1822,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
-      // 获取路径 二级 menu click handling (when stamina & voucher both fall short)
+      // 获取路径 二级 menu click handling
       if (sourceMenuOpen) {
         for (var sbk = 0; sbk < (L.sourceMenuBtns || []).length; sbk++) {
           var sbtn = L.sourceMenuBtns[sbk];
           if (R.hitTest(x, y, sbtn)) {
             if (sbtn.kind === 'share') triggerShareGroup();
-            else if (sbtn.kind === 'help') triggerHelpInvite();
+            else if (sbtn.kind === 'invite-help') triggerHelpInvite();
+            else if (sbtn.kind === 'convert') triggerConvertHelpToStrong();
             return;
           }
         }
@@ -1823,6 +1880,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             scene.dirty = true;
             return;
           }
+        }
+        // Persistent "邀请好友助力" footer — open source menu in strong tier
+        // so the player sees stats + invite + convert all together.
+        if (L.tierFooterInviteBtn && R.hitTest(x, y, L.tierFooterInviteBtn)) {
+          sourceMenuTier = 'strong';
+          sourceMenuOpen = true;
+          scene.dirty = true;
+          return;
         }
       }
       // Block selection
