@@ -1,26 +1,7 @@
 // WeChat Mini Game entry point
 var main = require('./js/main');
 var shareState = require('./js/shareState');
-var cloudClient = require('./js/cloudClient'); // force-bundle for Plan 2b/c/d
-
-// TEMP smoke test — runs once at startup, logs to console.
-// REMOVE this block after Plan 2a verification (see commit log).
-(function runCloudSmoke() {
-  function log(label, data) { console.log('[SMOKE] ' + label + ':', data); }
-  function err(label, e) { console.error('[SMOKE] ' + label + ' FAILED:', e); }
-  try {
-    cloudClient.init();
-    log('init', 'OK');
-  } catch (e) { err('init', e); return; }
-
-  cloudClient.login()
-    .then(function (r) { log('login', r); return cloudClient.grantHint('weak', 'ad'); })
-    .then(function (r) { log('grantHint(weak,ad)', r); return cloudClient.listGrants('smoke-puzzle'); })
-    .then(function (r) { log('listGrants before use', r); return cloudClient.useHint('weak', 'smoke-puzzle'); })
-    .then(function (r) { log('useHint(weak)', r); return cloudClient.listGrants('smoke-puzzle'); })
-    .then(function (r) { log('listGrants after use (expect balance.weak=0, used.weak=1)', r); })
-    .catch(function (e) { err('chain', e); });
-})();
+var cloudClient = require('./js/cloudClient'); // bundled for Plan 2b/c/d
 
 // Create canvas
 var canvas = wx.createCanvas();
