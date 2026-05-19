@@ -114,3 +114,13 @@ test('helpInvite: inviter without users row gets fallback nickname "Ta"', async 
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.inviterNickname, 'Ta');
 });
+
+test('helpInvite: missing HELP_TOKEN_SECRET returns server-misconfigured', async function () {
+  mock.reset();
+  mock.setUniqueIndex('helpLog', ['inviter', 'helper', 'dateStr']);
+  delete process.env.HELP_TOKEN_SECRET;
+  mock.setMockContext({ OPENID: 'helper1' });
+  var r = await helpInvite.main({ inviter: 'inviter1', t: 'anytoken' }, {}, mock);
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.err, 'server-misconfigured');
+});

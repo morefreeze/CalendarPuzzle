@@ -5,6 +5,9 @@
 // SECRET comes from env HELP_TOKEN_SECRET (configured in cloudbase console per cloud function).
 // Race: if two helpers complete simultaneously when count is about to cross an even
 // boundary, both may see N%2==0 and double-grant. Accepted per spec §6.4.
+// Best-effort partial-failure: helpLog → hintGrants writes are non-atomic; if a
+// hintGrants insert fails after helpLog has been written, the dedup will still
+// hold (helper permanently loses one voucher). Same pattern as shareGroup.
 
 var crypto = require('crypto');
 
