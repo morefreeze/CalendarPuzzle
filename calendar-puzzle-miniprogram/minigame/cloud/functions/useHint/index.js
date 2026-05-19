@@ -11,7 +11,7 @@ exports.main = async function (event, context, _cloudOverride) {
   var cloud = _cloudOverride;
   if (!cloud) {
     cloud = require('wx-server-sdk');
-    cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
+    cloud.init();
   }
   var type = event && event.type;
   var puzzleId = event && event.puzzleId;
