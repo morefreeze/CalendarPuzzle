@@ -1,6 +1,9 @@
 {
   "name": "shareGroup",
   "version": "1.0.0",
+  "description": "Decrypt group share + dedup + grant medium share voucher",
   "main": "index.js",
-  "dependencies": { "wx-server-sdk": "~2.6.3" }
+  "dependencies": {
+    "wx-server-sdk": "^2.6.3"
+  }
 }

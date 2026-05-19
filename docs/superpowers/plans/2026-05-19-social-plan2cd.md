@@ -301,7 +301,7 @@ exports.main = async function (event, context, _cloudOverride) {
       },
     });
   } catch (e) {
-    if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || ''))) {
+    if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || e.message || ''))) {
       return { ok: false, err: 'duplicate' };
     }
     return { ok: false, err: 'log-failed' };
@@ -353,8 +353,11 @@ Spec §6.4. Validates HMAC token, dedupes via helpLog, double-grants (helper wea
 {
   "name": "helpInvite",
   "version": "1.0.0",
+  "description": "Verify HMAC + helpLog dedup + double-grant (helper weak, inviter strong on even)",
   "main": "index.js",
-  "dependencies": { "wx-server-sdk": "~2.6.3" }
+  "dependencies": {
+    "wx-server-sdk": "^2.6.3"
+  }
 }
 ```
 
@@ -551,7 +554,7 @@ exports.main = async function (event, context, _cloudOverride) {
       },
     });
   } catch (e) {
-    if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || ''))) {
+    if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || e.message || ''))) {
       return { ok: false, err: 'duplicate' };
     }
     return { ok: false, err: 'log-failed' };
