@@ -4,10 +4,24 @@ var createGameScene = require('./gameScene');
 var PG = require('./puzzleGenerator');
 var shareState = require('./shareState');
 var progress = require('./progress');
+var cloudClient = require('./cloudClient');
+var Voucher = require('./voucher');
 
 var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
 var staminaRefreshInterval = null;
+
+// Voucher singleton — shared across scenes via GameGlobal.
+// wx.* may be undefined in unit tests (this module isn't required from node tests).
+var wxStorage = {
+  getItem: function (k) { return wx.getStorageSync(k) || null; },
+  setItem: function (k, v) { wx.setStorageSync(k, v); },
+  removeItem: function (k) { wx.removeStorageSync(k); },
+};
+var voucher = Voucher.create({ storage: wxStorage });
+GameGlobal.voucher = voucher;
+GameGlobal.cloudClient = cloudClient;
+GameGlobal.pendingHelperModal = null;  // populated by tryConsumeInviterLink
 
 function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
   ctx = context;
@@ -21,6 +35,19 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
     if (currentScene) currentScene.dirty = true;
   }, 1000);
 
+  // Cloud bootstrap — fire-and-forget. If wx.cloud is unavailable or login
+  // fails, the game stays fully playable via the stamina path.
+  try {
+    cloudClient.login().then(function (r) {
+      if (!(r && r.ok)) return;
+      voucher.setOpenid(r.openid);
+      voucher.flushPendingUse(cloudClient).then(function () {
+        return voucher.reconcile(cloudClient, null);
+      });
+      tryConsumeInviterLink(launchQuery);
+    }, function () { /* offline — game still playable via stamina */ });
+  } catch (e) { /* wx.cloud unavailable — same fallback */ }
+
   if (tryLaunchShared(launchQuery)) return;
   // First-launch tutorial — unless the user already completed (or skipped) it.
   if (!progress.isTutorialDone()) {
@@ -28,6 +55,27 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
     return;
   }
   goToSelect();
+}
+
+function tryConsumeInviterLink(q) {
+  if (!q || !q.inviter || !q.t) return;
+  cloudClient.helpInvite(q.inviter, q.t).then(function (r) {
+    if (r && r.ok) {
+      voucher.applyGranted('weak', 'helperGift');
+      voucher.reconcile(cloudClient, null);
+      GameGlobal.pendingHelperModal = { inviterNickname: r.inviterNickname || 'Ta' };
+      if (currentScene) currentScene.dirty = true;
+    } else {
+      var msg = ({
+        'self-help': '不能给自己助力',
+        'duplicate': '今天已经为他助力过啦',
+        'bad-token': '链接无效',
+      })[r && r.err] || '助力失败';
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: msg, icon: 'none', duration: 2000 });
+      }
+    }
+  }, function () { /* network */ });
 }
 
 function startTutorial() {
