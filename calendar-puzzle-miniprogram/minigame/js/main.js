@@ -95,6 +95,10 @@ function startTutorial() {
 
 function tryLaunchShared(q) {
   if (!q || !q.d || q.c === undefined) return false;
+  // Helper-flow takes priority over puzzle-deep-link: if the link also carries
+  // inviter+t, this is an invite share — route the helper through selectScene
+  // so they see the "助力成功" modal (set by tryConsumeInviterLink).
+  if (q.inviter && q.t) return false;
   if (!PG.DIFFICULTY_CONFIG[q.d]) return false;
   var ci = parseInt(q.c, 10);
   if (isNaN(ci) || ci < 0) return false;

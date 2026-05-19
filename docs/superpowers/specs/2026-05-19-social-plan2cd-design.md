@@ -126,6 +126,13 @@ plan 2a 的 login 已 upsert `{openid, createdAt}`。本 plan 顺便加 `nicknam
 
 ### 4.1 hint.js 改造
 
+> **Implementation note (2026-05-19, post-merge)**: the actual code kept
+> `hint.js` as a pure state machine. The `source` param is accepted but
+> unused inside `applyXxx`. Voucher cache mutations (`applyUsed`,
+> `applyGranted`) are performed by the **caller** (`gameScene.js`) at the
+> click-handler level, which has the cloud client + voucher singleton in
+> scope. This preserves `hint.js`'s testability and keeps it cloud-agnostic.
+
 **新增 / 改造 API**：
 - `getVoucherBalance(type) → number` — 读 voucherCache.balance[type] - pendingUse 同 type 数量
 - `canUseSocial(type) → boolean` — 余额 > 0（社交券路径）
