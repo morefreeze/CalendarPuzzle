@@ -4,6 +4,8 @@
 
 var _collections = {};
 var _ctx = { OPENID: 'test-openid', APPID: 'test-appid' };
+var _uniqueIndexes = {};  // collectionName -> array of field arrays
+var _openDataMap = {};    // 'enc1|iv1' -> { openGId: 'group_X' }
 
 function _matches(doc, query) {
   for (var k in query) {
@@ -65,6 +67,21 @@ function _collection(name) {
   var store = _collections[name];
   return {
     add: function (opts) {
+      var indexes = _uniqueIndexes[name] || [];
+      for (var i = 0; i < indexes.length; i++) {
+        var fields = indexes[i];
+        var conflict = store.find(function (d) {
+          for (var j = 0; j < fields.length; j++) {
+            if (d[fields[j]] !== opts.data[fields[j]]) return false;
+          }
+          return true;
+        });
+        if (conflict) {
+          var err = new Error('duplicate key on ' + name + ':' + fields.join(','));
+          err.errCode = -502002;
+          return Promise.reject(err);
+        }
+      }
       var doc = { _id: _genId() };
       for (var k in opts.data) doc[k] = opts.data[k];
       store.push(doc);
@@ -97,6 +114,27 @@ module.exports = {
   reset: function () {
     _collections = {};
     _ctx = { OPENID: 'test-openid', APPID: 'test-appid' };
+    _uniqueIndexes = {};
+    _openDataMap = {};
+  },
+  setUniqueIndex: function (collectionName, fields) {
+    if (!_uniqueIndexes[collectionName]) _uniqueIndexes[collectionName] = [];
+    _uniqueIndexes[collectionName].push(fields);
+  },
+  setMockOpenData: function (encryptedData, iv, payload) {
+    _openDataMap[encryptedData + '|' + iv] = payload;
+  },
+  getOpenData: function (opts) {
+    var list = [];
+    var items = (opts && opts.openData) || [];
+    for (var i = 0; i < items.length; i++) {
+      var key = items[i].data + '|' + items[i].iv;
+      if (!(key in _openDataMap)) {
+        return Promise.reject(new Error('unknown encryptedData ' + key));
+      }
+      list.push(_openDataMap[key]);
+    }
+    return Promise.resolve({ list: list });
   },
   DYNAMIC_CURRENT_ENV: 'mock-env',
 };

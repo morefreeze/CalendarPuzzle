@@ -47,3 +47,33 @@ test('cloud-mock getWXContext + setMockContext', function () {
   mock.setMockContext({ OPENID: 'user2' });
   assert.strictEqual(mock.getWXContext().OPENID, 'user2');
 });
+
+test('mock: setUniqueIndex enforces uniqueness on add', async function () {
+  mock.reset();
+  mock.setUniqueIndex('shareLog', ['openid', 'openGId', 'dateStr']);
+  var db = mock.database();
+  await db.collection('shareLog').add({
+    data: { openid: 'a', openGId: 'g1', dateStr: '2026-05-19' },
+  });
+  await assert.rejects(
+    db.collection('shareLog').add({
+      data: { openid: 'a', openGId: 'g1', dateStr: '2026-05-19' },
+    }),
+    /duplicate/
+  );
+});
+
+test('mock: setMockOpenData maps encryptedData+iv to decoded payload', async function () {
+  mock.reset();
+  mock.setMockOpenData('enc1', 'iv1', { openGId: 'group_X' });
+  var got = await mock.getOpenData({ openData: [{ data: 'enc1', iv: 'iv1' }] });
+  assert.strictEqual(got.list[0].openGId, 'group_X');
+});
+
+test('mock: getOpenData rejects unknown encryptedData', async function () {
+  mock.reset();
+  await assert.rejects(
+    mock.getOpenData({ openData: [{ data: 'unknown', iv: 'iv' }] }),
+    /unknown encryptedData/
+  );
+});
