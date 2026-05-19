@@ -23,7 +23,7 @@ function setup() {
   process.env.HELP_TOKEN_SECRET = SECRET;
 }
 
-test('helpInvite: helper gets weak voucher; inviter gets none on N=1', async function () {
+test('helpInvite: helper gets weak; inviter gets 1 medium/help on N=1', async function () {
   setup();
   mock.setMockContext({ OPENID: 'helper1' });
   await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
@@ -36,29 +36,15 @@ test('helpInvite: helper gets weak voucher; inviter gets none on N=1', async fun
   var helperGrants = await mock.database().collection('hintGrants').where({ openid: 'helper1' }).get();
   assert.strictEqual(helperGrants.data.length, 1);
   assert.strictEqual(helperGrants.data[0].type, 'weak');
-
-  var inviterGrants = await mock.database().collection('hintGrants').where({ openid: 'inviter1' }).get();
-  assert.strictEqual(inviterGrants.data.length, 0);
-});
-
-test('helpInvite: inviter gets strong on N=2 (even)', async function () {
-  setup();
-  await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
-
-  mock.setMockContext({ OPENID: 'helper1' });
-  await helpInvite.main({ inviter: 'inviter1', t: tokenFor('inviter1') }, {}, mock);
-
-  mock.setMockContext({ OPENID: 'helper2' });
-  var r = await helpInvite.main({ inviter: 'inviter1', t: tokenFor('inviter1') }, {}, mock);
-  assert.strictEqual(r.ok, true);
+  assert.strictEqual(helperGrants.data[0].source, 'helperGift');
 
   var inviterGrants = await mock.database().collection('hintGrants').where({ openid: 'inviter1' }).get();
   assert.strictEqual(inviterGrants.data.length, 1);
-  assert.strictEqual(inviterGrants.data[0].type, 'strong');
+  assert.strictEqual(inviterGrants.data[0].type, 'medium');
   assert.strictEqual(inviterGrants.data[0].source, 'help');
 });
 
-test('helpInvite: N=3 inviter still has 1 strong (no double-grant)', async function () {
+test('helpInvite: N=3 inviter has 3 medium/help (one per helper)', async function () {
   setup();
   await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
   for (var i = 1; i <= 3; i++) {
@@ -66,18 +52,12 @@ test('helpInvite: N=3 inviter still has 1 strong (no double-grant)', async funct
     await helpInvite.main({ inviter: 'inviter1', t: tokenFor('inviter1') }, {}, mock);
   }
   var inviterGrants = await mock.database().collection('hintGrants').where({ openid: 'inviter1' }).get();
-  assert.strictEqual(inviterGrants.data.length, 1);
-});
-
-test('helpInvite: N=4 inviter has 2 strong', async function () {
-  setup();
-  await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
-  for (var i = 1; i <= 4; i++) {
-    mock.setMockContext({ OPENID: 'helper' + i });
-    await helpInvite.main({ inviter: 'inviter1', t: tokenFor('inviter1') }, {}, mock);
+  assert.strictEqual(inviterGrants.data.length, 3);
+  // All medium/help — no strong from help directly anymore (need convertHelpToStrong).
+  for (var j = 0; j < inviterGrants.data.length; j++) {
+    assert.strictEqual(inviterGrants.data[j].type, 'medium');
+    assert.strictEqual(inviterGrants.data[j].source, 'help');
   }
-  var inviterGrants = await mock.database().collection('hintGrants').where({ openid: 'inviter1' }).get();
-  assert.strictEqual(inviterGrants.data.length, 2);
 });
 
 test('helpInvite: self-help rejected', async function () {

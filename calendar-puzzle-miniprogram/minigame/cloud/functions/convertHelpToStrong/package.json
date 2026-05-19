@@ -1,0 +1,9 @@
+{
+  "name": "convertHelpToStrong",
+  "version": "1.0.0",
+  "description": "Burn 2 unused medium/help vouchers → mint 1 strong/help voucher",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "^2.6.3"
+  }
+}

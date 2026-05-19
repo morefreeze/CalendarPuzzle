@@ -1,10 +1,9 @@
 // Validates an inviter→helper invite using an HMAC token tied to (inviter, today, SECRET).
 // Inserts a helpLog row (unique by inviter+helper+dateStr) → grants helper a weak
-// 'helperGift' voucher → on every even cumulative helpLog count for that inviter, also
-// grants the inviter one strong 'help' voucher.
+// 'helperGift' voucher → grants the inviter one medium 'help' voucher per help.
+// Inviters convert 2x medium/help into 1x strong via convertHelpToStrong cloud fn
+// (regular medium vouchers from other sources are NOT convertible).
 // SECRET comes from env HELP_TOKEN_SECRET (configured in cloudbase console per cloud function).
-// Race: if two helpers complete simultaneously when count is about to cross an even
-// boundary, both may see N%2==0 and double-grant. Accepted per spec §6.4.
 // Best-effort partial-failure: helpLog → hintGrants writes are non-atomic; if a
 // hintGrants insert fails after helpLog has been written, the dedup will still
 // hold (helper permanently loses one voucher). Same pattern as shareGroup.
@@ -69,9 +68,7 @@ exports.main = async function (event, context, _cloudOverride) {
     return { ok: false, err: 'log-failed' };
   }
 
-  var countRes = await db.collection('helpLog').where({ inviter: inviter, dateStr: dateStr }).count();
-  var N = countRes.total;
-
+  // Helper gets a one-shot弱 voucher (鼓励他玩一把).
   await db.collection('hintGrants').add({
     data: {
       openid: helper,
@@ -83,18 +80,19 @@ exports.main = async function (event, context, _cloudOverride) {
     },
   });
 
-  if (N % 2 === 0) {
-    await db.collection('hintGrants').add({
-      data: {
-        openid: inviter,
-        type: 'strong',
-        source: 'help',
-        grantedAt: db.serverDate(),
-        usedAt: null,
-        usedInPuzzle: null,
-      },
-    });
-  }
+  // Inviter gets +1 中 (source='help') per help. To换 strong, they must
+  // explicitly burn 2 of these via convertHelpToStrong cloud fn — regular
+  // medium vouchers (source='share' / 'stamina' / etc) cannot be converted.
+  await db.collection('hintGrants').add({
+    data: {
+      openid: inviter,
+      type: 'medium',
+      source: 'help',
+      grantedAt: db.serverDate(),
+      usedAt: null,
+      usedInPuzzle: null,
+    },
+  });
 
   var userRes = await db.collection('users').where({ openid: inviter }).limit(1).get();
   var nickname = (userRes.data && userRes.data[0] && userRes.data[0].nickname) || 'Ta';

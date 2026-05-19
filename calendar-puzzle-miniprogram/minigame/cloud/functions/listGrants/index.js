@@ -35,6 +35,13 @@ exports.main = async function (event, context, _cloudOverride) {
   }
   await Promise.all(promises);
 
+  // helpMediumBalance: subset of unused medium vouchers earned via help
+  // (the only ones eligible for convertHelpToStrong).
+  var helpMedRes = await db.collection('hintGrants').where({
+    openid: openid, type: 'medium', source: 'help', usedAt: null,
+  }).count();
+  var helpMediumBalance = helpMedRes.total;
+
   var cutoff = Date.now() - SEVEN_DAYS_MS;
   var helpRes = await db.collection('helpLog').where({ inviter: openid }).get();
   var recent = (helpRes.data || []).filter(function (row) {
@@ -58,5 +65,11 @@ exports.main = async function (event, context, _cloudOverride) {
     };
   });
 
-  return { ok: true, balance: balance, used: used, recentHelps: recentHelps };
+  return {
+    ok: true,
+    balance: balance,
+    used: used,
+    helpMediumBalance: helpMediumBalance,
+    recentHelps: recentHelps,
+  };
 };

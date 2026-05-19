@@ -101,3 +101,26 @@ test('listGrants recentHelps falls back to "Ta" when helper has no nickname', as
   var r = await listGrants.main({}, {}, mock);
   assert.strictEqual(r.recentHelps[0].helperNickname, 'Ta');
 });
+
+test('listGrants helpMediumBalance counts only unused medium/help', async function () {
+  mock.reset();
+  mock.setMockContext({ OPENID: 'alice' });
+  await seedGrants(3, 'medium', 'help');    // 3 unused medium/help
+  await seedGrants(2, 'medium', 'share');   // not counted (wrong source)
+  await seedGrants(4, 'weak', 'help');      // not counted (wrong type)
+  // Use one of the help-mediums in a puzzle
+  await useHint.main({ type: 'medium', puzzleId: 'p1' }, {}, mock);
+  var r = await listGrants.main({}, {}, mock);
+  // Note: useHint picks oldest unused medium (any source), so it may consume
+  // share or help — assert helpMediumBalance is between 2-3 inclusive.
+  assert.ok(r.helpMediumBalance >= 2 && r.helpMediumBalance <= 3,
+    'helpMediumBalance: ' + r.helpMediumBalance);
+});
+
+test('listGrants helpMediumBalance is 0 when no help vouchers exist', async function () {
+  mock.reset();
+  mock.setMockContext({ OPENID: 'alice' });
+  await seedGrants(5, 'medium', 'share');
+  var r = await listGrants.main({}, {}, mock);
+  assert.strictEqual(r.helpMediumBalance, 0);
+});
