@@ -8,7 +8,15 @@ function makeCloud(event) {
   // database/getWXContext 桩坏了). openid 从 event.userInfo 拿 —— 微信云函数
   // runtime 在 wx.cloud.callFunction 时会自动注入 userInfo.openId/appId.
   var tcb = require('@cloudbase/node-sdk');
-  var app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  var app;
+  try {
+    app = tcb.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
+  } catch (e) {
+    try { app = tcb.init(); } catch (e2) {}
+  }
+  if (!app || typeof app.database !== 'function') {
+    throw new Error('@cloudbase/node-sdk init failed: ' + (app ? Object.keys(app).join(',') : 'null app'));
+  }
   var ui = (event && event.userInfo) || {};
   return {
     database: function () { return app.database(); },
