@@ -21,6 +21,24 @@ var NEUTRAL = '#9E9E9E';      // secondary action grey
 // Snap animation — 60ms ease-out, makes "落子有重量"
 var SNAP_DUR = 60;
 
+// 「使用提示需要消耗体力」确认弹窗的「今天不再提醒」开关 — 全局（不分档）。
+// 持续到下一个 05:00 local time 为止；过零点不算切换日，5 点才算切换。
+var STAMINA_CONFIRM_SKIP_KEY = 'staminaConfirmSkipUntil';
+function shouldSkipStaminaConfirm() {
+  try {
+    var until = (typeof wx !== 'undefined' && wx.getStorageSync) ? wx.getStorageSync(STAMINA_CONFIRM_SKIP_KEY) : 0;
+    return Date.now() < (until || 0);
+  } catch (e) { return false; }
+}
+function setStaminaConfirmSkipUntilNext5AM() {
+  try {
+    var d = new Date();
+    var five = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 5, 0, 0, 0);
+    if (d.getTime() >= five.getTime()) five = new Date(five.getTime() + 24 * 60 * 60 * 1000);
+    if (typeof wx !== 'undefined' && wx.setStorageSync) wx.setStorageSync(STAMINA_CONFIRM_SKIP_KEY, five.getTime());
+  } catch (e) { /* ignore */ }
+}
+
 module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
   var scene = {};
   scene.dirty = true;
@@ -62,6 +80,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // When non-null, the block-selection branch consumes a voucher instead of stamina.
   // Value is the source label used for pendingUse telemetry ('share'|'help'|'helperGift').
   var usingVoucherSource = null;
+  // When non-null, render confirmation modal blocking tier→block transition.
+  // Set when user picks a tier that needs stamina (no voucher, has stamina, confirm not skipped).
+  // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
+  var staminaConfirm = null;
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
@@ -1067,6 +1089,45 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
     }
 
+    // --- 体力消耗确认弹窗（盖在 hint popup 之上）---
+    if (hintMode && staminaConfirm) {
+      R.overlay(ctx, W, H);
+      var cmW = Math.min(W * 0.78, 300), cmH = 220;
+      var cmX = (W - cmW) / 2, cmY = (H - cmH) / 2;
+      L.staminaConfirmModal = { x: cmX, y: cmY, w: cmW, h: cmH };
+      R.roundRect(ctx, cmX, cmY, cmW, cmH, 14, '#fff');
+      R.textBold(ctx, '消耗体力', cmX + cmW / 2, cmY + 22, 16, '#333', 'center');
+      var scTierName = staminaConfirm.tier === 'weak' ? '弱提示'
+        : staminaConfirm.tier === 'medium' ? '中提示' : '强提示';
+      R.text(ctx, '使用' + scTierName + '将消耗 ' + staminaConfirm.cost + ' 点体力',
+        cmX + cmW / 2, cmY + 62, 14, '#333', 'center');
+      R.text(ctx, '当前体力 ' + stamina.getStamina() + ' / ' + stamina.MAX_STAMINA,
+        cmX + cmW / 2, cmY + 88, 12, '#666', 'center');
+      // 「今天不再提醒」勾选框 — 点击 label 区也可切换勾选
+      var cbSize = 18;
+      var cbX = cmX + 24, cbY = cmY + 128;
+      var cbLabelW = cmW - 48 - cbSize - 8;
+      L.staminaConfirmCheckbox = { x: cbX, y: cbY, w: cbSize + 8 + cbLabelW, h: cbSize };
+      R.roundRect(ctx, cbX, cbY, cbSize, cbSize, 4, staminaConfirm.skipChecked ? '#E8F5E9' : '#fff', '#888');
+      if (staminaConfirm.skipChecked) {
+        R.textBold(ctx, '✓', cbX + cbSize / 2, cbY + cbSize / 2, 14, BRAND_DARK, 'center', 'middle');
+      }
+      R.text(ctx, '今天不再提醒（次日 5 点失效）',
+        cbX + cbSize + 8, cbY + cbSize / 2, 12, '#333', 'left', 'middle');
+      // 是 / 否 按钮
+      var scBtnW = (cmW - 60) / 2, scBtnH = 36;
+      var scBtnY = cmY + cmH - scBtnH - 18;
+      L.staminaConfirmNoBtn = { x: cmX + 20, y: scBtnY, w: scBtnW, h: scBtnH };
+      L.staminaConfirmYesBtn = { x: cmX + 40 + scBtnW, y: scBtnY, w: scBtnW, h: scBtnH };
+      R.button(ctx, L.staminaConfirmNoBtn.x, L.staminaConfirmNoBtn.y, scBtnW, scBtnH, '否', '#eee', '#333', 8);
+      R.button(ctx, L.staminaConfirmYesBtn.x, L.staminaConfirmYesBtn.y, scBtnW, scBtnH, '是', BRAND, '#fff', 8);
+    } else {
+      L.staminaConfirmModal = null;
+      L.staminaConfirmCheckbox = null;
+      L.staminaConfirmNoBtn = null;
+      L.staminaConfirmYesBtn = null;
+    }
+
     // --- 获取路径 二级 menu ---
     if (sourceMenuOpen && L.sourceMenu) {
       R.overlay(ctx, W, H);
@@ -1824,6 +1885,29 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
+      // 体力消耗确认弹窗 — 优先级最高（盖在所有 hint 内容之上）
+      if (staminaConfirm) {
+        if (L.staminaConfirmCheckbox && R.hitTest(x, y, L.staminaConfirmCheckbox)) {
+          staminaConfirm.skipChecked = !staminaConfirm.skipChecked;
+          scene.dirty = true; return;
+        }
+        if (L.staminaConfirmYesBtn && R.hitTest(x, y, L.staminaConfirmYesBtn)) {
+          if (staminaConfirm.skipChecked) setStaminaConfirmSkipUntilNext5AM();
+          usingVoucherSource = null;
+          hintTier = staminaConfirm.tier;
+          staminaConfirm = null;
+          scene.dirty = true; return;
+        }
+        if (L.staminaConfirmNoBtn && R.hitTest(x, y, L.staminaConfirmNoBtn)) {
+          staminaConfirm = null;
+          scene.dirty = true; return;
+        }
+        // 点击 modal 内其他空白 — swallow（不允许穿透）
+        if (L.staminaConfirmModal && R.hitTest(x, y, L.staminaConfirmModal)) return;
+        // 点击 modal 外 — 视为「否」
+        staminaConfirm = null;
+        scene.dirty = true; return;
+      }
       // 获取路径 二级 menu click handling
       if (sourceMenuOpen) {
         for (var sbk = 0; sbk < (L.sourceMenuBtns || []).length; sbk++) {
@@ -1854,16 +1938,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (pickedTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
               cost = 0;
             }
-            var have = stamina.getStamina();
-            if (have >= cost) {
-              // stamina path (default)
-              usingVoucherSource = null;
-              hintTier = pickedTier;
-              scene.dirty = true;
-              return;
-            }
+            // Priority: voucher > stamina（用户要求：「如果有券就用券」）
             if (voucher.canUseSocial(pickedTier)) {
-              // voucher path — block selection consumes a voucher instead of stamina
               usingVoucherSource = pickedTier === 'medium' ? 'share'
                 : pickedTier === 'strong' ? 'help'
                 : 'helperGift';
@@ -1871,7 +1947,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               scene.dirty = true;
               return;
             }
-            // Neither stamina nor voucher → 获取路径 二级 menu
+            var have = stamina.getStamina();
+            if (have >= cost) {
+              // Stamina path — gate on confirm modal unless cost=0 (FIRST_WEAK_FREE) or skipped-today.
+              if (cost === 0 || shouldSkipStaminaConfirm()) {
+                usingVoucherSource = null;
+                hintTier = pickedTier;
+                scene.dirty = true;
+                return;
+              }
+              staminaConfirm = { tier: pickedTier, cost: cost, skipChecked: false };
+              scene.dirty = true;
+              return;
+            }
+            // Neither voucher nor enough stamina → 获取路径 二级 menu
             // weak tier has no social path yet — fall back to old toast
             if (pickedTier === 'weak') {
               showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
