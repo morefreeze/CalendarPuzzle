@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.4.0] — 2026-05-20
+
+> 社交助力系统正式上线（plan 2c + 2d）+ 体力消耗确认弹窗 + 大量 UX/工程修复。
+
+### 群分享换中提示券（plan 2c）
+
+- 提示弹窗里点「中」/「强」，体力 + 助力券都不够时，弹出「获取路径」二级菜单。
+- **群分享换中提示**：选「群分享换 1 张中提示」→ 转发到群 → 云端验证（同群同日不重复）后到账 +1 张中提示券。
+- ⚠️ 真机解密链路目前是 stub（`shareGroup` 的 `getOpenData` 因 SDK 迁移待接 OpenAPI），换券会返回 `decrypt-failed`。详见 `docs/superpowers/plans/2026-05-20-share-group-decrypt-followup.md`。
+
+### 邀请好友助力（plan 2d）
+
+- **邀请链接**：从二级菜单点「邀请好友助力」→ 转发到好友/群，分享链接带签名 token（HMAC，当天有效），防止伪造。
+- **每个朋友点链接 = 你 +1 张中提示券（助力专用）+ 朋友 +1 张弱提示券**。
+- **2 张助力中可兑换 1 张强提示券**：助力中累积 ≥ 2 张时，二级菜单出现「兑换强提示」按钮，主动消耗。普通中提示券（群分享 / 体力买的）**不可兑换**，严格区分。
+- 提示弹窗底部常驻「邀请好友助力（今日 N 次助力）」入口，方便随时邀请、查看今日累计。
+- 朋友点链接进入小游戏时，会弹「👏 助力成功 · 已为 Ta 助力 · +1 张弱提示已到账」modal；当天已助力过同一邀请人时，弹「今日已助力 · 弱提示先前已到账」。
+
+### 体力消耗确认弹窗
+
+- 选完提示档（强/中/弱）后，**有助力券就优先用券**，不消耗体力（之前默认走体力，体感不明显）。
+- 没券需要扣体力时，弹出确认 modal：「使用 X 提示将消耗 N 体力 · 当前体力 X / Y」+ 是 / 否。
+- 勾选「今天不再提醒」→ 接下来的同类操作直接扣体力不再弹，**次日 5 点自动失效**。
+- 首次免费的弱提示（cost = 0）不弹。
+
+### 助力券系统（本地优先 + 云端同步）
+
+- **本地优先**：用券立即扣本地余额，UI 立刻反映；离线状态下用券也能正常进行，离线操作攒在队列里。
+- **有网时自动批量同步到云端**：冷启动 / 切回前台 / 群分享 / 兑换强 / **每次打开提示弹窗**都会自动跑一次同步，确保「剩余 N 张」永远是最新值。
+- 云端拒绝（业务错误 / 券真的没了）→ 自动回滚本地余额。
+
+### UX 优化
+
+- 提示弹窗高度加大到 340，第三档（强提示）行不再被遮挡。
+- 「本关已用 N」改成「本关 N/上限」格式（如 `本关 0/3`），剩余空间更直观。
+- 弱提示档对齐 `1 体力 · 剩余 N · 本关 N/3` 格式，移除 `/ 关` 后缀。
+- 邀请助力底部 chip 文案：`今日 0 次助力 · 已获取中提示 0 次`，含义更明确。
+
+### 重要修复
+
+- **SDK 迁移遗留 bug**（最坑）：之前迁移 wx-server-sdk → @cloudbase/node-sdk 时，所有 `add({ data: {...} })` / `update({ data: {...} })` 没改成 top-level 写法，导致迁移后所有发券 / 写助力记录 / 写用户行的字段都嵌套在 `data` 子对象下，listGrants 查不到 → 「剩余 N 张」永远停在迁移前的几张。6 个云函数全修：`grantHint` / `helpInvite` / `shareGroup` / `convertHelpToStrong` / `login` / `useHint`。
+- **助力成功 modal 漏渲染**：冷启动后 helper modal 在某些时序下没渲染（用户点击难度后场景已切到 gameScene）。修：tryConsumeInviterLink 成功/重复都强制 `goToSelect()` 保证 modal 一定渲染。
+- **warm-show 不刷新**：切后台再回到前台不会重新同步云端余额。修：加 `wx.onShow` 监听，回前台自动 reconcile + 重新处理 invite link。
+- **券余额跳回旧值**：随机切下一题后「剩余 N」可能跳回原始值（之前 race：boot flush 清空 pending 但 reconcile 还没跑）。修：改用 eager-decrement 模型，applyUsed 立即扣本地余额，confirmUseSynced 处理云端回包。
+
+### 工程基础
+
+- 云函数全部走 `@cloudbase/node-sdk`（旧的 wx-server-sdk 完全移除），用 `tcb.SYMBOL_DEFAULT_ENV` 替代硬编码 env id。
+- `helpInvite` 加 `ALLOW_SELF_HELP_OPENIDS` 环境变量（逗号分隔 openid 白名单）方便单设备 E2E 调试；**生产环境务必不配置**。
+- 测试覆盖：93 / 93 node --test pass。涵盖 voucher 模块所有路径（eager-decrement、reconcile-subtract-pending、confirmUseSynced ok / !ok、helpMedium dip）+ 所有云函数 `_impl` 路径。
+
+### 已知遗留
+
+- shareGroup 真机解密路径（getOpenData stub）— follow-up 见 [share-group-decrypt-followup.md](../../docs/superpowers/plans/2026-05-20-share-group-decrypt-followup.md)。
+- 迁移期间因 SDK shape bug 写入云端的「嵌套 data 子对象」旧行 listGrants 看不到（不影响新流程），可在 cloudbase 控制台手动清理。
+
 ## [0.3.4] — 2026-05-19
 
 > 三级提示系统上线 + 云开发后端基础就位。
