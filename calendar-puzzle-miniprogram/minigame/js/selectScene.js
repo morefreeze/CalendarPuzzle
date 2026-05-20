@@ -327,6 +327,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         var slotPayload = _slotStore.readSlot(slotId);
         if (slotPayload) {
           _slotBinding.bind(slotId);
+          _slotStore.deleteSlot('temp');                 // loaded slot becomes the active target; old temp record is now stale
           mode = 'menu';
           slotGridLayoutCache = null;
           scene.dirty = true;
