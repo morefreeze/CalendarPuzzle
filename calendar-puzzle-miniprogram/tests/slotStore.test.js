@@ -70,3 +70,20 @@ test('slotStore: readAllNamed preserves NAMED_SLOT_IDS order', function () {
   assert.strictEqual(all[1], null);                // named-2
   assert.strictEqual(all[2].date, '2026-05-20');  // named-3
 });
+
+test('slotStore: deleteSlot removes the storage key', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s });
+  ss.writeSlot('named-1', { date: '2026-05-20', difficulty: 'easy', comboIndex: 0 });
+  assert.notStrictEqual(ss.readSlot('named-1'), null);
+  ss.deleteSlot('named-1');
+  assert.strictEqual(ss.readSlot('named-1'), null);
+  assert.deepStrictEqual(Object.keys(s._peek()), []);
+});
+
+test('slotStore: deleteSlot is idempotent (no throw on missing key)', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.deleteSlot('named-1');                  // never existed
+  ss.deleteSlot('named-1');                  // again
+  assert.strictEqual(ss.readSlot('named-1'), null);
+});

@@ -46,10 +46,15 @@ function create(opts) {
     return out;
   }
 
+  function deleteSlot(slotId) {
+    try { storage.removeItem(_key(slotId)); } catch (e) { /* swallow */ }
+  }
+
   return {
     readSlot: readSlot,
     readAllNamed: readAllNamed,
     writeSlot: writeSlot,
+    deleteSlot: deleteSlot,
   };
 }
 
