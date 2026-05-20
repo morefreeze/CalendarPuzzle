@@ -2000,10 +2000,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             // Charge — either stamina (default) or a social voucher (when usingVoucherSource set)
             if (usingVoucherSource) {
               var pidUse = currentPuzzleId();
-              voucher.applyUsed(hintTier, usingVoucherSource, pidUse);
-              cloudClient.useHint(hintTier, pidUse).then(function (r) {
-                if (!r || !r.ok) voucher.reconcile(cloudClient, pidUse);
-              }, function () { /* network: pendingUse retains entry */ });
+              // 捕获到本地变量 — closure 里 hintTier/usingVoucherSource 几行后会被清零
+              var capturedTier = hintTier;
+              var capturedSource = usingVoucherSource;
+              voucher.applyUsed(capturedTier, capturedSource, pidUse);
+              cloudClient.useHint(capturedTier, pidUse).then(function (r) {
+                if (r && r.ok) {
+                  // 云端 confirm — 出队（balance 在 applyUsed 时已 eager 扣减过了）
+                  voucher.confirmUseSynced(capturedTier, capturedSource, pidUse, true);
+                } else {
+                  // 云端拒绝 — confirmUseSynced 回滚 eager 扣减 + 出队，再 reconcile 拉权威
+                  voucher.confirmUseSynced(capturedTier, capturedSource, pidUse, false);
+                  voucher.reconcile(cloudClient, pidUse);
+                }
+              }, function () { /* network: pendingUse 保留，下次 flush 重试 */ });
             } else {
               var blockCost = Hint.COSTS[hintTier];
               if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
