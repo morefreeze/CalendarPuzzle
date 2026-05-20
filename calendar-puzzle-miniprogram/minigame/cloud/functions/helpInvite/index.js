@@ -56,13 +56,12 @@ async function _impl(event, cloud) {
   var db = cloud.database();
 
   try {
+    // @cloudbase/node-sdk add() takes fields at top-level (no `data:` wrapper).
     await db.collection('helpLog').add({
-      data: {
-        inviter: inviter,
-        helper: helper,
-        dateStr: dateStr,
-        createdAt: db.serverDate(),
-      },
+      inviter: inviter,
+      helper: helper,
+      dateStr: dateStr,
+      createdAt: db.serverDate(),
     });
   } catch (e) {
     if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || e.message || ''))) {
@@ -73,28 +72,24 @@ async function _impl(event, cloud) {
 
   // Helper gets a one-shot弱 voucher (鼓励他玩一把).
   await db.collection('hintGrants').add({
-    data: {
-      openid: helper,
-      type: 'weak',
-      source: 'helperGift',
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+    openid: helper,
+    type: 'weak',
+    source: 'helperGift',
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
 
   // Inviter gets +1 中 (source='help') per help. To换 strong, they must
   // explicitly burn 2 of these via convertHelpToStrong cloud fn — regular
   // medium vouchers (source='share' / 'stamina' / etc) cannot be converted.
   await db.collection('hintGrants').add({
-    data: {
-      openid: inviter,
-      type: 'medium',
-      source: 'help',
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+    openid: inviter,
+    type: 'medium',
+    source: 'help',
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
 
   var userRes = await db.collection('users').where({ openid: inviter }).limit(1).get();

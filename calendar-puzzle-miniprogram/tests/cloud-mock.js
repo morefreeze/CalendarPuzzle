@@ -1,6 +1,8 @@
-// In-memory wx-server-sdk shim for unit tests.
+// In-memory @cloudbase/node-sdk shim for unit tests.
 // Provides: init, database (with collection.add/where.get/count/update + limit), getWXContext.
 // Match the subset of the SDK used by our cloud functions.
+// NOTE: @cloudbase/node-sdk's add/update take fields at the top level
+// (NOT wrapped in `{data: {...}}` — that was wx-server-sdk's syntax).
 
 var _collections = {};
 var _ctx = { OPENID: 'test-openid', APPID: 'test-appid' };
@@ -31,11 +33,11 @@ function _query(store, query) {
     count: function () {
       return Promise.resolve({ total: store.filter(function (d) { return _matches(d, query); }).length });
     },
-    update: function (opts) {
+    update: function (patch) {
       var n = 0;
       store.forEach(function (d) {
         if (_matches(d, query)) {
-          for (var k in opts.data) d[k] = opts.data[k];
+          for (var k in patch) d[k] = patch[k];
           n++;
         }
       });
@@ -47,11 +49,11 @@ function _query(store, query) {
           var matched = store.filter(function (d) { return _matches(d, query); });
           return Promise.resolve({ data: matched.slice(0, max) });
         },
-        update: function (opts) {
+        update: function (patch) {
           var n = 0;
           for (var i = 0; i < store.length && n < max; i++) {
             if (_matches(store[i], query)) {
-              for (var k in opts.data) store[i][k] = opts.data[k];
+              for (var k in patch) store[i][k] = patch[k];
               n++;
             }
           }
@@ -66,13 +68,13 @@ function _collection(name) {
   if (!_collections[name]) _collections[name] = [];
   var store = _collections[name];
   return {
-    add: function (opts) {
+    add: function (input) {
       var indexes = _uniqueIndexes[name] || [];
       for (var i = 0; i < indexes.length; i++) {
         var fields = indexes[i];
         var conflict = store.find(function (d) {
           for (var j = 0; j < fields.length; j++) {
-            if (d[fields[j]] !== opts.data[fields[j]]) return false;
+            if (d[fields[j]] !== input[fields[j]]) return false;
           }
           return true;
         });
@@ -83,9 +85,11 @@ function _collection(name) {
         }
       }
       var doc = { _id: _genId() };
-      for (var k in opts.data) doc[k] = opts.data[k];
+      for (var k in input) doc[k] = input[k];
       store.push(doc);
-      return Promise.resolve({ _id: doc._id });
+      // @cloudbase/node-sdk add() returns `{ id: ..., requestId: ... }`.
+      // _extractGrantId tolerates both shapes; keep `_id` here for legacy tests.
+      return Promise.resolve({ _id: doc._id, id: doc._id });
     },
     where: function (query) { return _query(store, query); },
     doc: function (id) {

@@ -61,15 +61,15 @@ test('listGrants returns recentHelps with helper nicknames (last 7 days)', async
   mock.setMockContext({ OPENID: 'inviter1' });
   var db = mock.database();
   // Seed helpers with nicknames
-  await db.collection('users').add({ data: { openid: 'h1', nickname: 'Helper-A' } });
-  await db.collection('users').add({ data: { openid: 'h2', nickname: 'Helper-B' } });
+  await db.collection('users').add({ openid: 'h1', nickname: 'Helper-A' });
+  await db.collection('users').add({ openid: 'h2', nickname: 'Helper-B' });
   // Seed helpLog
   var now = Date.now();
   await db.collection('helpLog').add({
-    data: { inviter: 'inviter1', helper: 'h1', dateStr: '2026-05-19', createdAt: new Date(now - 86400000) },
+    inviter: 'inviter1', helper: 'h1', dateStr: '2026-05-19', createdAt: new Date(now - 86400000),
   });
   await db.collection('helpLog').add({
-    data: { inviter: 'inviter1', helper: 'h2', dateStr: '2026-05-18', createdAt: new Date(now - 2 * 86400000) },
+    inviter: 'inviter1', helper: 'h2', dateStr: '2026-05-18', createdAt: new Date(now - 2 * 86400000),
   });
 
   var r = await listGrants._impl({}, mock);
@@ -83,10 +83,10 @@ test('listGrants recentHelps filters out helpLog older than 7 days', async funct
   mock.reset();
   mock.setMockContext({ OPENID: 'inviter1' });
   var db = mock.database();
-  await db.collection('users').add({ data: { openid: 'h_old', nickname: 'OLD' } });
+  await db.collection('users').add({ openid: 'h_old', nickname: 'OLD' });
   var now = Date.now();
   await db.collection('helpLog').add({
-    data: { inviter: 'inviter1', helper: 'h_old', dateStr: '2026-05-01', createdAt: new Date(now - 10 * 86400000) },
+    inviter: 'inviter1', helper: 'h_old', dateStr: '2026-05-01', createdAt: new Date(now - 10 * 86400000),
   });
   var r = await listGrants._impl({}, mock);
   assert.strictEqual(r.recentHelps.length, 0);
@@ -96,7 +96,7 @@ test('listGrants recentHelps falls back to "Ta" when helper has no nickname', as
   mock.reset();
   mock.setMockContext({ OPENID: 'inviter1' });
   await mock.database().collection('helpLog').add({
-    data: { inviter: 'inviter1', helper: 'mystery', dateStr: '2026-05-19', createdAt: new Date() },
+    inviter: 'inviter1', helper: 'mystery', dateStr: '2026-05-19', createdAt: new Date(),
   });
   var r = await listGrants._impl({}, mock);
   assert.strictEqual(r.recentHelps[0].helperNickname, 'Ta');

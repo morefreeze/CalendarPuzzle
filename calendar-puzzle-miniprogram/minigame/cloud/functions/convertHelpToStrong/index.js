@@ -35,21 +35,21 @@ async function _impl(event, cloud) {
 
   // Mark the 2 source rows used with a synthetic 'usedInPuzzle' marker so
   // they don't get re-selected and they're auditable as conversions.
+  // @cloudbase/node-sdk update/add take fields at top-level (no `data:` wrapper).
   for (var i = 0; i < 2; i++) {
     await db.collection('hintGrants').where({ _id: unused.data[i]._id }).update({
-      data: { usedAt: db.serverDate(), usedInPuzzle: '__converted_to_strong' },
+      usedAt: db.serverDate(),
+      usedInPuzzle: '__converted_to_strong',
     });
   }
 
   var inserted = await db.collection('hintGrants').add({
-    data: {
-      openid: openid,
-      type: 'strong',
-      source: 'help',
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+    openid: openid,
+    type: 'strong',
+    source: 'help',
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
 
   return {

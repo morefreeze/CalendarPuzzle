@@ -26,7 +26,7 @@ function setup() {
 test('helpInvite: helper gets weak; inviter gets 1 medium/help on N=1', async function () {
   setup();
   mock.setMockContext({ OPENID: 'helper1' });
-  await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
+  await mock.database().collection('users').add({ openid: 'inviter1', nickname: 'Inv' });
   var t = tokenFor('inviter1');
   var r = await helpInvite._impl({ inviter: 'inviter1', t: t }, mock);
   assert.strictEqual(r.ok, true);
@@ -46,7 +46,7 @@ test('helpInvite: helper gets weak; inviter gets 1 medium/help on N=1', async fu
 
 test('helpInvite: N=3 inviter has 3 medium/help (one per helper)', async function () {
   setup();
-  await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
+  await mock.database().collection('users').add({ openid: 'inviter1', nickname: 'Inv' });
   for (var i = 1; i <= 3; i++) {
     mock.setMockContext({ OPENID: 'helper' + i });
     await helpInvite._impl({ inviter: 'inviter1', t: tokenFor('inviter1') }, mock);
@@ -78,7 +78,7 @@ test('helpInvite: bad token rejected', async function () {
 
 test('helpInvite: duplicate same helper same day rejected', async function () {
   setup();
-  await mock.database().collection('users').add({ data: { openid: 'inviter1', nickname: 'Inv' } });
+  await mock.database().collection('users').add({ openid: 'inviter1', nickname: 'Inv' });
   mock.setMockContext({ OPENID: 'helper1' });
   var t = tokenFor('inviter1');
   await helpInvite._impl({ inviter: 'inviter1', t: t }, mock);

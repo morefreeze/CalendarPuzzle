@@ -40,8 +40,10 @@ async function _impl(event, cloud) {
   }
 
   var grantId = unused.data[0]._id;
+  // @cloudbase/node-sdk update() takes fields at top-level (no `data:` wrapper).
   await db.collection('hintGrants').where({ _id: grantId }).update({
-    data: { usedAt: db.serverDate(), usedInPuzzle: puzzleId },
+    usedAt: db.serverDate(),
+    usedInPuzzle: puzzleId,
   });
   return { ok: true, grantId: grantId };
 }

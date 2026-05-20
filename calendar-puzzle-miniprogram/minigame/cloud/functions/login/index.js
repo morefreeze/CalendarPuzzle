@@ -32,17 +32,18 @@ async function _impl(event, cloud) {
   var isNewUser = !(existing.data && existing.data.length > 0);
 
   if (isNewUser) {
+    // @cloudbase/node-sdk add()/update() take fields at top-level (no `data:` wrapper).
     var row = { openid: openid, createdAt: db.serverDate() };
     if (nickname) row.nickname = nickname;
     if (avatarUrl) row.avatarUrl = avatarUrl;
-    await db.collection('users').add({ data: row });
+    await db.collection('users').add(row);
   } else {
     var current = existing.data[0];
     var patch = {};
     if (nickname && !current.nickname) patch.nickname = nickname;
     if (avatarUrl && !current.avatarUrl) patch.avatarUrl = avatarUrl;
     if (Object.keys(patch).length > 0) {
-      await db.collection('users').where({ openid: openid }).update({ data: patch });
+      await db.collection('users').where({ openid: openid }).update(patch);
     }
   }
 

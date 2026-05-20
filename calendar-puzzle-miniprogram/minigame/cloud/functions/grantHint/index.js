@@ -29,15 +29,17 @@ async function _impl(event, cloud) {
 
   var db = cloud.database();
   var openid = cloud.getWXContext().OPENID;
+  // @cloudbase/node-sdk's add() takes fields at top-level (NOT wrapped in `data:`).
+  // wx-server-sdk used to require `{data: {...}}`. After migration we left the wrapper,
+  // which stored everything nested under a literal `data` field → listGrants's
+  // where({openid, type, ...}) queried the top-level and never matched.
   var ret = await db.collection('hintGrants').add({
-    data: {
-      openid: openid,
-      type: type,
-      source: source,
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+    openid: openid,
+    type: type,
+    source: source,
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
   return { ok: true, grantId: _extractGrantId(ret) };
 }

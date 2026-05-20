@@ -36,13 +36,12 @@ async function _impl(event, cloud) {
     String(d.getDate()).padStart(2, '0');
 
   try {
+    // @cloudbase/node-sdk add() takes fields at top-level (no `data:` wrapper).
     await db.collection('shareLog').add({
-      data: {
-        openid: openid,
-        openGId: openGId,
-        dateStr: dateStr,
-        createdAt: db.serverDate(),
-      },
+      openid: openid,
+      openGId: openGId,
+      dateStr: dateStr,
+      createdAt: db.serverDate(),
     });
   } catch (e) {
     if (e && (e.errCode === -502002 || /duplicate/.test(e.errMsg || e.message || ''))) {
@@ -52,14 +51,12 @@ async function _impl(event, cloud) {
   }
 
   await db.collection('hintGrants').add({
-    data: {
-      openid: openid,
-      type: 'medium',
-      source: 'share',
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+    openid: openid,
+    type: 'medium',
+    source: 'share',
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
 
   return { ok: true, granted: { type: 'medium', source: 'share' } };
