@@ -8,6 +8,8 @@ var stamina = require('./stamina');
 var shareState = require('./shareState');
 var progress = require('./progress');
 var Hint = require('./hint');
+var Voucher = require('./voucher');
+var cloudClient = require('./cloudClient');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -18,6 +20,24 @@ var NEUTRAL = '#9E9E9E';      // secondary action grey
 
 // Snap animation — 60ms ease-out, makes "落子有重量"
 var SNAP_DUR = 60;
+
+// 「使用提示需要消耗体力」确认弹窗的「今天不再提醒」开关 — 全局（不分档）。
+// 持续到下一个 05:00 local time 为止；过零点不算切换日，5 点才算切换。
+var STAMINA_CONFIRM_SKIP_KEY = 'staminaConfirmSkipUntil';
+function shouldSkipStaminaConfirm() {
+  try {
+    var until = (typeof wx !== 'undefined' && wx.getStorageSync) ? wx.getStorageSync(STAMINA_CONFIRM_SKIP_KEY) : 0;
+    return Date.now() < (until || 0);
+  } catch (e) { return false; }
+}
+function setStaminaConfirmSkipUntilNext5AM() {
+  try {
+    var d = new Date();
+    var five = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 5, 0, 0, 0);
+    if (d.getTime() >= five.getTime()) five = new Date(five.getTime() + 24 * 60 * 60 * 1000);
+    if (typeof wx !== 'undefined' && wx.setStorageSync) wx.setStorageSync(STAMINA_CONFIRM_SKIP_KEY, five.getTime());
+  } catch (e) { /* ignore */ }
+}
 
 module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
   var scene = {};
@@ -54,9 +74,101 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var isWon = false;
   var hintMode = false;
   var hintTier = null;
+  // 二级 "获取路径" submenu — opens when both stamina and social voucher fall short.
+  var sourceMenuOpen = false;
+  var sourceMenuTier = null;
+  // When non-null, the block-selection branch consumes a voucher instead of stamina.
+  // Value is the source label used for pendingUse telemetry ('share'|'help'|'helperGift').
+  var usingVoucherSource = null;
+  // When non-null, render confirmation modal blocking tier→block transition.
+  // Set when user picks a tier that needs stamina (no voucher, has stamina, confirm not skipped).
+  // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
+  var staminaConfirm = null;
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
+  function currentPuzzleId() {
+    return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
+  }
+
+  function triggerShareGroup() {
+    if (!cloudClient.getOpenid()) { showToast('需要网络'); return; }
+    var share = shareState.buildShareData();
+    wx.shareAppMessage({
+      withShareTicket: true,
+      title: share.title,
+      query: share.query,
+      success: function (res) {
+        if (!res || !res.shareTickets || !res.shareTickets[0]) {
+          showToast('请分享到群聊');
+          return;
+        }
+        wx.getShareInfo({
+          shareTicket: res.shareTickets[0],
+          success: function (info) {
+            cloudClient.shareGroup(info.encryptedData, info.iv).then(function (r) {
+              if (r && r.ok) {
+                voucher.applyGranted('medium', 'share');
+                showToast('+1 张中提示');
+                voucher.reconcile(cloudClient, currentPuzzleId());
+                sourceMenuOpen = false; sourceMenuTier = null;
+                scene.dirty = true;
+              } else if (r && r.err === 'duplicate') {
+                showToast('今天这个群已经分享过');
+              } else {
+                showToast('换券失败：' + ((r && r.err) || '未知'));
+              }
+            }, function () { showToast('网络异常'); });
+          },
+          fail: function () { showToast('分享信息获取失败'); },
+        });
+      },
+      fail: function () { /* user cancelled */ },
+    });
+  }
+
+  function triggerHelpInvite() {
+    var openid = cloudClient.getOpenid();
+    var token = cloudClient.getHelpToken();
+    if (!openid || !token) { showToast('需要网络'); return; }
+    shareState.setInviterContext({ inviter: openid, t: token });
+    var share = shareState.buildShareData();
+    wx.shareAppMessage({
+      title: share.title,
+      query: share.query,
+      success: function () { /* user shared */ },
+      fail: function () { /* cancelled */ },
+      complete: function () {
+        shareState.clearInviterContext();
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true;
+      },
+    });
+  }
+
+  function triggerConvertHelpToStrong() {
+    if (!cloudClient.getOpenid()) { showToast('需要网络'); return; }
+    cloudClient.convertHelpToStrong().then(function (r) {
+      if (r && r.ok) {
+        voucher.applyGranted('strong', 'help');
+        // Reconcile to pick up cloud truth (medium balance dropped by 2, helpMediumBalance dropped by 2).
+        voucher.reconcile(cloudClient, currentPuzzleId());
+        showToast('+1 张强提示');
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true;
+      } else if (r && r.err === 'insufficient-help-credits') {
+        showToast('需要 2 张助力中提示');
+      } else {
+        showToast('兑换失败：' + ((r && r.err) || '未知'));
+      }
+    }, function () { showToast('网络异常'); });
+  }
+  var wxStorage = {
+    getItem: function (k) { return wx.getStorageSync(k) || null; },
+    setItem: function (k, v) { wx.setStorageSync(k, v); },
+    removeItem: function (k) { wx.removeStorageSync(k); },
+  };
+  var voucher = (GameGlobal && GameGlobal.voucher) || Voucher.create({ storage: wxStorage });
   var solvedPlacements = PG.solvedPlacements(puzzle.solvedBoard);
   var uncov = B.getUncoverableCells();
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
@@ -543,7 +655,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Hint popup
     if (hintMode) {
       var popW = W * 0.78;
-      var popH = 290;
+      // popH 加高到 340 容纳新的 footer "邀请好友助力" chip（之前 290 会盖住强档行）
+      var popH = 340;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
 
       if (!hintTier) {
@@ -573,6 +686,47 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         L.hintTierBtns = [];
       }
       L.hintCloseBtn = { x: L.hintPopup.x + (popW - 90) / 2, y: L.hintPopup.y + popH - 46, w: 90, h: 34 };
+      // 常驻"邀请好友助力"入口（仅 tier 选择层显示，块选择层隐藏）
+      if (!hintTier) {
+        L.tierFooterInviteBtn = {
+          x: L.hintPopup.x + 20,
+          y: L.hintPopup.y + popH - 88,
+          w: popW - 40,
+          h: 30,
+        };
+      } else {
+        L.tierFooterInviteBtn = null;
+      }
+    }
+
+    // 二级 "获取路径" submenu
+    if (sourceMenuOpen) {
+      var smW = 320, smH = 290;
+      L.sourceMenu = { x: (W - smW) / 2, y: (H - smH) / 2, w: smW, h: smH };
+      L.sourceMenuBtns = [];
+      var sbx = L.sourceMenu.x + 20;
+      var sby = L.sourceMenu.y + 90;
+      var sbw = smW - 40;
+      var sbh = 38;
+      var helpMed = voucher.getHelpMediumBalance();
+      if (sourceMenuTier === 'medium') {
+        L.sourceMenuBtns.push({ kind: 'share', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+        L.sourceMenuBtns.push({ kind: 'invite-help', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+      } else if (sourceMenuTier === 'strong') {
+        L.sourceMenuBtns.push({ kind: 'invite-help', x: sbx, y: sby, w: sbw, h: sbh });
+        sby += sbh + 10;
+        if (helpMed >= 2) {
+          L.sourceMenuBtns.push({ kind: 'convert', x: sbx, y: sby, w: sbw, h: sbh });
+          sby += sbh + 10;
+        }
+      }
+      L.sourceMenuCancelBtn = { x: L.sourceMenu.x + (smW - 90) / 2, y: L.sourceMenu.y + smH - 46, w: 90, h: 34 };
+    } else {
+      L.sourceMenu = null;
+      L.sourceMenuBtns = [];
+      L.sourceMenuCancelBtn = null;
     }
 
     // Select panel
@@ -873,7 +1027,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           strong: '强：直接放置（自动腾位）',
         };
         var costLabels = {
-          weak:   Hint.COSTS.weak + ' 体力 / 关',
+          weak:   Hint.COSTS.weak + ' 体力',
           medium: Hint.COSTS.medium + ' 体力',
           strong: Hint.COSTS.strong + ' 体力',
         };
@@ -886,10 +1040,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           R.roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8, fill);
           R.text(ctx, tierLabels[btn.tier], btn.x + 12, btn.y + 8, 14, disabled ? '#999' : '#fff', 'left');
           var capStr;
-          if (disabled) capStr = '本关已用完 · 下关重置';
-          else if (cap !== undefined) capStr = '本关已用 ' + used;
+          if (cap !== undefined) capStr = '本关 ' + used + '/' + cap;
           else capStr = '已用 ' + used;
-          R.text(ctx, costLabels[btn.tier] + ' · ' + capStr, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
+          if (disabled) capStr += ' · 下关重置';
+          var voucherBal = voucher.displayBalance(btn.tier);
+          var bottomLine = costLabels[btn.tier] + ' · 剩余 ' + voucherBal + ' · ' + capStr;
+          R.text(ctx, bottomLine, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
         }
       } else {
         R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
@@ -915,7 +1071,88 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         }
       }
 
+      // 常驻"邀请好友助力"入口（点开二级 menu，可看 stats + convert）
+      if (L.tierFooterInviteBtn) {
+        var footerHelps = voucher.getHelpsTodayCount();
+        var footerHelpMed = voucher.getHelpMediumBalance();
+        // "今日 N 次助力" = 今天有 N 位不同好友点了你的助力链接（同一好友一天 1 次）
+        var footerLbl = '👥 邀请好友助力（今日 ' + footerHelps + ' 次助力';
+        if (footerHelpMed >= 2) footerLbl += ' · 可换 ' + Math.floor(footerHelpMed / 2) + ' 张强';
+        footerLbl += '）';
+        R.roundRect(ctx, L.tierFooterInviteBtn.x, L.tierFooterInviteBtn.y,
+          L.tierFooterInviteBtn.w, L.tierFooterInviteBtn.h, 6, '#E8F5E9', BRAND);
+        R.text(ctx, footerLbl,
+          L.tierFooterInviteBtn.x + L.tierFooterInviteBtn.w / 2,
+          L.tierFooterInviteBtn.y + L.tierFooterInviteBtn.h / 2,
+          12, BRAND_DARK, 'center', 'middle');
+      }
       R.button(ctx, L.hintCloseBtn.x, L.hintCloseBtn.y, L.hintCloseBtn.w, L.hintCloseBtn.h, hintTier ? '返回' : '取消', '#eee', '#333', 8);
+    }
+
+    // --- 体力消耗确认弹窗（盖在 hint popup 之上）---
+    if (hintMode && staminaConfirm) {
+      R.overlay(ctx, W, H);
+      var cmW = Math.min(W * 0.78, 300), cmH = 220;
+      var cmX = (W - cmW) / 2, cmY = (H - cmH) / 2;
+      L.staminaConfirmModal = { x: cmX, y: cmY, w: cmW, h: cmH };
+      R.roundRect(ctx, cmX, cmY, cmW, cmH, 14, '#fff');
+      R.textBold(ctx, '消耗体力', cmX + cmW / 2, cmY + 22, 16, '#333', 'center');
+      var scTierName = staminaConfirm.tier === 'weak' ? '弱提示'
+        : staminaConfirm.tier === 'medium' ? '中提示' : '强提示';
+      R.text(ctx, '使用' + scTierName + '将消耗 ' + staminaConfirm.cost + ' 点体力',
+        cmX + cmW / 2, cmY + 62, 14, '#333', 'center');
+      R.text(ctx, '当前体力 ' + stamina.getStamina() + ' / ' + stamina.MAX_STAMINA,
+        cmX + cmW / 2, cmY + 88, 12, '#666', 'center');
+      // 「今天不再提醒」勾选框 — 点击 label 区也可切换勾选
+      var cbSize = 18;
+      var cbX = cmX + 24, cbY = cmY + 128;
+      var cbLabelW = cmW - 48 - cbSize - 8;
+      L.staminaConfirmCheckbox = { x: cbX, y: cbY, w: cbSize + 8 + cbLabelW, h: cbSize };
+      R.roundRect(ctx, cbX, cbY, cbSize, cbSize, 4, staminaConfirm.skipChecked ? '#E8F5E9' : '#fff', '#888');
+      if (staminaConfirm.skipChecked) {
+        R.textBold(ctx, '✓', cbX + cbSize / 2, cbY + cbSize / 2, 14, BRAND_DARK, 'center', 'middle');
+      }
+      R.text(ctx, '今天不再提醒（次日 5 点失效）',
+        cbX + cbSize + 8, cbY + cbSize / 2, 12, '#333', 'left', 'middle');
+      // 是 / 否 按钮
+      var scBtnW = (cmW - 60) / 2, scBtnH = 36;
+      var scBtnY = cmY + cmH - scBtnH - 18;
+      L.staminaConfirmNoBtn = { x: cmX + 20, y: scBtnY, w: scBtnW, h: scBtnH };
+      L.staminaConfirmYesBtn = { x: cmX + 40 + scBtnW, y: scBtnY, w: scBtnW, h: scBtnH };
+      R.button(ctx, L.staminaConfirmNoBtn.x, L.staminaConfirmNoBtn.y, scBtnW, scBtnH, '否', '#eee', '#333', 8);
+      R.button(ctx, L.staminaConfirmYesBtn.x, L.staminaConfirmYesBtn.y, scBtnW, scBtnH, '是', BRAND, '#fff', 8);
+    } else {
+      L.staminaConfirmModal = null;
+      L.staminaConfirmCheckbox = null;
+      L.staminaConfirmNoBtn = null;
+      L.staminaConfirmYesBtn = null;
+    }
+
+    // --- 获取路径 二级 menu ---
+    if (sourceMenuOpen && L.sourceMenu) {
+      R.overlay(ctx, W, H);
+      var sm = L.sourceMenu;
+      R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
+      var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
+      R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
+      // Stat line: 今日 N 次助力（不同好友数）· 已获取中提示 M 次（可兑换强提示的中券库存）
+      var helpsTodayN = voucher.getHelpsTodayCount();
+      var helpMedN = voucher.getHelpMediumBalance();
+      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 已获取中提示 ' + helpMedN + ' 次',
+        sm.x + sm.w / 2, sm.y + 50, 12, '#666', 'center');
+      R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 72, 12, '#999', 'left');
+      for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
+        var smbtn = L.sourceMenuBtns[sbi];
+        var lbl;
+        if (smbtn.kind === 'share') lbl = '群分享换 1 张中提示';
+        else if (smbtn.kind === 'invite-help') lbl = '邀请好友助力（每位 +1 张中提示）';
+        else if (smbtn.kind === 'convert') lbl = '🔄 用 2 张助力中换 1 张强提示';
+        else lbl = '';
+        R.button(ctx, smbtn.x, smbtn.y, smbtn.w, smbtn.h, lbl, BRAND, '#fff', 8);
+      }
+      if (L.sourceMenuCancelBtn) {
+        R.button(ctx, L.sourceMenuCancelBtn.x, L.sourceMenuCancelBtn.y, L.sourceMenuCancelBtn.w, L.sourceMenuCancelBtn.h, '取消', '#eee', '#333', 8);
+      }
     }
 
     // --- Select panel popup ---
@@ -1648,6 +1885,46 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Hint popup
     if (hintMode) {
+      // 体力消耗确认弹窗 — 优先级最高（盖在所有 hint 内容之上）
+      if (staminaConfirm) {
+        if (L.staminaConfirmCheckbox && R.hitTest(x, y, L.staminaConfirmCheckbox)) {
+          staminaConfirm.skipChecked = !staminaConfirm.skipChecked;
+          scene.dirty = true; return;
+        }
+        if (L.staminaConfirmYesBtn && R.hitTest(x, y, L.staminaConfirmYesBtn)) {
+          if (staminaConfirm.skipChecked) setStaminaConfirmSkipUntilNext5AM();
+          usingVoucherSource = null;
+          hintTier = staminaConfirm.tier;
+          staminaConfirm = null;
+          scene.dirty = true; return;
+        }
+        if (L.staminaConfirmNoBtn && R.hitTest(x, y, L.staminaConfirmNoBtn)) {
+          staminaConfirm = null;
+          scene.dirty = true; return;
+        }
+        // 点击 modal 内其他空白 — swallow（不允许穿透）
+        if (L.staminaConfirmModal && R.hitTest(x, y, L.staminaConfirmModal)) return;
+        // 点击 modal 外 — 视为「否」
+        staminaConfirm = null;
+        scene.dirty = true; return;
+      }
+      // 获取路径 二级 menu click handling
+      if (sourceMenuOpen) {
+        for (var sbk = 0; sbk < (L.sourceMenuBtns || []).length; sbk++) {
+          var sbtn = L.sourceMenuBtns[sbk];
+          if (R.hitTest(x, y, sbtn)) {
+            if (sbtn.kind === 'share') triggerShareGroup();
+            else if (sbtn.kind === 'invite-help') triggerHelpInvite();
+            else if (sbtn.kind === 'convert') triggerConvertHelpToStrong();
+            return;
+          }
+        }
+        if (L.sourceMenuCancelBtn && R.hitTest(x, y, L.sourceMenuCancelBtn)) {
+          sourceMenuOpen = false; sourceMenuTier = null;
+          scene.dirty = true; return;
+        }
+        return; // swallow other clicks while submenu is open
+      }
       // Tier selection
       if (!hintTier && L.hintTierBtns) {
         for (var tb = 0; tb < L.hintTierBtns.length; tb++) {
@@ -1661,15 +1938,47 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (pickedTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
               cost = 0;
             }
+            // Priority: voucher > stamina（用户要求：「如果有券就用券」）
+            if (voucher.canUseSocial(pickedTier)) {
+              usingVoucherSource = pickedTier === 'medium' ? 'share'
+                : pickedTier === 'strong' ? 'help'
+                : 'helperGift';
+              hintTier = pickedTier;
+              scene.dirty = true;
+              return;
+            }
             var have = stamina.getStamina();
-            if (have < cost) {
+            if (have >= cost) {
+              // Stamina path — gate on confirm modal unless cost=0 (FIRST_WEAK_FREE) or skipped-today.
+              if (cost === 0 || shouldSkipStaminaConfirm()) {
+                usingVoucherSource = null;
+                hintTier = pickedTier;
+                scene.dirty = true;
+                return;
+              }
+              staminaConfirm = { tier: pickedTier, cost: cost, skipChecked: false };
+              scene.dirty = true;
+              return;
+            }
+            // Neither voucher nor enough stamina → 获取路径 二级 menu
+            // weak tier has no social path yet — fall back to old toast
+            if (pickedTier === 'weak') {
               showToast('体力不足！需要 ' + cost + ' 点，当前 ' + have);
               return;
             }
-            hintTier = pickedTier;
+            sourceMenuTier = pickedTier;
+            sourceMenuOpen = true;
             scene.dirty = true;
             return;
           }
+        }
+        // Persistent "邀请好友助力" footer — open source menu in strong tier
+        // so the player sees stats + invite + convert all together.
+        if (L.tierFooterInviteBtn && R.hitTest(x, y, L.tierFooterInviteBtn)) {
+          sourceMenuTier = 'strong';
+          sourceMenuOpen = true;
+          scene.dirty = true;
+          return;
         }
       }
       // Block selection
@@ -1688,14 +1997,32 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             if (hintTier === 'strong' && Hint.isFullyLocked(hintState, hBlock.id)) {
               showToast('该方块已强提示'); return;
             }
-            // Now charge stamina and apply
-            var blockCost = Hint.COSTS[hintTier];
-            if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
-              blockCost = 0;
-            }
-            if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
-              showToast('体力扣减失败');
-              return;
+            // Charge — either stamina (default) or a social voucher (when usingVoucherSource set)
+            if (usingVoucherSource) {
+              var pidUse = currentPuzzleId();
+              // 捕获到本地变量 — closure 里 hintTier/usingVoucherSource 几行后会被清零
+              var capturedTier = hintTier;
+              var capturedSource = usingVoucherSource;
+              voucher.applyUsed(capturedTier, capturedSource, pidUse);
+              cloudClient.useHint(capturedTier, pidUse).then(function (r) {
+                if (r && r.ok) {
+                  // 云端 confirm — 出队（balance 在 applyUsed 时已 eager 扣减过了）
+                  voucher.confirmUseSynced(capturedTier, capturedSource, pidUse, true);
+                } else {
+                  // 云端拒绝 — confirmUseSynced 回滚 eager 扣减 + 出队，再 reconcile 拉权威
+                  voucher.confirmUseSynced(capturedTier, capturedSource, pidUse, false);
+                  voucher.reconcile(cloudClient, pidUse);
+                }
+              }, function () { /* network: pendingUse 保留，下次 flush 重试 */ });
+            } else {
+              var blockCost = Hint.COSTS[hintTier];
+              if (hintTier === 'weak' && Hint.FIRST_WEAK_FREE && Hint.countUsed(hintState, 'weak') === 0) {
+                blockCost = 0;
+              }
+              if (blockCost > 0 && !stamina.consumeStamina(blockCost)) {
+                showToast('体力扣减失败');
+                return;
+              }
             }
             var res;
             if (hintTier === 'weak') {
@@ -1718,6 +2045,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             }
             hintMode = false;
             hintTier = null;
+            usingVoucherSource = null;
             scene.dirty = true;
             return;
           }
@@ -1726,13 +2054,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.hintCloseBtn && R.hitTest(x, y, L.hintCloseBtn)) {
         if (hintTier) {
           hintTier = null;
+          usingVoucherSource = null;
         } else {
           hintMode = false;
         }
         scene.dirty = true; return;
       }
       if (L.hintPopup && !R.hitTest(x, y, L.hintPopup)) {
-        hintMode = false; hintTier = null; scene.dirty = true; return;
+        hintMode = false; hintTier = null; usingVoucherSource = null;
+        sourceMenuOpen = false; sourceMenuTier = null;
+        scene.dirty = true; return;
       }
       return;
     }
@@ -1842,7 +2173,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Control row
     if (L.hintBtn && R.hitTest(x, y, L.hintBtn)) {
-      hintMode = true; hintTier = null; scene.dirty = true; return;
+      hintMode = true; hintTier = null; scene.dirty = true;
+      // Background reconcile — 拉一次最新 voucher 余额，立刻反映在 tier 弹窗上。
+      // 弹窗已经先用 cache 渲染了；reconcile 回包后 scene.dirty 再触发一次重绘。
+      if (cloudClient.getOpenid && cloudClient.getOpenid()) {
+        voucher.reconcile(cloudClient, currentPuzzleId()).then(function () {
+          scene.dirty = true;
+        });
+      }
+      return;
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;

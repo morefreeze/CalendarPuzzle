@@ -219,3 +219,22 @@ test('applyMedium returns null hintedCell when block exhausted', function () {
   var r2 = H.applyMedium(r1.newState, 'X-block', r1.updatedPalette, r1.updatedDropped, solved);
   assert.strictEqual(r2.hintedCell, null);
 });
+
+test('applyMedium accepts and passes through source param without changing state', function () {
+  var state = H.createHintState('p1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 1], [0, 1]] } };
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved, 'share');
+  assert.strictEqual(res.newState.usedMedium, 1);
+  // No source field on state itself — purely a caller-side tag
+});
+
+test('applyStrong accepts and passes through source param', function () {
+  var state = H.createHintState('p1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 1]] } };
+  var res = H.applyStrong(state, 'X-block', palette, dropped, solved, 'help');
+  assert.strictEqual(res.newState.usedStrong, 1);
+});

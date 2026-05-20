@@ -1,7 +1,7 @@
 {
-  "name": "grantHint",
+  "name": "shareGroup",
   "version": "1.0.0",
-  "description": "Insert a hint voucher row",
+  "description": "Decrypt group share + dedup + grant medium share voucher",
   "main": "index.js",
   "dependencies": {
     "@cloudbase/node-sdk": "latest"

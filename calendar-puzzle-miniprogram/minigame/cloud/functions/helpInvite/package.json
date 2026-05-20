@@ -1,0 +1,9 @@
+{
+  "name": "helpInvite",
+  "version": "1.0.0",
+  "description": "Verify HMAC + helpLog dedup + double-grant (helper weak, inviter strong on even)",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}

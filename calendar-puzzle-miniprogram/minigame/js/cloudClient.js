@@ -1,9 +1,12 @@
-// Thin wrapper over wx.cloud.callFunction. Caches openid after first login.
-// All RPCs return promises with normalized error handling.
+// Thin wrapper over wx.cloud.callFunction. Caches openid + helpToken after login.
+// helpToken can be null if HELP_TOKEN_SECRET is not configured on the login cloud
+// function — callers building invite links MUST guard against null and surface
+// "invites unavailable" to the user (do NOT include t=null in a share query).
 
 var CLOUD_ENV = 'cloudbase-2g5wjm7448ddc7bf';
 var _initialized = false;
 var _openid = null;
+var _helpToken = null;
 
 function init() {
   if (_initialized) return;
@@ -31,14 +34,18 @@ function _call(name, data) {
   });
 }
 
-function login() {
-  return _call('login', {}).then(function (r) {
-    if (r && r.ok) _openid = r.openid;
+function login(extra) {
+  return _call('login', extra || {}).then(function (r) {
+    if (r && r.ok) {
+      _openid = r.openid;
+      _helpToken = r.helpToken || null;
+    }
     return r;
   });
 }
 
 function getOpenid() { return _openid; }
+function getHelpToken() { return _helpToken; }
 
 function grantHint(type, source) {
   return _call('grantHint', { type: type, source: source });
@@ -52,12 +59,28 @@ function listGrants(puzzleId) {
   return _call('listGrants', { puzzleId: puzzleId });
 }
 
+function shareGroup(encryptedData, iv) {
+  return _call('shareGroup', { encryptedData: encryptedData, iv: iv });
+}
+
+function helpInvite(inviter, t) {
+  return _call('helpInvite', { inviter: inviter, t: t });
+}
+
+function convertHelpToStrong() {
+  return _call('convertHelpToStrong', {});
+}
+
 module.exports = {
   init: init,
   login: login,
   getOpenid: getOpenid,
+  getHelpToken: getHelpToken,
   grantHint: grantHint,
   useHint: useHint,
   listGrants: listGrants,
+  shareGroup: shareGroup,
+  helpInvite: helpInvite,
+  convertHelpToStrong: convertHelpToStrong,
   CLOUD_ENV: CLOUD_ENV,
 };

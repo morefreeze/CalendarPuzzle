@@ -4,10 +4,24 @@ var createGameScene = require('./gameScene');
 var PG = require('./puzzleGenerator');
 var shareState = require('./shareState');
 var progress = require('./progress');
+var cloudClient = require('./cloudClient');
+var Voucher = require('./voucher');
 
 var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
 var staminaRefreshInterval = null;
+
+// Voucher singleton — shared across scenes via GameGlobal.
+// wx.* may be undefined in unit tests (this module isn't required from node tests).
+var wxStorage = {
+  getItem: function (k) { return wx.getStorageSync(k) || null; },
+  setItem: function (k, v) { wx.setStorageSync(k, v); },
+  removeItem: function (k) { wx.removeStorageSync(k); },
+};
+var voucher = Voucher.create({ storage: wxStorage });
+GameGlobal.voucher = voucher;
+GameGlobal.cloudClient = cloudClient;
+GameGlobal.pendingHelperModal = null;  // populated by tryConsumeInviterLink
 
 function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
   ctx = context;
@@ -21,6 +35,19 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
     if (currentScene) currentScene.dirty = true;
   }, 1000);
 
+  // Cloud bootstrap — fire-and-forget. If wx.cloud is unavailable or login
+  // fails, the game stays fully playable via the stamina path.
+  try {
+    cloudClient.login().then(function (r) {
+      if (!(r && r.ok)) return;
+      voucher.setOpenid(r.openid);
+      voucher.flushPendingUse(cloudClient).then(function () {
+        return voucher.reconcile(cloudClient, null);
+      });
+      tryConsumeInviterLink(launchQuery);
+    }, function () { /* offline — game still playable via stamina */ });
+  } catch (e) { /* wx.cloud unavailable — same fallback */ }
+
   if (tryLaunchShared(launchQuery)) return;
   // First-launch tutorial — unless the user already completed (or skipped) it.
   if (!progress.isTutorialDone()) {
@@ -28,6 +55,47 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
     return;
   }
   goToSelect();
+}
+
+// In-memory dedup so init + onShow don't double-call helpInvite for the same (inviter,t).
+// Cleared on app cold start (module reload); within one session, same link is processed once.
+var lastProcessedInvite = null;
+
+function tryConsumeInviterLink(q) {
+  if (!q || !q.inviter || !q.t) return;
+  var key = q.inviter + '|' + q.t;
+  if (lastProcessedInvite === key) return;
+  lastProcessedInvite = key;
+  cloudClient.helpInvite(q.inviter, q.t).then(function (r) {
+    if (r && r.ok) {
+      voucher.applyGranted('weak', 'helperGift');
+      voucher.reconcile(cloudClient, null);
+      GameGlobal.pendingHelperModal = {
+        inviterNickname: r.inviterNickname || 'Ta',
+        mode: 'fresh',
+      };
+      // Force-route to selectScene so the modal always renders, regardless of what
+      // the user tapped while helpInvite was in-flight (cold-start race: user may
+      // have tapped into difficulty → gameScene, which doesn't render this modal).
+      goToSelect();
+    } else if (r && r.err === 'duplicate') {
+      // 第一次冷启动已经 grant 过了；这次只是 surface 反馈给用户。
+      // 同样进 selectScene 渲染 modal（带 'duplicate' 文案），保证用户能看到「已经助力」状态。
+      GameGlobal.pendingHelperModal = {
+        inviterNickname: r.inviterNickname || 'Ta',
+        mode: 'duplicate',
+      };
+      goToSelect();
+    } else {
+      var msg = ({
+        'self-help': '不能给自己助力',
+        'bad-token': '链接无效',
+      })[r && r.err] || '助力失败';
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: msg, icon: 'none', duration: 2000 });
+      }
+    }
+  }, function () { /* network */ });
 }
 
 function startTutorial() {
@@ -47,6 +115,10 @@ function startTutorial() {
 
 function tryLaunchShared(q) {
   if (!q || !q.d || q.c === undefined) return false;
+  // Helper-flow takes priority over puzzle-deep-link: if the link also carries
+  // inviter+t, this is an invite share — route the helper through selectScene
+  // so they see the "助力成功" modal (set by tryConsumeInviterLink).
+  if (q.inviter && q.t) return false;
   if (!PG.DIFFICULTY_CONFIG[q.d]) return false;
   var ci = parseInt(q.c, 10);
   if (isNaN(ci) || ci < 0) return false;
@@ -141,9 +213,24 @@ function onWheel(dy) {
   if (currentScene && currentScene.onWheel) currentScene.onWheel(dy);
 }
 
+// Called when the mini-game returns to foreground (warm relaunch from a share card,
+// switching back from another app, etc.). game.js wires wx.onShow → main.onShow.
+function onShow(query) {
+  // Refresh voucher cache so footer / popup counts reflect any cloud-side changes
+  // that happened while we were backgrounded (e.g. a friend just clicked our invite).
+  if (cloudClient.getOpenid && cloudClient.getOpenid()) {
+    voucher.reconcile(cloudClient, null);
+  }
+  // If the user just tapped a fresh invite share card, the new query is here.
+  // tryConsumeInviterLink dedups internally so back-to-back init+onShow with the
+  // same (inviter,t) only call helpInvite once.
+  tryConsumeInviterLink(query || {});
+}
+
 module.exports = {
   init: init,
   render: render,
+  onShow: onShow,
   onTouchStart: onTouchStart,
   onTouchMove: onTouchMove,
   onTouchEnd: onTouchEnd,

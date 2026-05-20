@@ -3,15 +3,25 @@
 // happens UPSTREAM in the calling cloud function (shareGroup, helpInvite, etc.).
 // This function trusts its caller — only validates type/source enum.
 
+var _app;
+function _getApp() {
+  if (!_app) {
+    var tcb = require('@cloudbase/node-sdk');
+    _app = tcb.init({ env: tcb.SYMBOL_DEFAULT_ENV });
+  }
+  return _app;
+}
+
 var VALID_TYPES = { weak: 1, medium: 1, strong: 1 };
 var VALID_SOURCES = { free: 1, stamina: 1, share: 1, help: 1, ad: 1, helperGift: 1 };
 
-exports.main = async function (event, context, _cloudOverride) {
-  var cloud = _cloudOverride;
-  if (!cloud) {
-    cloud = require('wx-server-sdk');
-    cloud.init({ env: 'cloudbase-2g5wjm7448ddc7bf' });
-  }
+function _extractGrantId(addRes) {
+  if (!addRes) return '';
+  return addRes._id || addRes.id ||
+    (addRes.result && (addRes.result._id || addRes.result.id)) || '';
+}
+
+async function _impl(event, cloud) {
   var type = event && event.type;
   var source = event && event.source;
   if (!type || !VALID_TYPES[type]) return { ok: false, reason: 'invalid-type' };
@@ -19,15 +29,38 @@ exports.main = async function (event, context, _cloudOverride) {
 
   var db = cloud.database();
   var openid = cloud.getWXContext().OPENID;
-  var insert = await db.collection('hintGrants').add({
-    data: {
-      openid: openid,
-      type: type,
-      source: source,
-      grantedAt: db.serverDate(),
-      usedAt: null,
-      usedInPuzzle: null,
-    },
+  // @cloudbase/node-sdk's add() takes fields at top-level (NOT wrapped in `data:`).
+  // wx-server-sdk used to require `{data: {...}}`. After migration we left the wrapper,
+  // which stored everything nested under a literal `data` field → listGrants's
+  // where({openid, type, ...}) queried the top-level and never matched.
+  var ret = await db.collection('hintGrants').add({
+    openid: openid,
+    type: type,
+    source: source,
+    grantedAt: db.serverDate(),
+    usedAt: null,
+    usedInPuzzle: null,
   });
-  return { ok: true, grantId: insert._id };
+  return { ok: true, grantId: _extractGrantId(ret) };
+}
+
+function makeCloud(event) {
+  var ui = (event && event.userInfo) || {};
+  var app = _getApp();
+  return {
+    database: function () { return app.database(); },
+    serverDate: function () { return app.database().serverDate(); },
+    getWXContext: function () {
+      return {
+        OPENID: ui.openId || ui.OPENID || '',
+        APPID: ui.appId || ui.APPID || '',
+      };
+    },
+  };
+}
+
+exports.main = async function (event, context) {
+  return _impl(event, makeCloud(event));
 };
+exports._impl = _impl;
+exports._extractGrantId = _extractGrantId;

@@ -1,9 +1,13 @@
-// In-memory wx-server-sdk shim for unit tests.
+// In-memory @cloudbase/node-sdk shim for unit tests.
 // Provides: init, database (with collection.add/where.get/count/update + limit), getWXContext.
 // Match the subset of the SDK used by our cloud functions.
+// NOTE: @cloudbase/node-sdk's add/update take fields at the top level
+// (NOT wrapped in `{data: {...}}` — that was wx-server-sdk's syntax).
 
 var _collections = {};
 var _ctx = { OPENID: 'test-openid', APPID: 'test-appid' };
+var _uniqueIndexes = {};  // collectionName -> array of field arrays
+var _openDataMap = {};    // 'enc1|iv1' -> { openGId: 'group_X' }
 
 function _matches(doc, query) {
   for (var k in query) {
@@ -29,11 +33,11 @@ function _query(store, query) {
     count: function () {
       return Promise.resolve({ total: store.filter(function (d) { return _matches(d, query); }).length });
     },
-    update: function (opts) {
+    update: function (patch) {
       var n = 0;
       store.forEach(function (d) {
         if (_matches(d, query)) {
-          for (var k in opts.data) d[k] = opts.data[k];
+          for (var k in patch) d[k] = patch[k];
           n++;
         }
       });
@@ -45,11 +49,11 @@ function _query(store, query) {
           var matched = store.filter(function (d) { return _matches(d, query); });
           return Promise.resolve({ data: matched.slice(0, max) });
         },
-        update: function (opts) {
+        update: function (patch) {
           var n = 0;
           for (var i = 0; i < store.length && n < max; i++) {
             if (_matches(store[i], query)) {
-              for (var k in opts.data) store[i][k] = opts.data[k];
+              for (var k in patch) store[i][k] = patch[k];
               n++;
             }
           }
@@ -64,11 +68,28 @@ function _collection(name) {
   if (!_collections[name]) _collections[name] = [];
   var store = _collections[name];
   return {
-    add: function (opts) {
+    add: function (input) {
+      var indexes = _uniqueIndexes[name] || [];
+      for (var i = 0; i < indexes.length; i++) {
+        var fields = indexes[i];
+        var conflict = store.find(function (d) {
+          for (var j = 0; j < fields.length; j++) {
+            if (d[fields[j]] !== input[fields[j]]) return false;
+          }
+          return true;
+        });
+        if (conflict) {
+          var err = new Error('duplicate key on ' + name + ':' + fields.join(','));
+          err.errCode = -502002;
+          return Promise.reject(err);
+        }
+      }
       var doc = { _id: _genId() };
-      for (var k in opts.data) doc[k] = opts.data[k];
+      for (var k in input) doc[k] = input[k];
       store.push(doc);
-      return Promise.resolve({ _id: doc._id });
+      // @cloudbase/node-sdk add() returns `{ id: ..., requestId: ... }`.
+      // _extractGrantId tolerates both shapes; keep `_id` here for legacy tests.
+      return Promise.resolve({ _id: doc._id, id: doc._id });
     },
     where: function (query) { return _query(store, query); },
     doc: function (id) {
@@ -97,6 +118,27 @@ module.exports = {
   reset: function () {
     _collections = {};
     _ctx = { OPENID: 'test-openid', APPID: 'test-appid' };
+    _uniqueIndexes = {};
+    _openDataMap = {};
+  },
+  setUniqueIndex: function (collectionName, fields) {
+    if (!_uniqueIndexes[collectionName]) _uniqueIndexes[collectionName] = [];
+    _uniqueIndexes[collectionName].push(fields);
+  },
+  setMockOpenData: function (encryptedData, iv, payload) {
+    _openDataMap[encryptedData + '|' + iv] = payload;
+  },
+  getOpenData: function (opts) {
+    var list = [];
+    var items = (opts && opts.openData) || [];
+    for (var i = 0; i < items.length; i++) {
+      var key = items[i].data + '|' + items[i].iv;
+      if (!(key in _openDataMap)) {
+        return Promise.reject(new Error('unknown encryptedData ' + key));
+      }
+      list.push(_openDataMap[key]);
+    }
+    return Promise.resolve({ list: list });
   },
   DYNAMIC_CURRENT_ENV: 'mock-env',
 };
