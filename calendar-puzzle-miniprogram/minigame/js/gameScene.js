@@ -61,9 +61,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- Tutorial state machine ----
   // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
-  // step 2: drag the *placeable* palette block to the board
-  // step 3: double-tap the misplaced block to remove it
-  // step 4: complete the puzzle (rectangular bottom dialog, persists)
+  // step 2: point at a locked (pre-placed) block — these are fixed, advance via "下一步"
+  // step 3: drag the *placeable* palette block to the board
+  // step 4: double-tap the misplaced block to remove it
+  // step 5: complete the puzzle (rectangular bottom dialog, persists)
   var tutorialMode = !!puzzle.tutorial;
   var tutorialStep = tutorialMode ? 1 : 0;
   var tutorialMisplacedId = puzzle.misplacedId || null;
@@ -328,7 +329,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
-        if (tutorialMode) tutorialStep = 4;
+        if (tutorialMode) tutorialStep = 5;
         wonCombos[puzzle.currentComboIndex] = true;
         if (!tutorialMode) {
           progress.markWonCombo(puzzle.dateStr, difficulty, puzzle.currentComboIndex);
@@ -359,9 +360,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     dropped.push(nb);
     palette = palette.filter(function (b) { return b.id !== block.id; });
     selected = null;
-    // Tutorial advance: step 2 (drag a piece) clears as soon as the player
+    // Tutorial advance: step 3 (drag a piece) clears as soon as the player
     // places anything via drag.
-    if (tutorialMode && tutorialStep === 2) tutorialStep = 3;
+    if (tutorialMode && tutorialStep === 3) tutorialStep = 4;
     // Kick snap animation from the drag-release position to the target cell.
     if (fromX != null && fromY != null && L.cellSize) {
       snapAnims.push({
@@ -388,10 +389,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     delete restored.x; delete restored.y;
     palette.push(restored);
     selected = null;
-    // Tutorial advance: step 3 clears when the player double-taps off the
+    // Tutorial advance: step 4 clears when the player double-taps off the
     // pre-misplaced block specifically.
-    if (tutorialMode && tutorialStep === 3 && id === tutorialMisplacedId) {
-      tutorialStep = 4;
+    if (tutorialMode && tutorialStep === 4 && id === tutorialMisplacedId) {
+      tutorialStep = 5;
     }
     scene.dirty = true;
   }
@@ -1230,12 +1231,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
 
     // --- Tutorial guidance ---
-    if (tutorialMode && tutorialStep <= 4) {
+    if (tutorialMode && tutorialStep <= 5) {
       var bpad = 12;
 
-      // Step 4 has a unique form: a persistent rectangular dialog at the
+      // Step 5 has a unique form: a persistent rectangular dialog at the
       // bottom of the screen — no arrow, no target, stays until win/skip.
-      if (tutorialStep === 4) {
+      if (tutorialStep === 5) {
         var dialogH = 76;
         var dialogY = H - (safeInsets.bottom || 0) - dialogH - 8;
         L.tutorialStep4Dialog = { x: bpad, y: dialogY, w: W - 2 * bpad, h: dialogH };
@@ -1246,7 +1247,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         R.roundRect(ctx, L.tutorialStep4Dialog.x, L.tutorialStep4Dialog.y,
           L.tutorialStep4Dialog.w, L.tutorialStep4Dialog.h, 12, '#FFFFFF', '#FFB300');
         ctx.restore();
-        R.textBold(ctx, '步骤 4 / 4 · 完成挑战', L.tutorialStep4Dialog.x + 14,
+        R.textBold(ctx, '步骤 5 / 5 · 完成挑战', L.tutorialStep4Dialog.x + 14,
           L.tutorialStep4Dialog.y + 10, 12, '#E65100');
         R.text(ctx, '把剩下的方块都放到合适位置，完成今天的拼图！',
           L.tutorialStep4Dialog.x + 14, L.tutorialStep4Dialog.y + 36, 13, '#5D4037');
@@ -1263,13 +1264,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           L.tutorialSkipBtn.y + L.tutorialSkipBtn.h / 2 - 1,
           12, '#666', 'center', 'middle');
       } else {
-        // Steps 1-3 are bubbles with an arrow pointing at a target.
+        // Steps 1-4 are bubbles with an arrow pointing at a target.
         var target = null;
         var stepLabel = '';
         var stepLines = [];      // wrapped text lines
         var forcedDir = null;    // 'up' or 'down' to override auto positioning
         if (tutorialStep === 1) {
-          stepLabel = '步骤 1 / 4 · 游戏目标';
+          stepLabel = '步骤 1 / 5 · 游戏目标';
           stepLines = ['把所有方块拼到棋盘上，', '让今日的标记格（金色）露出来'];
           var wd = null;
           for (var ui = 0; ui < uncov.length; ui++) {
@@ -1284,7 +1285,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
             };
           }
         } else if (tutorialStep === 2) {
-          stepLabel = '步骤 2 / 4 · 选中并放置';
+          stepLabel = '步骤 2 / 5 · 已放置的方块';
+          stepLines = ['这些带🔒的方块已经放好啦，', '不能再移动'];
+          var lb = prePlaced && prePlaced[0];
+          if (lb && L.cellSize) {
+            target = {
+              x: L.boardX + lb.x * L.cellSize, y: L.boardY + lb.y * L.cellSize,
+              w: lb.shape[0].length * L.cellSize, h: lb.shape.length * L.cellSize,
+              shape: lb.shape,          // <-- enables silhouette outline
+              cellSize: L.cellSize,
+            };
+          }
+        } else if (tutorialStep === 3) {
+          stepLabel = '步骤 3 / 5 · 选中并放置';
           stepLines = [
             '点击选中方块，可旋转 / 翻转',
             '然后拖到棋盘的空格里',
@@ -1303,8 +1316,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           // Bubble goes BELOW the target (below palette) so it doesn't cover
           // the board or the other palette cards.
           forcedDir = 'down';
-        } else if (tutorialStep === 3) {
-          stepLabel = '步骤 3 / 4 · 双击移除';
+        } else if (tutorialStep === 4) {
+          stepLabel = '步骤 4 / 5 · 双击移除';
           stepLines = ['这块放错了 —— 双击它取回 palette'];
           var mp = null;
           for (var di2 = 0; di2 < dropped.length; di2++) {
@@ -1342,7 +1355,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var lineCount = stepLines.length;
         var bubbleW = Math.min(W - 2 * bpad, 320);
         var bubbleH = 16 /*top pad*/ + 14 /*label*/ + 8 + lineCount * 20 + 12 /*bottom pad*/;
-        if (tutorialStep === 1) bubbleH += 40; // room for 下一步 button
+        if (tutorialStep === 1 || tutorialStep === 2) bubbleH += 40; // room for 下一步 button
         var bubbleX, bubbleY, tailDir;
         if (target) {
           bubbleX = Math.max(bpad, Math.min(
@@ -1431,8 +1444,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           L.tutorialSkipBtn.y + L.tutorialSkipBtn.h / 2 - 1,
           11, '#666', 'center', 'middle');
 
-        // Step 1 has a "下一步" button to advance.
-        if (tutorialStep === 1) {
+        // Steps 1 and 2 have a "下一步" button to advance.
+        if (tutorialStep === 1 || tutorialStep === 2) {
           var nbW = 96, nbH = 32;
           L.tutorialNextBtn = {
             x: bubbleX + bubbleW - nbW - 14,
@@ -1672,9 +1685,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Modal win card swallows palette drags etc.
     if (isWon && !winCardDismissed && L.winCard) return;
 
-    // Tutorial step 1 is an explainer — only the "下一步" / "跳过" buttons
+    // Tutorial steps 1 and 2 are explainers — only the "下一步" / "跳过" buttons
     // react. Block drag-starts on palette / board.
-    if (tutorialMode && tutorialStep === 1) return;
+    if (tutorialMode && (tutorialStep === 1 || tutorialStep === 2)) return;
 
     if (selectPanelOpen) {
       dragStart = { x: x, y: y };
@@ -1688,9 +1701,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // one. The block is lifted into `dragging` and removed from dropped; on
     // touchEnd we either re-place at the new cell, restore to origin, or
     // (for a quick double-tap) remove to palette.
-    // Disabled in tutorial step 2 so the player can only interact with the
+    // Disabled in tutorial step 3 so the player can only interact with the
     // designated placeable palette card.
-    if (tutorialMode && tutorialStep === 2) {
+    if (tutorialMode && tutorialStep === 3) {
       // skip board pickup
     } else if (L.cellSize && !isWon) {
       var bcs = L.cellSize;
@@ -1730,8 +1743,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     for (var i = 0; i < L.palItems.length; i++) {
       if (R.hitTest(x, y, L.palItems[i])) {
-        // Tutorial step 2 locks all palette cards except the placeable one.
-        if (tutorialMode && tutorialStep === 2 && tutorialPlaceableId
+        // Tutorial step 3 locks all palette cards except the placeable one.
+        if (tutorialMode && tutorialStep === 3 && tutorialPlaceableId
           && L.palItems[i].block.id !== tutorialPlaceableId) {
           return;
         }
@@ -1847,9 +1860,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       callbacks.onBack();
       return;
     }
-    // Tutorial step 1 "下一步" — advance to step 2.
+    // Tutorial "下一步" — advances steps 1 → 2 → 3.
     if (L.tutorialNextBtn && R.hitTest(x, y, L.tutorialNextBtn)) {
-      tutorialStep = 2;
+      if (tutorialStep === 1) tutorialStep = 2;
+      else if (tutorialStep === 2) tutorialStep = 3;
       scene.dirty = true;
       return;
     }
