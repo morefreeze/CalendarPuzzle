@@ -2173,7 +2173,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // Control row
     if (L.hintBtn && R.hitTest(x, y, L.hintBtn)) {
-      hintMode = true; hintTier = null; scene.dirty = true; return;
+      hintMode = true; hintTier = null; scene.dirty = true;
+      // Background reconcile — 拉一次最新 voucher 余额，立刻反映在 tier 弹窗上。
+      // 弹窗已经先用 cache 渲染了；reconcile 回包后 scene.dirty 再触发一次重绘。
+      if (cloudClient.getOpenid && cloudClient.getOpenid()) {
+        voucher.reconcile(cloudClient, currentPuzzleId()).then(function () {
+          scene.dirty = true;
+        });
+      }
+      return;
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;
