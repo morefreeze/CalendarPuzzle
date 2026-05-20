@@ -107,3 +107,57 @@ test('tempSlot: flush after timer already fired is a no-op (no double-write)', f
   ts.flush();
   assert.strictEqual(writeCount, 1);
 });
+
+test('tempSlot: clear deletes temp slot + cancels pending timer + drops pending payload', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();                                            // now persisted
+  assert.notStrictEqual(store.readSlot('temp'), null);
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [{ type: 'I-block' }] });
+  ts.clear();
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(timer.pending(), 0);
+  // After clear, even if a stale timer somehow fired, nothing would write
+  timer.fireAll();
+  assert.strictEqual(store.readSlot('temp'), null);
+});
+
+test('tempSlot: hasUnsavedSession is false when temp slot is empty', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var ts = TS.create({ store: store, scheduleTimeout: fakeTimer().schedule, cancelTimeout: fakeTimer().cancel });
+  assert.strictEqual(ts.hasUnsavedSession(), false);
+});
+
+test('tempSlot: hasUnsavedSession is true after temp slot is written', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  assert.strictEqual(ts.hasUnsavedSession(), true);
+});
+
+test('tempSlot: hasUnsavedSession is false after clear', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  ts.clear();
+  assert.strictEqual(ts.hasUnsavedSession(), false);
+});
+
+test('tempSlot: peekUnsaved returns the current temp slot record (or null)', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  assert.strictEqual(ts.peekUnsaved(), null);
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  var peek = ts.peekUnsaved();
+  assert.strictEqual(peek.slotId, 'temp');
+  assert.strictEqual(peek.date, '2026-05-20');
+});

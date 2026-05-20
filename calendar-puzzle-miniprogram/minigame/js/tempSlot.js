@@ -35,9 +35,26 @@ function create(opts) {
     if (pending) { _writeNow(pending); pending = null; }
   }
 
+  function clear() {
+    if (timerToken !== null) { cancelTimeout(timerToken); timerToken = null; }
+    pending = null;
+    store.deleteSlot(TEMP_SLOT_ID);
+  }
+
+  function hasUnsavedSession() {
+    return store.readSlot(TEMP_SLOT_ID) != null;
+  }
+
+  function peekUnsaved() {
+    return store.readSlot(TEMP_SLOT_ID);
+  }
+
   return {
     markDirty: markDirty,
     flush: flush,
+    clear: clear,
+    hasUnsavedSession: hasUnsavedSession,
+    peekUnsaved: peekUnsaved,
   };
 }
 
