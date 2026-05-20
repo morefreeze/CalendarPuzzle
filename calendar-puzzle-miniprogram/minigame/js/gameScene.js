@@ -2122,20 +2122,52 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cx = Math.round((gx - L.boardX) / cs);
       var cy = Math.round((gy - L.boardY) / cs);
       var onBoard = cx >= 0 && cx < 7 && cy >= 0 && cy < 8;
+      // 完全脱出棋盘：board-origin drag 释放时，方块的每个填充格都落在 7×8 之外。
+      // 视作"双击移除"——直接回到 palette，不还原也不弹"超出棋盘范围"。
+      var fullyOff = false;
+      if (dragFromBoard) {
+        fullyOff = true;
+        var shOff = dragging.shape;
+        for (var rOff = 0; rOff < shOff.length && fullyOff; rOff++) {
+          for (var cOff = 0; cOff < shOff[rOff].length; cOff++) {
+            if (shOff[rOff][cOff] === 1) {
+              var bxOff = cx + cOff;
+              var byOff = cy + rOff;
+              if (bxOff >= 0 && bxOff < 7 && byOff >= 0 && byOff < 8) {
+                fullyOff = false;
+                break;
+              }
+            }
+          }
+        }
+      }
       var placed = false;
       if (onBoard && B.isValidPlacement(dragging, { x: cx, y: cy }, allBlocks(), uncov, dragging.id)) {
         placeBlock(dragging, cx, cy, gx, gy);
         placed = true;
       } else if (onBoard) {
         showToast('无法放置！');
-      } else if (dragEnteredBoard) {
+      } else if (dragEnteredBoard && !fullyOff) {
         showToast('超出棋盘范围');
       }
-      // Block came from the board and didn't land → put it back where it was.
+      // Block came from the board and didn't land:
+      //   - 完全脱出 → 等同双击移除，把它放回 palette
+      //   - 否则恢复到原位
       if (!placed && dragFromBoard) {
-        var rb2 = B.cloneBlock(dragging);
-        rb2.x = dragOriginX; rb2.y = dragOriginY;
-        dropped.push(rb2);
+        if (fullyOff) {
+          var rbOff = B.cloneBlock(dragging);
+          delete rbOff.x; delete rbOff.y;
+          palette.push(rbOff);
+          selected = null;
+          // 教程步骤 4：若拖出的是预设错位块，等同双击触发的推进。
+          if (tutorialMode && tutorialStep === 4 && dragging.id === tutorialMisplacedId) {
+            tutorialStep = 5;
+          }
+        } else {
+          var rb2 = B.cloneBlock(dragging);
+          rb2.x = dragOriginX; rb2.y = dragOriginY;
+          dropped.push(rb2);
+        }
       }
       dragging = null;
       dragHasMoved = false;

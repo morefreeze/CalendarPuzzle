@@ -94,3 +94,25 @@ first-launch tutorial, then walk through all 5 steps. Confirm:
 
 No automated test coverage exists for tutorial flow in this repo — manual
 verification is the bar.
+
+## Addendum — drag-fully-off shortcut
+
+Bundled in the same PR.
+
+**Rule:** if a board-origin drag releases with **every filled cell of the
+block outside the 7×8 grid**, treat it as the same operation as double-tap
+removal — clone the block, strip `x`/`y`, push to `palette`, clear `selected`.
+The "超出棋盘范围" toast is suppressed in that case.
+
+If any filled cell still overlaps the board (even one cell), the existing
+"restore to origin" branch applies, unchanged.
+
+Only `dragFromBoard` drags trigger this; palette-origin drags off-board keep
+their current "超出棋盘范围" toast.
+
+Tutorial parity: if the misplaced block (`tutorialMisplacedId`) is the one
+dragged fully off during step 4, the state machine advances to step 5 — same
+behavior as the double-tap path.
+
+Touch point: `gameScene.js` drag-end (`scene.onTouchEnd`, the `dragHasMoved`
+branch). Single-file change.
