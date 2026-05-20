@@ -18,8 +18,8 @@ var _storage = {
 };
 
 var _slotStore = slotStore.create({ storage: _storage });
-var _tempSlot = tempSlot.create({ store: _slotStore });
 var _slotBinding = slotBinding.create();
+var _tempSlot = tempSlot.create({ store: _slotStore, binding: _slotBinding });
 
 module.exports = {
   slotStore: _slotStore,
