@@ -48,14 +48,25 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
     }, function () { /* offline — game still playable via stamina */ });
   } catch (e) { /* wx.cloud unavailable — same fallback */ }
 
-  if (tryLaunchShared(launchQuery)) return;
-  // First-launch tutorial — unless the user already completed (or skipped) it.
+  // First-launch tutorial gates everything except the helper-invite flow.
+  // Friends-shared puzzle deep-links (d/c/date) get stashed and consumed
+  // after the tutorial finishes — onboarding wins, but the share intent is
+  // preserved.
   if (!progress.isTutorialDone()) {
+    if (isSharedPuzzleQuery(launchQuery)) {
+      pendingSharedQuery = launchQuery;
+    }
     startTutorial();
     return;
   }
+  if (tryLaunchShared(launchQuery)) return;
   goToSelect();
 }
+
+// Set during cold-start when a first-launch user arrives via a friend's
+// puzzle-share card. Consumed by the tutorial's onBack so the player lands
+// on the shared puzzle after onboarding. One-shot — cleared on consume.
+var pendingSharedQuery = null;
 
 // In-memory dedup so init + onShow don't double-call helpInvite for the same (inviter,t).
 // Cleared on app cold start (module reload); within one session, same link is processed once.
@@ -113,15 +124,21 @@ function startTutorial() {
   }, 50);
 }
 
-function tryLaunchShared(q) {
+// Pure validation: does `q` look like a valid puzzle-share deep-link?
+// (Helper-invite links carry inviter+t and route through tryConsumeInviterLink
+// — those don't count here.)
+function isSharedPuzzleQuery(q) {
   if (!q || !q.d || q.c === undefined) return false;
-  // Helper-flow takes priority over puzzle-deep-link: if the link also carries
-  // inviter+t, this is an invite share — route the helper through selectScene
-  // so they see the "助力成功" modal (set by tryConsumeInviterLink).
   if (q.inviter && q.t) return false;
   if (!PG.DIFFICULTY_CONFIG[q.d]) return false;
   var ci = parseInt(q.c, 10);
   if (isNaN(ci) || ci < 0) return false;
+  return true;
+}
+
+function tryLaunchShared(q) {
+  if (!isSharedPuzzleQuery(q)) return false;
+  var ci = parseInt(q.c, 10);
   var date = PG.parseDateStr(q.date) || new Date();
   showLoading();
   setTimeout(function () {
@@ -184,6 +201,13 @@ function launchGameScene(difficulty, puzzle) {
       launchGameScene(difficulty, newPuzzle);
     },
     onBack: function () {
+      // Tutorial → shared-puzzle handoff: if a friend's share-card brought a
+      // first-time player in, the deep-link was stashed and consumed here.
+      if (pendingSharedQuery) {
+        var q = pendingSharedQuery;
+        pendingSharedQuery = null;
+        if (tryLaunchShared(q)) return;
+      }
       goToSelect();
     },
   });
