@@ -1,0 +1,52 @@
+var test = require('node:test');
+var assert = require('node:assert');
+var SS = require('../minigame/js/slotStore');
+
+function fakeStorage() {
+  var store = {};
+  return {
+    setItem: function (k, v) { store[k] = String(v); },
+    getItem: function (k) { return k in store ? store[k] : null; },
+    removeItem: function (k) { delete store[k]; },
+    _peek: function () { return store; },
+  };
+}
+
+test('slotStore: writeSlot then readSlot round-trips and stamps savedAt + schemaVersion + slotId', function () {
+  var s = fakeStorage();
+  var fixedNow = 1716181000000;
+  var ss = SS.create({ storage: s, now: function () { return fixedNow; } });
+  ss.writeSlot('named-1', {
+    date: '2026-05-20',
+    difficulty: 'easy',
+    comboIndex: 3,
+    placedBlocks: [{ type: 'I-block', x: 2, y: 3, rotation: 0, mirrored: false, locked: false }],
+    paletteBlocks: ['T-block', 'L-block'],
+    elapsedMs: 87000,
+    hintsUsed: 1,
+  });
+  var got = ss.readSlot('named-1');
+  assert.strictEqual(got.slotId, 'named-1');
+  assert.strictEqual(got.savedAt, fixedNow);
+  assert.strictEqual(got.schemaVersion, SS.SCHEMA_VERSION);
+  assert.strictEqual(got.date, '2026-05-20');
+  assert.strictEqual(got.difficulty, 'easy');
+  assert.strictEqual(got.comboIndex, 3);
+  assert.deepStrictEqual(got.paletteBlocks, ['T-block', 'L-block']);
+  assert.strictEqual(got.elapsedMs, 87000);
+  assert.strictEqual(got.hintsUsed, 1);
+});
+
+test('slotStore: writeSlot uses STORAGE_KEY_PREFIX + slotId for the storage key', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s });
+  ss.writeSlot('named-2', { date: '2026-05-20', difficulty: 'easy', comboIndex: 0 });
+  var keys = Object.keys(s._peek());
+  assert.deepStrictEqual(keys, [SS.STORAGE_KEY_PREFIX + 'named-2']);
+});
+
+test('slotStore: readSlot returns null for non-existent slot', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  assert.strictEqual(ss.readSlot('named-1'), null);
+  assert.strictEqual(ss.readSlot('temp'), null);
+});
