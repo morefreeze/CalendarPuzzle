@@ -633,7 +633,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Hint popup
     if (hintMode) {
       var popW = W * 0.78;
-      var popH = 290;
+      // popH 加高到 340 容纳新的 footer "邀请好友助力" chip（之前 290 会盖住强档行）
+      var popH = 340;
       L.hintPopup = { x: (W - popW) / 2, y: (H - popH) / 2, w: popW, h: popH };
 
       if (!hintTier) {
@@ -1052,7 +1053,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.tierFooterInviteBtn) {
         var footerHelps = voucher.getHelpsTodayCount();
         var footerHelpMed = voucher.getHelpMediumBalance();
-        var footerLbl = '👥 邀请好友助力（已助力 ' + footerHelps + ' 位';
+        // "今日 N 次助力" = 今天有 N 位不同好友点了你的助力链接（同一好友一天 1 次）
+        var footerLbl = '👥 邀请好友助力（今日 ' + footerHelps + ' 次助力';
         if (footerHelpMed >= 2) footerLbl += ' · 可换 ' + Math.floor(footerHelpMed / 2) + ' 张强';
         footerLbl += '）';
         R.roundRect(ctx, L.tierFooterInviteBtn.x, L.tierFooterInviteBtn.y,
@@ -1072,10 +1074,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
       var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
       R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
-      // Stat line: 好友已助力 N 位 · 持有助力中 M 张
+      // Stat line: 今日 N 次助力（不同好友数）· 助力中提示 M 张（库存）
       var helpsTodayN = voucher.getHelpsTodayCount();
       var helpMedN = voucher.getHelpMediumBalance();
-      R.text(ctx, '好友已助力 ' + helpsTodayN + ' 位 · 持有助力中 ' + helpMedN + ' 张',
+      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 助力中提示 ' + helpMedN + ' 张',
         sm.x + sm.w / 2, sm.y + 50, 12, '#666', 'center');
       R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 72, 12, '#999', 'left');
       for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
