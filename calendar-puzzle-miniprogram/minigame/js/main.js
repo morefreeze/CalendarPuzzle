@@ -188,7 +188,7 @@ function startGame(difficulty) {
   }, 50);
 }
 
-function launchGameScene(difficulty, puzzle) {
+function launchGameScene(difficulty, puzzle, savedState) {
   shareState.setCurrent({
     difficulty: difficulty,
     difficultyLabel: PG.DIFFICULTY_CONFIG[difficulty].label,
@@ -210,7 +210,7 @@ function launchGameScene(difficulty, puzzle) {
       }
       goToSelect();
     },
-  });
+  }, savedState);
   currentScene.dirty = true;
 }
 
