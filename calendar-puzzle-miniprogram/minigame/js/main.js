@@ -164,27 +164,30 @@ function showLoading() {
 
 function goToSelect() {
   if (currentScene && currentScene.destroy) currentScene.destroy();
-  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty) {
-    startGame(difficulty);
+  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty, savedState) {
+    startGame(difficulty, savedState);
   }, {
     onReplayTutorial: function () { startTutorial(); },
   });
   currentScene.dirty = true;
 }
 
-function startGame(difficulty) {
+function startGame(difficulty, savedState) {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = null; // clear while generating
 
   showLoading();
 
   setTimeout(function () {
-    var puzzle = PG.generatePuzzle(difficulty);
+    var puzzle = PG.generatePuzzle(difficulty, {
+      date: savedState ? new Date(savedState.date) : new Date(),
+      comboIndex: savedState ? savedState.comboIndex : undefined,
+    });
     if (!puzzle) {
       goToSelect();
       return;
     }
-    launchGameScene(difficulty, puzzle);
+    launchGameScene(difficulty, puzzle, savedState);
   }, 50);
 }
 
