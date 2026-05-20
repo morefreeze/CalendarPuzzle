@@ -161,3 +161,68 @@ test('tempSlot: peekUnsaved returns the current temp slot record (or null)', fun
   assert.strictEqual(peek.slotId, 'temp');
   assert.strictEqual(peek.date, '2026-05-20');
 });
+
+function fakeBinding(initial) {
+  var bound = initial || null;
+  return {
+    getBound: function () { return bound; },
+    bind: function (id) { bound = id; },
+    clearActive: function () { bound = null; },
+  };
+}
+
+test('tempSlot: writes to TEMP_SLOT_ID when no binding provided', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  assert.notStrictEqual(store.readSlot('temp'), null);
+});
+
+test('tempSlot: routes write to bound slot when binding returns a named slot', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var binding = fakeBinding('named-2');
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  assert.strictEqual(store.readSlot('temp'), null);
+  var got = store.readSlot('named-2');
+  assert.notStrictEqual(got, null);
+  assert.strictEqual(got.slotId, 'named-2');
+});
+
+test('tempSlot: flips active target mid-session via binding.bind', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  // First write → temp (no binding)
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  assert.notStrictEqual(store.readSlot('temp'), null);
+  // Now bind to named-1
+  binding.bind('named-1');
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [{ type: 'I-block' }] });
+  timer.fireAll();
+  // The post-bind write went to named-1
+  assert.notStrictEqual(store.readSlot('named-1'), null);
+  // temp still has the pre-bind state (caller is responsible for deleteSlot('temp') when picking)
+  assert.notStrictEqual(store.readSlot('temp'), null);
+});
+
+test('tempSlot: cancelPending drops the timer + pending payload without writing', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  assert.strictEqual(timer.pending(), 1);
+  ts.cancelPending();
+  assert.strictEqual(timer.pending(), 0);
+  timer.fireAll();
+  assert.strictEqual(store.readSlot('temp'), null);
+});
