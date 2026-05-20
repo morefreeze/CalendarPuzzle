@@ -11,6 +11,9 @@ var Hint = require('./hint');
 var Voucher = require('./voucher');
 var cloudClient = require('./cloudClient');
 var slotsGlobal = require('./slotsGlobal');
+var slotUI = require('./slotUI');
+var slotStoreModule = require('./slotStore');
+var NAMED_SLOT_IDS = slotStoreModule.NAMED_SLOT_IDS || ['named-1', 'named-2', 'named-3'];
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -99,6 +102,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // Set when user picks a tier that needs stamina (no voucher, has stamina, confirm not skipped).
   // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
   var staminaConfirm = null;
+
+  // ---- Save-slot modal state ----
+  var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
+  var slotPickerSelectedIdx = 0;      // 0..2
+  var slotPickerLayoutCache = null;   // cached layout for the active modal
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
@@ -357,6 +365,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        // Force-close any open save modal (corner case: player completes puzzle while picker was open).
+        slotModal = null; slotPickerLayoutCache = null;
         if (tutorialMode) tutorialStep = 5;
         wonCombos[puzzle.currentComboIndex] = true;
         if (!tutorialMode) {
@@ -558,6 +568,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.staminaW = 92; L.staminaH = 22;
     L.staminaX = W - L.staminaW - pad;
     L.staminaY = L.diffY + (22 - L.staminaH) / 2 + 2;
+
+    // 💾 Save button — 4 px to the left of the stamina capsule, vertically centred.
+    L.saveBtn = slotUI.saveBtnLayout({ x: L.staminaX, y: L.staminaY, w: L.staminaW, h: L.staminaH });
 
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
@@ -849,6 +862,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var stTxt = '体力 ' + cur;
       if (cur < stamina.MAX_STAMINA) stTxt += '  ↻' + formatMMSS(rs);
       R.text(ctx, stTxt, L.staminaX + L.staminaW / 2, L.staminaY + 4, 10, '#E65100', 'center');
+      // 💾 Save button next to stamina capsule
+      if (L.saveBtn) slotUI.drawSaveBtn(ctx, L.saveBtn);
     }
 
     // (Tutorial bubble is rendered later, after palette + board, so it
@@ -1711,6 +1726,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         toast.msg = '';
       }
     }
+
+    // --- Save-slot modals (rendered on top of everything, including toast) ---
+    if (slotModal === 'save-picker') {
+      if (!slotPickerLayoutCache) {
+        slotPickerLayoutCache = slotUI.savePickerLayout(W, H, safeInsets);
+      }
+      R.overlay(ctx, W, H);
+      var _slots = _slotStore.readAllNamed();
+      slotUI.drawSavePicker(ctx, slotPickerLayoutCache, _slots, slotPickerSelectedIdx);
+    } else if (slotModal === 'overwrite-warning') {
+      if (!slotPickerLayoutCache) {
+        slotPickerLayoutCache = slotUI.overwriteWarningLayout(W, H, safeInsets);
+      }
+      R.overlay(ctx, W, H);
+      var _slots2 = _slotStore.readAllNamed();
+      var _on = slotUI.pickOldestNewest(_slots2);
+      slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx);
+    }
   };
 
   // ---- TOUCH ----
@@ -1853,6 +1886,95 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // ── Save-slot modals: intercept ALL taps while a modal is open. ──
+    if (slotModal === 'save-picker' && slotPickerLayoutCache) {
+      var hit = slotUI.savePickerHitTest(x, y, slotPickerLayoutCache);
+      if (hit === 'cancel') {
+        slotModal = null; slotPickerLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      if (hit && hit.indexOf('slot-') === 0) {
+        slotPickerSelectedIdx = parseInt(hit.slice(5), 10);
+        scene.dirty = true;
+        return;
+      }
+      if (hit === 'confirm') {
+        var targetSlotId = NAMED_SLOT_IDS[slotPickerSelectedIdx];
+        var existingAll = _slotStore.readAllNamed();
+        var pickedExists = existingAll[slotPickerSelectedIdx] !== null;
+        if (pickedExists) {
+          // Switch to overwrite-warning instead of silently overwriting.
+          slotModal = 'overwrite-warning';
+          slotPickerLayoutCache = null;
+          scene.dirty = true;
+          return;
+        }
+        _slotStore.writeSlot(targetSlotId, captureState());
+        _slotBinding.bind(targetSlotId);
+        slotModal = null; slotPickerLayoutCache = null;
+        showToast('已存到槽位 ' + (slotPickerSelectedIdx + 1));
+        scene.dirty = true;
+        return;
+      }
+      // Tap on overlay outside panel or on panel non-interactive area: swallow.
+      return;
+    }
+
+    if (slotModal === 'overwrite-warning' && slotPickerLayoutCache) {
+      var hit2 = slotUI.overwriteWarningHitTest(x, y, slotPickerLayoutCache);
+      if (hit2 === 'cancel') {
+        slotModal = null; slotPickerLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      if (hit2 && hit2.indexOf('slot-') === 0) {
+        slotPickerSelectedIdx = parseInt(hit2.slice(5), 10);
+        scene.dirty = true;
+        return;
+      }
+      if (hit2 === 'confirm') {
+        var slotIds2 = NAMED_SLOT_IDS;
+        var targetId2 = slotIds2[slotPickerSelectedIdx];
+        _slotStore.writeSlot(targetId2, captureState());
+        _slotBinding.bind(targetId2);
+        slotModal = null; slotPickerLayoutCache = null;
+        showToast('已覆盖槽位 ' + (slotPickerSelectedIdx + 1));
+        scene.dirty = true;
+        return;
+      }
+      return;
+    }
+
+    // ── Save button tap: silent overwrite if bound; otherwise open picker. ──
+    if (L.saveBtn && R.hitTest(x, y, L.saveBtn)) {
+      var bound = _slotBinding.getBound();
+      if (bound) {
+        _slotStore.writeSlot(bound, captureState());
+        showToast('已更新槽位 ' + bound.slice(-1));
+        scene.dirty = true;
+        return;
+      }
+      // No binding: open save picker. Pre-select first empty slot.
+      var allSlots = _slotStore.readAllNamed();
+      var firstEmpty = -1;
+      for (var fei = 0; fei < allSlots.length; fei++) {
+        if (allSlots[fei] === null) { firstEmpty = fei; break; }
+      }
+      if (firstEmpty === -1) {
+        // All occupied: jump straight to overwrite-warning; pre-select oldest.
+        slotModal = 'overwrite-warning';
+        var _onBound = slotUI.pickOldestNewest(allSlots);
+        slotPickerSelectedIdx = _onBound.oldestIdx !== null ? _onBound.oldestIdx : 0;
+      } else {
+        slotModal = 'save-picker';
+        slotPickerSelectedIdx = firstEmpty;
+      }
+      slotPickerLayoutCache = null;
+      scene.dirty = true;
+      return;
+    }
+
     // ── Win modal: × dismisses; 随机下一题 / 完成新手教程 advances; share
     //    shares; tap outside dismisses; tap inside (not a button) is swallowed.
     if (isWon && !winCardDismissed && L.winCard) {
