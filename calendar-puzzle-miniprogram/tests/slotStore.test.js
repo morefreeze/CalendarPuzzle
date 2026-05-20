@@ -102,3 +102,26 @@ test('slotStore: writeSlot with null/undefined payload is a no-op', function () 
   ss.writeSlot('named-1', undefined);
   assert.strictEqual(ss.readSlot('named-1'), null);
 });
+
+test('slotStore: getMaxNamedSlots default is 3 when no dev override', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  assert.strictEqual(ss.getMaxNamedSlots(), 3);
+});
+
+test('slotStore: getMaxNamedSlots reads dev override from cps:devMaxSlots', function () {
+  var s = fakeStorage();
+  s.setItem(SS.DEV_MAX_SLOTS_KEY, '7');
+  var ss = SS.create({ storage: s });
+  assert.strictEqual(ss.getMaxNamedSlots(), 7);
+});
+
+test('slotStore: getMaxNamedSlots ignores invalid dev override (NaN, zero, negative)', function () {
+  var s = fakeStorage();
+  s.setItem(SS.DEV_MAX_SLOTS_KEY, 'banana');
+  var ss = SS.create({ storage: s });
+  assert.strictEqual(ss.getMaxNamedSlots(), 3);
+  s.setItem(SS.DEV_MAX_SLOTS_KEY, '0');
+  assert.strictEqual(ss.getMaxNamedSlots(), 3);
+  s.setItem(SS.DEV_MAX_SLOTS_KEY, '-2');
+  assert.strictEqual(ss.getMaxNamedSlots(), 3);
+});

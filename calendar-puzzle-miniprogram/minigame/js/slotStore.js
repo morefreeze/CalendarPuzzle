@@ -50,11 +50,23 @@ function create(opts) {
     try { storage.removeItem(_key(slotId)); } catch (e) { /* swallow */ }
   }
 
+  function getMaxNamedSlots() {
+    try {
+      var raw = storage.getItem(DEV_MAX_SLOTS_KEY);
+      if (raw) {
+        var n = parseInt(raw, 10);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    } catch (e) { /* swallow */ }
+    return 3;
+  }
+
   return {
     readSlot: readSlot,
     readAllNamed: readAllNamed,
     writeSlot: writeSlot,
     deleteSlot: deleteSlot,
+    getMaxNamedSlots: getMaxNamedSlots,
   };
 }
 
