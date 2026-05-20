@@ -87,3 +87,18 @@ test('slotStore: deleteSlot is idempotent (no throw on missing key)', function (
   ss.deleteSlot('named-1');                  // again
   assert.strictEqual(ss.readSlot('named-1'), null);
 });
+
+test('slotStore: malformed JSON in storage reads as null (no throw)', function () {
+  var s = fakeStorage();
+  s.setItem(SS.STORAGE_KEY_PREFIX + 'named-1', '{not json');
+  var ss = SS.create({ storage: s });
+  assert.strictEqual(ss.readSlot('named-1'), null);
+});
+
+test('slotStore: writeSlot with null/undefined payload is a no-op', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s });
+  ss.writeSlot('named-1', null);
+  ss.writeSlot('named-1', undefined);
+  assert.strictEqual(ss.readSlot('named-1'), null);
+});
