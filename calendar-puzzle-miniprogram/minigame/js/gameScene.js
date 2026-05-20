@@ -1074,10 +1074,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
       var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
       R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
-      // Stat line: 今日 N 次助力（不同好友数）· 助力中提示 M 张（库存）
+      // Stat line: 今日 N 次助力（不同好友数）· 已获取中提示 M 次（可兑换强提示的中券库存）
       var helpsTodayN = voucher.getHelpsTodayCount();
       var helpMedN = voucher.getHelpMediumBalance();
-      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 助力中提示 ' + helpMedN + ' 张',
+      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 已获取中提示 ' + helpMedN + ' 次',
         sm.x + sm.w / 2, sm.y + 50, 12, '#666', 'center');
       R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 72, 12, '#999', 'left');
       for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
