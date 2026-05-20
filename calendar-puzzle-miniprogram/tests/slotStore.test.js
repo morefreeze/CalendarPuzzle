@@ -50,3 +50,23 @@ test('slotStore: readSlot returns null for non-existent slot', function () {
   assert.strictEqual(ss.readSlot('named-1'), null);
   assert.strictEqual(ss.readSlot('temp'), null);
 });
+
+test('slotStore: readAllNamed returns 3-element array, null for empty slots', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.writeSlot('named-2', { date: '2026-05-20', difficulty: 'easy', comboIndex: 0 });
+  var all = ss.readAllNamed();
+  assert.strictEqual(all.length, 3);
+  assert.strictEqual(all[0], null);
+  assert.strictEqual(all[1].slotId, 'named-2');
+  assert.strictEqual(all[2], null);
+});
+
+test('slotStore: readAllNamed preserves NAMED_SLOT_IDS order', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.writeSlot('named-3', { date: '2026-05-20', difficulty: 'easy', comboIndex: 0 });
+  ss.writeSlot('named-1', { date: '2026-05-19', difficulty: 'hard', comboIndex: 1 });
+  var all = ss.readAllNamed();
+  assert.strictEqual(all[0].date, '2026-05-19');  // named-1
+  assert.strictEqual(all[1], null);                // named-2
+  assert.strictEqual(all[2].date, '2026-05-20');  // named-3
+});

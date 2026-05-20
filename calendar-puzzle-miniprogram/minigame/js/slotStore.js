@@ -38,8 +38,17 @@ function create(opts) {
     try { storage.setItem(_key(slotId), JSON.stringify(record)); } catch (e) { /* swallow */ }
   }
 
+  function readAllNamed() {
+    var out = [];
+    for (var i = 0; i < NAMED_SLOT_IDS.length; i++) {
+      out.push(readSlot(NAMED_SLOT_IDS[i]));
+    }
+    return out;
+  }
+
   return {
     readSlot: readSlot,
+    readAllNamed: readAllNamed,
     writeSlot: writeSlot,
   };
 }
