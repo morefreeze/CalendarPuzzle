@@ -11,12 +11,14 @@ function create(opts) {
   var debounceMs = (typeof opts.debounceMs === 'number') ? opts.debounceMs : DEFAULT_DEBOUNCE_MS;
   var scheduleTimeout = opts.scheduleTimeout || setTimeout;
   var cancelTimeout = opts.cancelTimeout || clearTimeout;
+  var binding = opts.binding || null;
 
   var pending = null;
   var timerToken = null;
 
   function _writeNow(payload) {
-    store.writeSlot(TEMP_SLOT_ID, payload);
+    var slotId = (binding && binding.getBound()) || TEMP_SLOT_ID;
+    store.writeSlot(slotId, payload);
   }
 
   function markDirty(payload) {
@@ -43,6 +45,11 @@ function create(opts) {
     store.deleteSlot(TEMP_SLOT_ID);
   }
 
+  function cancelPending() {
+    if (timerToken !== null) { cancelTimeout(timerToken); timerToken = null; }
+    pending = null;
+  }
+
   function hasUnsavedSession() {
     return store.readSlot(TEMP_SLOT_ID) !== null;
   }
@@ -55,6 +62,7 @@ function create(opts) {
     markDirty: markDirty,
     flush: flush,
     clear: clear,
+    cancelPending: cancelPending,
     hasUnsavedSession: hasUnsavedSession,
     peekUnsaved: peekUnsaved,
   };
