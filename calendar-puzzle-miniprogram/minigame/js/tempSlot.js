@@ -25,6 +25,8 @@ function create(opts) {
     timerToken = scheduleTimeout(function () {
       var toWrite = pending;
       pending = null;
+      // Clear token BEFORE writing so a re-entrant markDirty during writeSlot
+      // schedules a fresh timer rather than hitting the early-return guard.
       timerToken = null;
       if (toWrite) _writeNow(toWrite);
     }, debounceMs);
@@ -42,7 +44,7 @@ function create(opts) {
   }
 
   function hasUnsavedSession() {
-    return store.readSlot(TEMP_SLOT_ID) != null;
+    return store.readSlot(TEMP_SLOT_ID) !== null;
   }
 
   function peekUnsaved() {
