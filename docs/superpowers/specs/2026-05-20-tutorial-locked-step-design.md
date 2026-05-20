@@ -139,3 +139,49 @@ cloud-verified close path (close only on `shareGroup.ok`) since failed
 share-group attempts need the menu open for retry.
 
 Touch point: `gameScene.js::triggerHelpInvite`.
+
+## Addendum — first-launch tutorial must beat share-card deep links
+
+Bundled in the same PR.
+
+**Bug:** users reported that first-time entry didn't show the tutorial. Root
+cause: in `main.js::init`, the order was
+
+```
+if (tryLaunchShared(launchQuery)) return;
+if (!progress.isTutorialDone()) startTutorial();
+```
+
+A friend's share card carries `d=&c=&date=`, so `tryLaunchShared` routed the
+first-time visitor straight into the deep-linked puzzle and the tutorial
+check never ran. Since most viral first-touches come through share cards,
+this hid the tutorial from the majority of new users.
+
+**Fix:** invert the priority. First-launch users always see the tutorial
+first. To preserve share intent, the launch query is stashed and consumed
+after tutorial completion/skip:
+
+```
+if (!progress.isTutorialDone()) {
+  if (isSharedPuzzleQuery(launchQuery)) pendingSharedQuery = launchQuery;
+  startTutorial();
+  return;
+}
+if (tryLaunchShared(launchQuery)) return;
+goToSelect();
+```
+
+- `pendingSharedQuery` is a module-level one-shot variable. Set only in the
+  first-launch branch, cleared on consume.
+- `onBack` in `launchGameScene` checks `pendingSharedQuery` before falling
+  back to `goToSelect`. The tutorial's skip + win-complete both route through
+  `onBack`, so either exit picks up the stash.
+- `isSharedPuzzleQuery(q)` is the pure-validation half of `tryLaunchShared` —
+  same predicate, no side effects. `tryLaunchShared` now delegates to it.
+
+Helper-invite links (`inviter`+`t`) are excluded by `isSharedPuzzleQuery` and
+continue to flow through `tryConsumeInviterLink` → `GameGlobal.pendingHelperModal`
+unchanged.
+
+Touch point: `main.js::init`, `main.js::launchGameScene::onBack`,
+`main.js::isSharedPuzzleQuery` (new), `main.js::tryLaunchShared`.
