@@ -46,6 +46,16 @@ try {
 // Initialize
 main.init(canvas, ctx, W, H, safe, menuBtn, launchQuery);
 
+// Warm-show: every time the mini-game returns to foreground (background → foreground,
+// share-card relaunch while warm, etc.) re-run reconcile + handle any new invite link.
+// Cold start is handled separately by main.init above using getLaunchOptionsSync.
+if (typeof wx.onShow === 'function') {
+  wx.onShow(function (res) {
+    var q = (res && res.query) || {};
+    main.onShow(q);
+  });
+}
+
 // Game loop
 function loop() {
   main.render();

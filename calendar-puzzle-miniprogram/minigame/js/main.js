@@ -57,18 +57,38 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
   goToSelect();
 }
 
+// In-memory dedup so init + onShow don't double-call helpInvite for the same (inviter,t).
+// Cleared on app cold start (module reload); within one session, same link is processed once.
+var lastProcessedInvite = null;
+
 function tryConsumeInviterLink(q) {
   if (!q || !q.inviter || !q.t) return;
+  var key = q.inviter + '|' + q.t;
+  if (lastProcessedInvite === key) return;
+  lastProcessedInvite = key;
   cloudClient.helpInvite(q.inviter, q.t).then(function (r) {
     if (r && r.ok) {
       voucher.applyGranted('weak', 'helperGift');
       voucher.reconcile(cloudClient, null);
-      GameGlobal.pendingHelperModal = { inviterNickname: r.inviterNickname || 'Ta' };
-      if (currentScene) currentScene.dirty = true;
+      GameGlobal.pendingHelperModal = {
+        inviterNickname: r.inviterNickname || 'Ta',
+        mode: 'fresh',
+      };
+      // Force-route to selectScene so the modal always renders, regardless of what
+      // the user tapped while helpInvite was in-flight (cold-start race: user may
+      // have tapped into difficulty → gameScene, which doesn't render this modal).
+      goToSelect();
+    } else if (r && r.err === 'duplicate') {
+      // 第一次冷启动已经 grant 过了；这次只是 surface 反馈给用户。
+      // 同样进 selectScene 渲染 modal（带 'duplicate' 文案），保证用户能看到「已经助力」状态。
+      GameGlobal.pendingHelperModal = {
+        inviterNickname: r.inviterNickname || 'Ta',
+        mode: 'duplicate',
+      };
+      goToSelect();
     } else {
       var msg = ({
         'self-help': '不能给自己助力',
-        'duplicate': '今天已经为他助力过啦',
         'bad-token': '链接无效',
       })[r && r.err] || '助力失败';
       if (typeof wx !== 'undefined' && wx.showToast) {
@@ -193,9 +213,24 @@ function onWheel(dy) {
   if (currentScene && currentScene.onWheel) currentScene.onWheel(dy);
 }
 
+// Called when the mini-game returns to foreground (warm relaunch from a share card,
+// switching back from another app, etc.). game.js wires wx.onShow → main.onShow.
+function onShow(query) {
+  // Refresh voucher cache so footer / popup counts reflect any cloud-side changes
+  // that happened while we were backgrounded (e.g. a friend just clicked our invite).
+  if (cloudClient.getOpenid && cloudClient.getOpenid()) {
+    voucher.reconcile(cloudClient, null);
+  }
+  // If the user just tapped a fresh invite share card, the new query is here.
+  // tryConsumeInviterLink dedups internally so back-to-back init+onShow with the
+  // same (inviter,t) only call helpInvite once.
+  tryConsumeInviterLink(query || {});
+}
+
 module.exports = {
   init: init,
   render: render,
+  onShow: onShow,
   onTouchStart: onTouchStart,
   onTouchMove: onTouchMove,
   onTouchEnd: onTouchEnd,

@@ -189,17 +189,22 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
 
     // Helper landing modal (helper just opened an invite link → cloud
     // helpInvite resolved → set GameGlobal.pendingHelperModal).
+    // mode='fresh' = just succeeded; mode='duplicate' = already helped today (silent rebroadcast).
     var hm = getHelperModal();
     if (hm) {
       R.overlay(ctx, W, H);
       var mW = Math.min(W * 0.8, 320), mH = 200;
       var mx = (W - mW) / 2, my = (H - mH) / 2;
       R.roundRect(ctx, mx, my, mW, mH, 16, '#fff');
-      R.textBold(ctx, '👏 助力成功', mx + mW / 2, my + 28, 19, '#2E7D32', 'center');
-      R.text(ctx, '已为 ' + hm.inviterNickname + ' 助力',
-        mx + mW / 2, my + 76, 14, '#333', 'center');
-      R.text(ctx, '+1 张弱提示已到账',
-        mx + mW / 2, my + 104, 13, '#666', 'center');
+      var isDup = hm.mode === 'duplicate';
+      var title = isDup ? '今日已助力' : '👏 助力成功';
+      var sub = isDup
+        ? '今天已为 ' + hm.inviterNickname + ' 助力过啦'
+        : '已为 ' + hm.inviterNickname + ' 助力';
+      var detail = isDup ? '弱提示先前已到账' : '+1 张弱提示已到账';
+      R.textBold(ctx, title, mx + mW / 2, my + 28, 19, '#2E7D32', 'center');
+      R.text(ctx, sub, mx + mW / 2, my + 76, 14, '#333', 'center');
+      R.text(ctx, detail, mx + mW / 2, my + 104, 13, '#666', 'center');
       var btnW = 180, btnH = 40;
       var btnX = mx + (mW - btnW) / 2, btnY = my + mH - btnH - 18;
       R.button(ctx, btnX, btnY, btnW, btnH, '去玩今天的题', '#43A047', '#fff', 8);
