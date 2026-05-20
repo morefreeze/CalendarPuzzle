@@ -30,8 +30,14 @@ function create(opts) {
     }, debounceMs);
   }
 
+  function flush() {
+    if (timerToken !== null) { cancelTimeout(timerToken); timerToken = null; }
+    if (pending) { _writeNow(pending); pending = null; }
+  }
+
   return {
     markDirty: markDirty,
+    flush: flush,
   };
 }
 

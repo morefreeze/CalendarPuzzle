@@ -72,3 +72,38 @@ test('tempSlot: rapid markDirty coalesces into ONE write (debounce)', function (
   // Final write reflects the LAST payload (2 placed blocks):
   assert.strictEqual(store.readSlot('temp').placedBlocks.length, 2);
 });
+
+test('tempSlot: flush writes pending payload immediately + cancels timer', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(timer.pending(), 1);
+  ts.flush();
+  assert.notStrictEqual(store.readSlot('temp'), null);        // written
+  assert.strictEqual(timer.pending(), 0);                      // timer cancelled
+});
+
+test('tempSlot: flush with no pending payload is a no-op', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var ts = TS.create({ store: store, scheduleTimeout: fakeTimer().schedule, cancelTimeout: fakeTimer().cancel });
+  ts.flush();
+  assert.strictEqual(store.readSlot('temp'), null);
+});
+
+test('tempSlot: flush after timer already fired is a no-op (no double-write)', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var writeCount = 0;
+  var origSet = s.setItem;
+  s.setItem = function (k, v) { writeCount++; origSet(k, v); };
+  var ts = TS.create({ store: store, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  timer.fireAll();
+  assert.strictEqual(writeCount, 1);
+  ts.flush();
+  assert.strictEqual(writeCount, 1);
+});
