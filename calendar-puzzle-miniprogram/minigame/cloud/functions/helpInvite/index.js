@@ -43,7 +43,13 @@ async function _impl(event, cloud) {
   if (!inviter || !t) return { ok: false, err: 'invalid-input' };
 
   var helper = cloud.getWXContext().OPENID;
-  if (inviter === helper) return { ok: false, err: 'self-help' };
+  // self-help 默认禁；env ALLOW_SELF_HELP_OPENIDS (逗号分隔 openid) 里的人可以绕过，
+  // 调试/E2E 自助力一台设备就够。生产环境不要配这个 env。
+  if (inviter === helper) {
+    var allowSelf = (process.env.ALLOW_SELF_HELP_OPENIDS || '')
+      .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (allowSelf.indexOf(helper) < 0) return { ok: false, err: 'self-help' };
+  }
 
   var secret = process.env.HELP_TOKEN_SECRET;
   if (!secret) return { ok: false, err: 'server-misconfigured' };
