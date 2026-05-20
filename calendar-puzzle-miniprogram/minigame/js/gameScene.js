@@ -10,6 +10,7 @@ var progress = require('./progress');
 var Hint = require('./hint');
 var Voucher = require('./voucher');
 var cloudClient = require('./cloudClient');
+var slotsGlobal = require('./slotsGlobal');
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -39,9 +40,14 @@ function setStaminaConfirmSkipUntilNext5AM() {
   } catch (e) { /* ignore */ }
 }
 
-module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
+module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState) {
   var scene = {};
   scene.dirty = true;
+
+  // ---- Slots singletons ----
+  var _slotStore = slotsGlobal.slotStore;
+  var _tempSlot = slotsGlobal.tempSlot;
+  var _slotBinding = slotsGlobal.slotBinding;
 
   // ---- State ----
   var prePlaced = puzzle.prePlacedBlocks;
@@ -56,6 +62,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       seenInDropped[puzzle.initialDropped[idi].id] = true;
     }
     palette = palette.filter(function (b) { return !seenInDropped[b.id]; });
+  }
+  if (savedState) {
+    dropped = (savedState.placedBlocks || []).map(B.cloneBlock);
+    palette = (savedState.paletteBlocks || []).map(B.cloneBlock);
+    timer = Math.floor((savedState.elapsedMs || 0) / 1000);
+    if (savedState.slotId && savedState.slotId.indexOf('named-') === 0) {
+      _slotBinding.bind(savedState.slotId);
+    }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
 
@@ -90,6 +104,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   );
   function currentPuzzleId() {
     return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
+  }
+
+  function captureState() {
+    return {
+      date: puzzle.dateStr,
+      difficulty: difficulty,
+      comboIndex: puzzle.currentComboIndex,
+      placedBlocks: dropped.map(B.cloneBlock),
+      paletteBlocks: palette.map(B.cloneBlock),
+      elapsedMs: timer * 1000,
+      hintsUsed: 0,
+    };
   }
 
   function triggerShareGroup() {
@@ -348,6 +374,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           todayDone: progress.countCompletedForDate(puzzle.dateStr),
           insomniaUnique: insomniaUnique,
         };
+        var _bound = _slotBinding.getBound();
+        if (_bound) _slotStore.deleteSlot(_bound);
+        _slotBinding.clearActive();
+        _tempSlot.clear();
         clearInterval(timerInterval);
         spawnConfetti();
         showToast('🎉 恭喜通关！', true);
@@ -379,6 +409,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     try { wx.vibrateShort && wx.vibrateShort({ type: 'medium' }); } catch (e) {}
     scene.dirty = true;
+    _tempSlot.markDirty(captureState());
     checkWin();
   }
 
@@ -396,6 +427,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (tutorialMode && tutorialStep === 4 && id === tutorialMisplacedId) {
       tutorialStep = 5;
     }
+    _tempSlot.markDirty(captureState());
     scene.dirty = true;
   }
 
@@ -409,6 +441,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     dropped = [];
     selected = null;
+    _tempSlot.markDirty(captureState());
     scene.dirty = true;
   }
 
@@ -1829,6 +1862,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
         progress.markTutorialDone();
         clearInterval(timerInterval);
+        _tempSlot.flush();
         callbacks.onBack();
         return;
       }
@@ -1859,6 +1893,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (L.tutorialSkipBtn && R.hitTest(x, y, L.tutorialSkipBtn)) {
       progress.markTutorialDone();
       clearInterval(timerInterval);
+      _tempSlot.flush();
       callbacks.onBack();
       return;
     }
@@ -2191,6 +2226,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Back
     if (L.backBtn && R.hitTest(x, y, L.backBtn)) {
       clearInterval(timerInterval);
+      _tempSlot.flush();
       callbacks.onBack();
       return;
     }
@@ -2295,6 +2331,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var sdy = Math.abs(y - gestureStart.y);
       if (sdx > 60 && sdy < sdx) {
         clearInterval(timerInterval);
+        _tempSlot.flush();
         callbacks.onBack();
         return;
       }
