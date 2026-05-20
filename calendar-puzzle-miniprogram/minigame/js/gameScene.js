@@ -1911,6 +1911,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           return;
         }
         _slotStore.writeSlot(targetSlotId, captureState());
+        _slotStore.deleteSlot('temp');
+        _tempSlot.cancelPending();
         _slotBinding.bind(targetSlotId);
         slotModal = null; slotPickerLayoutCache = null;
         showToast('已存到槽位 ' + (slotPickerSelectedIdx + 1));
@@ -1937,6 +1939,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var slotIds2 = NAMED_SLOT_IDS;
         var targetId2 = slotIds2[slotPickerSelectedIdx];
         _slotStore.writeSlot(targetId2, captureState());
+        _slotStore.deleteSlot('temp');
+        _tempSlot.cancelPending();
         _slotBinding.bind(targetId2);
         slotModal = null; slotPickerLayoutCache = null;
         showToast('已覆盖槽位 ' + (slotPickerSelectedIdx + 1));
@@ -1950,8 +1954,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (L.saveBtn && R.hitTest(x, y, L.saveBtn)) {
       var bound = _slotBinding.getBound();
       if (bound) {
-        _slotStore.writeSlot(bound, captureState());
-        showToast('已更新槽位 ' + bound.slice(-1));
+        // Auto-save is already covering this slot. Show a passive indicator.
+        _tempSlot.flush();                             // ensure any pending edit is written NOW
+        showToast('已自动保存到槽位 ' + bound.slice(-1));
         scene.dirty = true;
         return;
       }
