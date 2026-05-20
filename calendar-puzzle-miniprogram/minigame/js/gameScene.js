@@ -134,6 +134,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (!openid || !token) { showToast('需要网络'); return; }
     shareState.setInviterContext({ inviter: openid, t: token });
     var share = shareState.buildShareData();
+    // 触发分享时立即关 source menu —— hintMode 不动，回来时直接落回提示弹窗。
+    // 不依赖 wx.shareAppMessage 的 complete 回调（不同端表现不一致）。
+    sourceMenuOpen = false; sourceMenuTier = null;
+    scene.dirty = true;
     wx.shareAppMessage({
       title: share.title,
       query: share.query,
@@ -141,8 +145,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       fail: function () { /* cancelled */ },
       complete: function () {
         shareState.clearInviterContext();
-        sourceMenuOpen = false; sourceMenuTier = null;
-        scene.dirty = true;
       },
     });
   }

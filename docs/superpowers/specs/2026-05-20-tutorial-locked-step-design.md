@@ -116,3 +116,26 @@ behavior as the double-tap path.
 
 Touch point: `gameScene.js` drag-end (`scene.onTouchEnd`, the `dragHasMoved`
 branch). Single-file change.
+
+## Addendum — close 助力 menu on share trigger
+
+Bundled in the same PR.
+
+**Rule:** when the user taps 邀请好友助力 inside the source menu, close the
+source menu (`sourceMenuOpen = false; sourceMenuTier = null`) **before**
+invoking `wx.shareAppMessage`. `hintMode` is untouched, so the hint popup is
+visible on return.
+
+Previously the close happened in the `wx.shareAppMessage` `complete`
+callback. That fires inconsistently across WeChat surfaces, leaving the help
+menu stuck open after sharing in some cases. Moving the close to the trigger
+site removes that dependency.
+
+`shareState.clearInviterContext()` stays in `complete` — it manages share
+payload state, not UI state.
+
+This affects only `triggerHelpInvite`. `triggerShareGroup` keeps its
+cloud-verified close path (close only on `shareGroup.ok`) since failed
+share-group attempts need the menu open for retry.
+
+Touch point: `gameScene.js::triggerHelpInvite`.
