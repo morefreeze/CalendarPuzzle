@@ -125,3 +125,41 @@ test('slotStore: getMaxNamedSlots ignores invalid dev override (NaN, zero, negat
   s.setItem(SS.DEV_MAX_SLOTS_KEY, '-2');
   assert.strictEqual(ss.getMaxNamedSlots(), 3);
 });
+
+test('slotStore: readSlot calls migrateIfNeeded — v1 record passes through', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s });
+  ss.writeSlot('named-1', { date: '2026-05-20', difficulty: 'easy', comboIndex: 0 });
+  var got = ss.readSlot('named-1');
+  assert.strictEqual(got.schemaVersion, SS.SCHEMA_VERSION);
+});
+
+test('slotStore: readSlot drops records with schemaVersion newer than known', function () {
+  var s = fakeStorage();
+  s.setItem(SS.STORAGE_KEY_PREFIX + 'named-1', JSON.stringify({
+    schemaVersion: 99, slotId: 'named-1', savedAt: 1, date: '2026-05-20',
+  }));
+  var ss = SS.create({ storage: s });
+  assert.strictEqual(ss.readSlot('named-1'), null);
+});
+
+test('slotStore: readSlot drops records with missing schemaVersion', function () {
+  var s = fakeStorage();
+  s.setItem(SS.STORAGE_KEY_PREFIX + 'named-1', JSON.stringify({ date: '2026-05-20' }));
+  var ss = SS.create({ storage: s });
+  assert.strictEqual(ss.readSlot('named-1'), null);
+});
+
+test('slotStore.migrateIfNeeded: pure function — v1 record → identity', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  var raw = { schemaVersion: 1, slotId: 'named-1', date: '2026-05-20', savedAt: 1 };
+  assert.strictEqual(ss.migrateIfNeeded(raw), raw);
+});
+
+test('slotStore.migrateIfNeeded: pure function — non-object / null → null', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  assert.strictEqual(ss.migrateIfNeeded(null), null);
+  assert.strictEqual(ss.migrateIfNeeded(undefined), null);
+  assert.strictEqual(ss.migrateIfNeeded('string'), null);
+  assert.strictEqual(ss.migrateIfNeeded(42), null);
+});

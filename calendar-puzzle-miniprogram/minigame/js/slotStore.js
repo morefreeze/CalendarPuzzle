@@ -18,11 +18,24 @@ function create(opts) {
   if (!storage) throw new Error('slotStore.create: storage required');
   var now = opts.now || function () { return Date.now(); };
 
+  function migrateIfNeeded(rawSlot) {
+    if (!rawSlot || typeof rawSlot !== 'object') return null;
+    if (typeof rawSlot.schemaVersion !== 'number') return null;
+    if (rawSlot.schemaVersion > SCHEMA_VERSION) return null;
+    if (rawSlot.schemaVersion < SCHEMA_VERSION) {
+      // v1 is current — no older schemas to upgrade from yet.
+      // Future schema bumps add a branch per old version here.
+      return null;
+    }
+    return rawSlot;
+  }
+
   function readSlot(slotId) {
     try {
       var raw = storage.getItem(_key(slotId));
       if (!raw) return null;
-      return JSON.parse(raw);
+      var parsed = JSON.parse(raw);
+      return migrateIfNeeded(parsed);
     } catch (e) {
       return null;
     }
@@ -67,6 +80,7 @@ function create(opts) {
     writeSlot: writeSlot,
     deleteSlot: deleteSlot,
     getMaxNamedSlots: getMaxNamedSlots,
+    migrateIfNeeded: migrateIfNeeded,
   };
 }
 
