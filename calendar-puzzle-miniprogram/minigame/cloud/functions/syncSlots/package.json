@@ -1,0 +1,9 @@
+{
+  "name": "syncSlots",
+  "version": "1.0.0",
+  "description": "Sync save slots between client and server with newer-wins merge",
+  "main": "index.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "latest"
+  }
+}
