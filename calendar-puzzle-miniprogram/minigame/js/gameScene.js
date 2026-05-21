@@ -132,6 +132,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       comboIndex: puzzle.currentComboIndex,
       placedBlocks: dropped.map(B.cloneBlock),
       paletteBlocks: palette.map(B.cloneBlock),
+      prePlacedBlocks: prePlaced.map(B.cloneBlock),
       elapsedMs: timer * 1000,
       hintsUsed: 0,
     };
