@@ -110,7 +110,8 @@ function saveBtnLayout(staminaRect) {
 /**
  * Compute the layout for the save-picker modal (centered panel).
  * Returns:
- *   { panel, headerY, slotRects:[r,r,r], confirmBtn, cancelBtn }
+ *   { panel, headerY, slotRects:[r,r,r], cancelBtn }
+ * (No confirmBtn — tap-slot = instant action in this modal.)
  */
 function savePickerLayout(W, H, safeInsets) {
   var panelH = 320;
@@ -139,15 +140,13 @@ function savePickerLayout(W, H, safeInsets) {
   var btnW = 120;
   var btnH = 36;
   var btnY  = panelY + panelH - btnH - 16;
-  var totalBtnW = btnW * 2 + 12;
-  var btnStartX = panelX + (panelW - totalBtnW) / 2;
+  var btnStartX = panelX + (panelW - btnW) / 2;
 
   return {
     panel: { x: panelX, y: panelY, w: panelW, h: panelH },
     headerY: headerY,
     slotRects: slotRects,
-    confirmBtn: { x: btnStartX,          y: btnY, w: btnW, h: btnH },
-    cancelBtn:  { x: btnStartX + btnW + 12, y: btnY, w: btnW, h: btnH },
+    cancelBtn: { x: btnStartX, y: btnY, w: btnW, h: btnH },
   };
 }
 
@@ -327,9 +326,7 @@ function drawSavePicker(ctx, layout, slots, selectedIdx) {
     }
   }
 
-  // Buttons
-  R.button(ctx, layout.confirmBtn.x, layout.confirmBtn.y,
-    layout.confirmBtn.w, layout.confirmBtn.h, '保存', BRAND, TEXT_LIGHT, BTN_RADIUS);
+  // Button (cancel only — slot tap is the action)
   R.button(ctx, layout.cancelBtn.x, layout.cancelBtn.y,
     layout.cancelBtn.w, layout.cancelBtn.h, '取消', '#EEEEEE', '#333333', BTN_RADIUS);
 }
@@ -487,14 +484,14 @@ function drawThumbnail(ctx, x, y, w, h, slot) {
 // ─── Hit-test helpers ─────────────────────────────────────────────────────────
 
 /**
- * Returns 'slot-0' | 'slot-1' | 'slot-2' | 'confirm' | 'cancel' | null.
+ * Returns 'slot-0' | 'slot-1' | 'slot-2' | 'cancel' | null.
+ * (No 'confirm' — tap-slot = instant action.)
  */
 function savePickerHitTest(x, y, layout) {
   for (var i = 0; i < layout.slotRects.length; i++) {
     if (R.hitTest(x, y, layout.slotRects[i])) return 'slot-' + i;
   }
-  if (R.hitTest(x, y, layout.confirmBtn)) return 'confirm';
-  if (R.hitTest(x, y, layout.cancelBtn))  return 'cancel';
+  if (R.hitTest(x, y, layout.cancelBtn)) return 'cancel';
   return null;
 }
 

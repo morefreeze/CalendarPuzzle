@@ -1893,29 +1893,26 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       if (hit && hit.indexOf('slot-') === 0) {
-        slotPickerSelectedIdx = parseInt(hit.slice(5), 10);
-        scene.dirty = true;
-        return;
-      }
-      if (hit === 'confirm') {
-        var targetSlotId = NAMED_SLOT_IDS[slotPickerSelectedIdx];
-        var existingAll = _slotStore.readAllNamed();
-        var pickedExists = existingAll[slotPickerSelectedIdx] !== null;
-        if (pickedExists) {
-          // Switch to overwrite-warning instead of silently overwriting.
+        var idx = parseInt(hit.slice(5), 10);
+        var allSlots = _slotStore.readAllNamed();
+        if (allSlots[idx] === null) {
+          // Empty slot: instant save
+          _slotStore.writeSlot(NAMED_SLOT_IDS[idx], captureState());
+          _slotStore.deleteSlot('temp');
+          _tempSlot.cancelPending();
+          _slotBinding.bind(NAMED_SLOT_IDS[idx]);
+          slotModal = null; slotPickerLayoutCache = null;
+          showToast('已存到槽位 ' + (idx + 1));
+          scene.dirty = true;
+          return;
+        } else {
+          // Occupied slot: switch to overwrite-warning, pre-selecting this slot
+          slotPickerSelectedIdx = idx;
           slotModal = 'overwrite-warning';
           slotPickerLayoutCache = null;
           scene.dirty = true;
           return;
         }
-        _slotStore.writeSlot(targetSlotId, captureState());
-        _slotStore.deleteSlot('temp');
-        _tempSlot.cancelPending();
-        _slotBinding.bind(targetSlotId);
-        slotModal = null; slotPickerLayoutCache = null;
-        showToast('已存到槽位 ' + (slotPickerSelectedIdx + 1));
-        scene.dirty = true;
-        return;
       }
       // Tap on overlay outside panel or on panel non-interactive area: swallow.
       return;

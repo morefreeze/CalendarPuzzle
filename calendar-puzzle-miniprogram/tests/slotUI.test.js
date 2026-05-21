@@ -130,15 +130,10 @@ test('slotUI.savePickerLayout: panel horizontally centered', function () {
   assert.ok(Math.abs(L.panel.x - (375 - L.panel.w) / 2) < 1);
 });
 
-test('slotUI.savePickerLayout: confirmBtn and cancelBtn are present and numeric', function () {
+test('slotUI.savePickerLayout: confirmBtn is absent (tap-to-act model), cancelBtn is present', function () {
   var L = UI.savePickerLayout(375, 667, { top: 0, bottom: 0, left: 0, right: 0 });
-  assert.ok(L.confirmBtn && typeof L.confirmBtn.x === 'number');
+  assert.strictEqual(L.confirmBtn, undefined);
   assert.ok(L.cancelBtn  && typeof L.cancelBtn.x  === 'number');
-});
-
-test('slotUI.savePickerLayout: confirmBtn and cancelBtn are side-by-side (distinct x)', function () {
-  var L = UI.savePickerLayout(375, 667, { top: 0, bottom: 0, left: 0, right: 0 });
-  assert.notStrictEqual(L.confirmBtn.x, L.cancelBtn.x);
 });
 
 test('slotUI.savePickerLayout: slot rects stack vertically', function () {
@@ -224,10 +219,15 @@ test('slotUI.savePickerHitTest: click inside slot-0 card → "slot-0"', function
   assert.strictEqual(UI.savePickerHitTest(r.x + 5, r.y + 5, L), 'slot-0');
 });
 
-test('slotUI.savePickerHitTest: click confirm btn → "confirm"', function () {
+test('slotUI.savePickerHitTest: no confirm action (tap-to-act model)', function () {
   var L = UI.savePickerLayout(375, 667, { top: 0, bottom: 0, left: 0, right: 0 });
-  var b = L.confirmBtn;
-  assert.strictEqual(UI.savePickerHitTest(b.x + 5, b.y + 5, L), 'confirm');
+  // No part of the layout should hit-test to 'confirm' anymore
+  for (var x = 0; x < 375; x += 5) {
+    for (var y = 0; y < 667; y += 5) {
+      var hit = UI.savePickerHitTest(x, y, L);
+      assert.notStrictEqual(hit, 'confirm');
+    }
+  }
 });
 
 test('slotUI.savePickerHitTest: click cancel btn → "cancel"', function () {
