@@ -71,6 +71,10 @@ function convertHelpToStrong() {
   return _call('convertHelpToStrong', {});
 }
 
+function syncSlots(slots) {
+  return _call('syncSlots', { slots: slots || [] });
+}
+
 module.exports = {
   init: init,
   login: login,
@@ -82,5 +86,6 @@ module.exports = {
   shareGroup: shareGroup,
   helpInvite: helpInvite,
   convertHelpToStrong: convertHelpToStrong,
+  syncSlots: syncSlots,
   CLOUD_ENV: CLOUD_ENV,
 };
