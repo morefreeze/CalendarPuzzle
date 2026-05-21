@@ -163,3 +163,23 @@ test('slotStore.migrateIfNeeded: pure function — non-object / null → null', 
   assert.strictEqual(ss.migrateIfNeeded('string'), null);
   assert.strictEqual(ss.migrateIfNeeded(42), null);
 });
+
+test('slotStore: writeSlot preserves boundSlotId field in payload', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.writeSlot('named-2', {
+    date: '2026-05-20', difficulty: 'easy', comboIndex: 0,
+    boundSlotId: 'named-2',
+  });
+  var got = ss.readSlot('named-2');
+  assert.strictEqual(got.boundSlotId, 'named-2');
+});
+
+test('slotStore: writeSlot to temp preserves boundSlotId === null', function () {
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.writeSlot('temp', {
+    date: '2026-05-20', difficulty: 'easy', comboIndex: 0,
+    boundSlotId: null,
+  });
+  var got = ss.readSlot('temp');
+  assert.strictEqual(got.boundSlotId, null);
+});
