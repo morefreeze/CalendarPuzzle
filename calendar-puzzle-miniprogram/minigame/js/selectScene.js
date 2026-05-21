@@ -282,6 +282,14 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
     // --- Continue-discard modal intercept (highest priority) ---
     if (modal === 'continue-discard' && continueLayoutCache) {
       var cdHit = slotUI.continueDiscardHitTest(x, y, continueLayoutCache);
+      if (cdHit === 'close') {
+        modal = null;
+        continueLayoutCache = null;
+        pendingDifficulty = null;       // user cancelled — clear pending diff
+        scene.dirty = true;
+        // No stamina consumed, no temp slot change, no game start. Player stays on main menu.
+        return;
+      }
       if (cdHit === 'continue') {
         var saved = _tempSlot.peekUnsaved();
         if (saved) {

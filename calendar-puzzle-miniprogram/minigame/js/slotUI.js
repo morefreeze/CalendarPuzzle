@@ -206,7 +206,7 @@ function overwriteWarningLayout(W, H, safeInsets) {
 
 /**
  * Layout for the "continue or discard" modal.
- * Returns: { panel, previewRect, continueBtn, discardBtn }
+ * Returns: { panel, closeBtn, previewRect, continueBtn, discardBtn }
  */
 function continueDiscardLayout(W, H, safeInsets) {
   var panelW = Math.min(W * 0.85, 300);
@@ -225,8 +225,16 @@ function continueDiscardLayout(W, H, safeInsets) {
   var totalBtnW = btnW * 2 + 12;
   var btnStartX = panelX + (panelW - totalBtnW) / 2;
 
+  var closeBtn = {
+    x: panelX + panelW - 32,
+    y: panelY + 8,
+    w: 24,
+    h: 24,
+  };
+
   return {
     panel:       { x: panelX, y: panelY, w: panelW, h: panelH },
+    closeBtn:    closeBtn,
     previewRect: { x: thumbX, y: thumbY, w: thumbW, h: thumbH },
     continueBtn: { x: btnStartX,           y: btnY, w: btnW, h: btnH },
     discardBtn:  { x: btnStartX + btnW + 12, y: btnY, w: btnW, h: btnH },
@@ -399,6 +407,10 @@ function drawContinueDiscard(ctx, layout, unsavedSlot, pendingDifficulty) {
   R.textBold(ctx, '还有未完成的对局',
     p.x + p.w / 2, p.y + 14, 15, TEXT_DARK, 'center', 'top');
 
+  // Close (×) button — top-right of panel
+  R.text(ctx, '×', layout.closeBtn.x + layout.closeBtn.w / 2,
+         layout.closeBtn.y + layout.closeBtn.h / 2, 22, EMPTY_GREY, 'center', 'middle');
+
   var pr = layout.previewRect;
   drawThumbnail(ctx, pr.x, pr.y, pr.w, pr.h, unsavedSlot);
 
@@ -508,11 +520,11 @@ function drawThumbnail(ctx, x, y, w, h, slot) {
   var prePlaced = slot.prePlacedBlocks || [];
   var placed    = slot.placedBlocks    || [];
 
-  function markBlocks(blocks, alpha) {
+  function markBlocks(blocks, alpha, forcedColor) {
     for (var bi = 0; bi < blocks.length; bi++) {
       var blk = blocks[bi];
       if (!blk || !blk.shape) continue;
-      var color = blk.color || BLOCK_COLORS[blk.id] || '#90A4AE';
+      var color = forcedColor || blk.color || BLOCK_COLORS[blk.id] || '#90A4AE';
       for (var ry = 0; ry < blk.shape.length; ry++) {
         for (var cx2 = 0; cx2 < blk.shape[ry].length; cx2++) {
           if (blk.shape[ry][cx2] !== 1) continue;
@@ -521,8 +533,8 @@ function drawThumbnail(ctx, x, y, w, h, slot) {
       }
     }
   }
-  markBlocks(prePlaced, 0.85);  // locked blocks slightly dimmed (drawn first)
-  markBlocks(placed,    1.0);   // player blocks on top at full opacity
+  markBlocks(prePlaced, 1.0, '#9E9E9E');  // locked blocks: unified grey, full opacity
+  markBlocks(placed,    1.0);              // player blocks: per-block colors, full opacity
 
   // Draw every board cell.
   for (var row = 0; row < ROWS; row++) {
@@ -586,9 +598,10 @@ function overwriteWarningHitTest(x, y, layout) {
 }
 
 /**
- * Returns 'continue' | 'discard' | null.
+ * Returns 'close' | 'continue' | 'discard' | null.
  */
 function continueDiscardHitTest(x, y, layout) {
+  if (R.hitTest(x, y, layout.closeBtn))    return 'close';
   if (R.hitTest(x, y, layout.continueBtn)) return 'continue';
   if (R.hitTest(x, y, layout.discardBtn))  return 'discard';
   return null;

@@ -268,6 +268,13 @@ test('slotUI.continueDiscardHitTest: outside → null', function () {
   assert.strictEqual(UI.continueDiscardHitTest(0, 0, L), null);
 });
 
+test('slotUI.continueDiscardHitTest: close button', function () {
+  var L = UI.continueDiscardLayout(375, 667, { top: 0, bottom: 0, left: 0, right: 0 });
+  assert.ok(L.closeBtn && L.closeBtn.w > 0 && L.closeBtn.h > 0);
+  var hit = UI.continueDiscardHitTest(L.closeBtn.x + 5, L.closeBtn.y + 5, L);
+  assert.strictEqual(hit, 'close');
+});
+
 // ─── slotGridHitTest ─────────────────────────────────────────────────────────
 
 test('slotUI.slotGridHitTest: back button', function () {
