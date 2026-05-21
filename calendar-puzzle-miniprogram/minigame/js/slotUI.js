@@ -2,8 +2,9 @@
 // No internal state, no wx.* calls. The scene caller owns modal state
 // and handles overlay drawing; slotUI draws only the panel itself.
 
-var R = require('./render');
-var B = require('./board');
+var R  = require('./render');
+var B  = require('./board');
+var PG = require('./puzzleGenerator');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 var BRAND       = '#FFB300';
@@ -89,15 +90,12 @@ function pickOldestNewest(slots) {
 
 /**
  * Map difficulty key to Chinese label. Unknown keys pass through unchanged.
+ * Pulls from puzzleGenerator.DIFFICULTY_CONFIG so labels stay in sync with the game.
  */
 function difficultyLabel(diffKey) {
-  var MAP = {
-    easy:     '简单',
-    medium:   '中等',
-    hard:     '困难',
-    insomnia: '失眠',
-  };
-  return MAP.hasOwnProperty(diffKey) ? MAP[diffKey] : diffKey;
+  if (!diffKey) return '';
+  var cfg = PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[diffKey];
+  return (cfg && cfg.label) ? cfg.label : diffKey;  // fall back to raw key for unknown
 }
 
 // ─── Layout helpers ───────────────────────────────────────────────────────────

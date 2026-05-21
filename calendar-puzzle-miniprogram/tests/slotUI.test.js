@@ -4,6 +4,7 @@
 var test   = require('node:test');
 var assert = require('node:assert');
 var UI     = require('../minigame/js/slotUI');
+var PG     = require('../minigame/js/puzzleGenerator');
 
 // ─── formatSavedAt ───────────────────────────────────────────────────────────
 
@@ -76,25 +77,21 @@ test('slotUI.pickOldestNewest: two occupied, first older', function () {
 
 // ─── difficultyLabel ─────────────────────────────────────────────────────────
 
-test('slotUI.difficultyLabel: easy → 简单', function () {
-  assert.strictEqual(UI.difficultyLabel('easy'), '简单');
-});
-
-test('slotUI.difficultyLabel: medium → 中等', function () {
-  assert.strictEqual(UI.difficultyLabel('medium'), '中等');
-});
-
-test('slotUI.difficultyLabel: hard → 困难', function () {
-  assert.strictEqual(UI.difficultyLabel('hard'), '困难');
-});
-
-test('slotUI.difficultyLabel: insomnia → 失眠', function () {
-  assert.strictEqual(UI.difficultyLabel('insomnia'), '失眠');
+test('slotUI.difficultyLabel: pulls from puzzleGenerator.DIFFICULTY_CONFIG', function () {
+  assert.strictEqual(UI.difficultyLabel('easy'),     PG.DIFFICULTY_CONFIG.easy.label);
+  assert.strictEqual(UI.difficultyLabel('medium'),   PG.DIFFICULTY_CONFIG.medium.label);
+  assert.strictEqual(UI.difficultyLabel('hard'),     PG.DIFFICULTY_CONFIG.hard.label);
+  assert.strictEqual(UI.difficultyLabel('expert'),   PG.DIFFICULTY_CONFIG.expert.label);
+  assert.strictEqual(UI.difficultyLabel('insomnia'), PG.DIFFICULTY_CONFIG.insomnia.label);
 });
 
 test('slotUI.difficultyLabel: unknown key returns the input unchanged', function () {
   assert.strictEqual(UI.difficultyLabel('weird'), 'weird');
-  assert.strictEqual(UI.difficultyLabel(''), '');
+});
+
+test('slotUI.difficultyLabel: null/undefined returns empty string', function () {
+  assert.strictEqual(UI.difficultyLabel(null),      '');
+  assert.strictEqual(UI.difficultyLabel(undefined), '');
 });
 
 // ─── saveBtnLayout ───────────────────────────────────────────────────────────
