@@ -71,12 +71,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     dropped = (savedState.placedBlocks || []).map(B.cloneBlock);
     palette = (savedState.paletteBlocks || []).map(B.cloneBlock);
     timer = Math.floor((savedState.elapsedMs || 0) / 1000);
-    // Prefer the explicit boundSlotId; fall back to inferring from slotId for
-    // legacy records that pre-date this field.
-    var _restoredBoundId = (savedState.boundSlotId !== undefined)
-      ? savedState.boundSlotId
-      : (savedState.slotId && savedState.slotId.indexOf('named-') === 0 ? savedState.slotId : null);
-    if (_restoredBoundId && _restoredBoundId.indexOf('named-') === 0) {
+    // Prefer boundSlotId if it is a named slot; fall back to slotId if THAT
+    // is a named slot. This handles both legacy records (boundSlotId===undefined)
+    // and buggy records where bind happened after captureState (boundSlotId===null).
+    var _restoredBoundId = null;
+    if (savedState.boundSlotId && savedState.boundSlotId.indexOf('named-') === 0) {
+      _restoredBoundId = savedState.boundSlotId;
+    } else if (savedState.slotId && savedState.slotId.indexOf('named-') === 0) {
+      _restoredBoundId = savedState.slotId;
+    }
+    if (_restoredBoundId) {
       _slotBinding.bind(_restoredBoundId);
     }
   }
@@ -1903,11 +1907,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var idx = parseInt(hit.slice(5), 10);
         var allSlots = _slotStore.readAllNamed();
         if (allSlots[idx] === null) {
-          // Empty slot: instant save
+          // Empty slot: instant save — bind FIRST so captureState sees the bound id.
+          _slotBinding.bind(NAMED_SLOT_IDS[idx]);
           _slotStore.writeSlot(NAMED_SLOT_IDS[idx], captureState());
           _slotStore.deleteSlot('temp');
           _tempSlot.cancelPending();
-          _slotBinding.bind(NAMED_SLOT_IDS[idx]);
           slotModal = null; slotPickerLayoutCache = null;
           showToast('已存到槽位 ' + (idx + 1));
           scene.dirty = true;
@@ -1940,10 +1944,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (hit2 === 'confirm') {
         var slotIds2 = NAMED_SLOT_IDS;
         var targetId2 = slotIds2[slotPickerSelectedIdx];
+        // Bind FIRST so captureState records the correct boundSlotId.
+        _slotBinding.bind(targetId2);
         _slotStore.writeSlot(targetId2, captureState());
         _slotStore.deleteSlot('temp');
         _tempSlot.cancelPending();
-        _slotBinding.bind(targetId2);
         slotModal = null; slotPickerLayoutCache = null;
         showToast('已覆盖槽位 ' + (slotPickerSelectedIdx + 1));
         scene.dirty = true;
