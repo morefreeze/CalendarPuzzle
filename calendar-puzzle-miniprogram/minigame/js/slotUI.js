@@ -465,19 +465,23 @@ function drawThumbnail(ctx, x, y, w, h, slot) {
 
   for (var b = 0; b < slot.placedBlocks.length; b++) {
     var block = slot.placedBlocks[b];
-    if (!block) continue;
+    if (!block || !block.shape) continue;
     var color = BLOCK_COLORS[block.type] || '#90A4AE';
-    var bx = block.x;
-    var by = block.y;
-    // block.x / block.y are the board-coordinate origin of the block;
-    // we draw a single coloured cell at that position as a lightweight proxy.
     ctx.fillStyle = color;
-    ctx.fillRect(
-      ox + bx * cell,
-      oy + by * cell,
-      Math.max(1, cell - 0.5),
-      Math.max(1, cell - 0.5)
-    );
+    // Iterate every cell in the block's shape and draw each occupied cell.
+    for (var ry = 0; ry < block.shape.length; ry++) {
+      for (var cx = 0; cx < block.shape[ry].length; cx++) {
+        if (block.shape[ry][cx] !== 1) continue;
+        var cellX = block.x + cx;
+        var cellY = block.y + ry;
+        ctx.fillRect(
+          ox + cellX * cell,
+          oy + cellY * cell,
+          Math.max(1, cell - 0.5),
+          Math.max(1, cell - 0.5)
+        );
+      }
+    }
   }
 }
 
