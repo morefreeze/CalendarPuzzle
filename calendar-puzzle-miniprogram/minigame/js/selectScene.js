@@ -263,7 +263,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         continueLayoutCache = slotUI.continueDiscardLayout(W, H, safeInsets);
       }
       R.overlay(ctx, W, H);
-      slotUI.drawContinueDiscard(ctx, continueLayoutCache, _tempSlot.peekUnsaved());
+      slotUI.drawContinueDiscard(ctx, continueLayoutCache, _tempSlot.peekUnsaved(), pendingDifficulty);
     }
   };
 

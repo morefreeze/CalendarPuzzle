@@ -210,7 +210,7 @@ function overwriteWarningLayout(W, H, safeInsets) {
  */
 function continueDiscardLayout(W, H, safeInsets) {
   var panelW = Math.min(W * 0.85, 300);
-  var panelH = 220;
+  var panelH = 238;  // +18 px to accommodate pending-difficulty hint above discard button
   var panelX = (W - panelW) / 2;
   var panelY = (H - panelH) / 2;
 
@@ -380,8 +380,13 @@ function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx) {
 
 /**
  * Draw the "continue or discard" modal for an unsaved temp slot.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} layout - from continueDiscardLayout()
+ * @param {object|null} unsavedSlot - the saved-but-not-submitted session
+ * @param {string} [pendingDifficulty] - difficulty key the player just tapped;
+ *   when provided, a small hint label is drawn above the discard button.
  */
-function drawContinueDiscard(ctx, layout, unsavedSlot) {
+function drawContinueDiscard(ctx, layout, unsavedSlot, pendingDifficulty) {
   var p = layout.panel;
   ctx.shadowColor   = 'rgba(0,0,0,0.22)';
   ctx.shadowBlur    = 14;
@@ -405,6 +410,16 @@ function drawContinueDiscard(ctx, layout, unsavedSlot) {
 
   R.button(ctx, layout.continueBtn.x, layout.continueBtn.y,
     layout.continueBtn.w, layout.continueBtn.h, '继续未完成', BRAND, TEXT_LIGHT, BTN_RADIUS);
+
+  // Hint: show pending new-game difficulty above the discard button.
+  if (pendingDifficulty) {
+    var label = difficultyLabel(pendingDifficulty);
+    if (label) {
+      R.text(ctx, label, layout.discardBtn.x + layout.discardBtn.w / 2,
+             layout.discardBtn.y - 6, 11, EMPTY_GREY, 'center', 'bottom');
+    }
+  }
+
   R.button(ctx, layout.discardBtn.x, layout.discardBtn.y,
     layout.discardBtn.w, layout.discardBtn.h, '放弃，开新局', '#EEEEEE', '#333333', BTN_RADIUS);
 }
