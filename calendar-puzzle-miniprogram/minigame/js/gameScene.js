@@ -266,7 +266,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // grip so the cell under the finger at pickup stays under the finger.
   var dragGripOffset = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
-  var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
   // When > Date.now(), draw a pulsing arrow at the capsule menu pointing to
   // "分享到朋友圈". Set on 📤 button tap; auto-clears on timeout.
   var momentsHintUntil = 0;
@@ -1748,7 +1747,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- TOUCH ----
   scene.onTouchStart = function (x, y) {
-    gestureStart = { x: x, y: y, t: Date.now(), fromEdge: x < 24 };
 
     // Modal win card swallows palette drags etc.
     if (isWon && !winCardDismissed && L.winCard) return;
@@ -2452,17 +2450,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // Edge swipe back
-    if (gestureStart.fromEdge && !dragging) {
-      var sdx = x - gestureStart.x;
-      var sdy = Math.abs(y - gestureStart.y);
-      if (sdx > 60 && sdy < sdx) {
-        clearInterval(timerInterval);
-        _tempSlot.flush();
-        callbacks.onBack();
-        return;
-      }
-    }
   };
 
   scene.update = function () {};
