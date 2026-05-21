@@ -71,8 +71,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     dropped = (savedState.placedBlocks || []).map(B.cloneBlock);
     palette = (savedState.paletteBlocks || []).map(B.cloneBlock);
     timer = Math.floor((savedState.elapsedMs || 0) / 1000);
-    if (savedState.slotId && savedState.slotId.indexOf('named-') === 0) {
-      _slotBinding.bind(savedState.slotId);
+    // Prefer the explicit boundSlotId; fall back to inferring from slotId for
+    // legacy records that pre-date this field.
+    var _restoredBoundId = (savedState.boundSlotId !== undefined)
+      ? savedState.boundSlotId
+      : (savedState.slotId && savedState.slotId.indexOf('named-') === 0 ? savedState.slotId : null);
+    if (_restoredBoundId && _restoredBoundId.indexOf('named-') === 0) {
+      _slotBinding.bind(_restoredBoundId);
     }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
@@ -117,6 +122,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   function captureState() {
     return {
+      boundSlotId: _slotBinding.getBound(),
       date: puzzle.dateStr,
       difficulty: difficulty,
       comboIndex: puzzle.currentComboIndex,
