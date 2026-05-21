@@ -3,6 +3,7 @@
 // and handles overlay drawing; slotUI draws only the panel itself.
 
 var R = require('./render');
+var B = require('./board');
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 var BRAND       = '#FFB300';
@@ -35,6 +36,17 @@ var BLOCK_COLORS = {
 };
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse a "YYYY-MM-DD" date string to a local Date.
+ * Returns null for invalid / missing input.
+ */
+function parseDateStr(s) {
+  if (!s) return null;
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
 
 /**
  * Format epoch milliseconds to "M/D HH:mm" in local time.
@@ -442,17 +454,24 @@ function drawSlotGrid(ctx, layout, slots) {
 }
 
 /**
- * Draw a small thumbnail of the board state from slot.placedBlocks.
- * Board is 7 cols × 8 rows. Draws an outline and one coloured square per
- * placed-block cell.
+ * Draw a small thumbnail of the full board state, mirroring the manual-pick
+ * (手动选题) thumbnail style: board background, date-marker cells (gold),
+ * pre-placed locked blocks, and the player's placed blocks.
+ *
+ * Board is 7 cols × 8 rows.
  * If slot is null/undefined: just outline + light grey fill.
+ *
+ * slot fields used:
+ *   .date            "YYYY-MM-DD" — used to derive uncoverable cells
+ *   .prePlacedBlocks  (optional, Approach B) — locked blocks
+ *   .placedBlocks     — player-placed blocks
  */
 function drawThumbnail(ctx, x, y, w, h, slot) {
   var COLS = 7;
   var ROWS = 8;
-  var cell = Math.min((w - 2) / COLS, (h - 2) / ROWS);
-  var ox = x + (w - cell * COLS) / 2;
-  var oy = y + (h - cell * ROWS) / 2;
+  var cs = Math.min((w - 2) / COLS, (h - 2) / ROWS);
+  var ox = x + (w - cs * COLS) / 2;
+  var oy = y + (h - cs * ROWS) / 2;
 
   // Outline + background
   ctx.fillStyle   = '#F5F5F5';
@@ -461,25 +480,67 @@ function drawThumbnail(ctx, x, y, w, h, slot) {
   ctx.fillRect(x, y, w, h);
   ctx.strokeRect(x, y, w, h);
 
-  if (!slot || !slot.placedBlocks || !slot.placedBlocks.length) return;
+  if (!slot) return;
 
-  for (var b = 0; b < slot.placedBlocks.length; b++) {
-    var block = slot.placedBlocks[b];
-    if (!block || !block.shape) continue;
-    var color = BLOCK_COLORS[block.type] || '#90A4AE';
-    ctx.fillStyle = color;
-    // Iterate every cell in the block's shape and draw each occupied cell.
-    for (var ry = 0; ry < block.shape.length; ry++) {
-      for (var cx = 0; cx < block.shape[ry].length; cx++) {
-        if (block.shape[ry][cx] !== 1) continue;
-        var cellX = block.x + cx;
-        var cellY = block.y + ry;
-        ctx.fillRect(
-          ox + cellX * cell,
-          oy + cellY * cell,
-          Math.max(1, cell - 0.5),
-          Math.max(1, cell - 0.5)
-        );
+  // Derive uncoverable (date-marker) cell coordinates from slot.date.
+  var uncov = [];
+  if (slot.date) {
+    var dt = parseDateStr(slot.date);
+    if (dt) uncov = B.getUncoverableCells(dt);
+  }
+
+  // Build a fast lookup for cells covered by blocks.
+  // key = "x,y" → color
+  var covered = {};
+  var prePlaced = slot.prePlacedBlocks || [];
+  var placed    = slot.placedBlocks    || [];
+
+  function markBlocks(blocks, alpha) {
+    for (var bi = 0; bi < blocks.length; bi++) {
+      var blk = blocks[bi];
+      if (!blk || !blk.shape) continue;
+      var color = blk.color || BLOCK_COLORS[blk.id] || '#90A4AE';
+      for (var ry = 0; ry < blk.shape.length; ry++) {
+        for (var cx2 = 0; cx2 < blk.shape[ry].length; cx2++) {
+          if (blk.shape[ry][cx2] !== 1) continue;
+          covered[(blk.x + cx2) + ',' + (blk.y + ry)] = { color: color, alpha: alpha };
+        }
+      }
+    }
+  }
+  markBlocks(prePlaced, 0.85);  // locked blocks slightly dimmed (drawn first)
+  markBlocks(placed,    1.0);   // player blocks on top at full opacity
+
+  // Draw every board cell.
+  for (var row = 0; row < ROWS; row++) {
+    for (var col = 0; col < COLS; col++) {
+      var px = ox + col * cs;
+      var py = oy + row * cs;
+      var key = col + ',' + row;
+      var cellDef = B.boardLayoutData[row][col];
+
+      var hit = covered[key];
+      if (hit) {
+        ctx.globalAlpha = hit.alpha;
+        ctx.fillStyle = hit.color;
+        ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        ctx.globalAlpha = 1;
+      } else {
+        // Check uncoverable (date marker) — gold
+        var isUncov = false;
+        for (var u = 0; u < uncov.length; u++) {
+          if (uncov[u].x === col && uncov[u].y === row) { isUncov = true; break; }
+        }
+        if (isUncov) {
+          ctx.fillStyle = '#FFB300';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        } else if (cellDef.t === 'empty') {
+          ctx.fillStyle = '#EEEEEE';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        } else {
+          ctx.fillStyle = '#DDDDDD';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        }
       }
     }
   }
