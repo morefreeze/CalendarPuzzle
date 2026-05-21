@@ -10,6 +10,10 @@ var progress = require('./progress');
 var Hint = require('./hint');
 var Voucher = require('./voucher');
 var cloudClient = require('./cloudClient');
+var slotsGlobal = require('./slotsGlobal');
+var slotUI = require('./slotUI');
+var slotStoreModule = require('./slotStore');
+var NAMED_SLOT_IDS = slotStoreModule.NAMED_SLOT_IDS || ['named-1', 'named-2', 'named-3'];
 var initialBlockTypes = B.initialBlockTypes;
 
 var DRAG_THRESHOLD = 8;
@@ -39,9 +43,14 @@ function setStaminaConfirmSkipUntilNext5AM() {
   } catch (e) { /* ignore */ }
 }
 
-module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks) {
+module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState) {
   var scene = {};
   scene.dirty = true;
+
+  // ---- Slots singletons ----
+  var _slotStore = slotsGlobal.slotStore;
+  var _tempSlot = slotsGlobal.tempSlot;
+  var _slotBinding = slotsGlobal.slotBinding;
 
   // ---- State ----
   var prePlaced = puzzle.prePlacedBlocks;
@@ -56,6 +65,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       seenInDropped[puzzle.initialDropped[idi].id] = true;
     }
     palette = palette.filter(function (b) { return !seenInDropped[b.id]; });
+  }
+  _slotBinding.clearActive();
+  if (savedState) {
+    dropped = (savedState.placedBlocks || []).map(B.cloneBlock);
+    palette = (savedState.paletteBlocks || []).map(B.cloneBlock);
+    timer = Math.floor((savedState.elapsedMs || 0) / 1000);
+    // Prefer boundSlotId if it is a named slot; fall back to slotId if THAT
+    // is a named slot. This handles both legacy records (boundSlotId===undefined)
+    // and buggy records where bind happened after captureState (boundSlotId===null).
+    var _restoredBoundId = null;
+    if (savedState.boundSlotId && savedState.boundSlotId.indexOf('named-') === 0) {
+      _restoredBoundId = savedState.boundSlotId;
+    } else if (savedState.slotId && savedState.slotId.indexOf('named-') === 0) {
+      _restoredBoundId = savedState.slotId;
+    }
+    if (_restoredBoundId) {
+      _slotBinding.bind(_restoredBoundId);
+    }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
 
@@ -85,11 +112,30 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // Set when user picks a tier that needs stamina (no voucher, has stamina, confirm not skipped).
   // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
   var staminaConfirm = null;
+
+  // ---- Save-slot modal state ----
+  var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
+  var slotPickerSelectedIdx = 0;      // 0..2
+  var slotPickerLayoutCache = null;   // cached layout for the active modal
   var hintState = Hint.createHintState(
     puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
   );
   function currentPuzzleId() {
     return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
+  }
+
+  function captureState() {
+    return {
+      boundSlotId: _slotBinding.getBound(),
+      date: puzzle.dateStr,
+      difficulty: difficulty,
+      comboIndex: puzzle.currentComboIndex,
+      placedBlocks: dropped.map(B.cloneBlock),
+      paletteBlocks: palette.map(B.cloneBlock),
+      prePlacedBlocks: prePlaced.map(B.cloneBlock),
+      elapsedMs: timer * 1000,
+      hintsUsed: 0,
+    };
   }
 
   function triggerShareGroup() {
@@ -232,7 +278,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // grip so the cell under the finger at pickup stays under the finger.
   var dragGripOffset = { x: 0, y: 0 };
   var lastTap = { time: 0, x: -1, y: -1 };
-  var gestureStart = { x: 0, y: 0, t: 0, fromEdge: false };
   // When > Date.now(), draw a pulsing arrow at the capsule menu pointing to
   // "分享到朋友圈". Set on 📤 button tap; auto-clears on timeout.
   var momentsHintUntil = 0;
@@ -331,6 +376,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        // Force-close any open save modal (corner case: player completes puzzle while picker was open).
+        slotModal = null; slotPickerLayoutCache = null;
         if (tutorialMode) tutorialStep = 5;
         wonCombos[puzzle.currentComboIndex] = true;
         if (!tutorialMode) {
@@ -348,6 +395,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           todayDone: progress.countCompletedForDate(puzzle.dateStr),
           insomniaUnique: insomniaUnique,
         };
+        var _bound = _slotBinding.getBound();
+        if (_bound) _slotStore.deleteSlot(_bound);
+        _slotBinding.clearActive();
+        _tempSlot.clear();
         clearInterval(timerInterval);
         spawnConfetti();
         showToast('🎉 恭喜通关！', true);
@@ -379,6 +430,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     try { wx.vibrateShort && wx.vibrateShort({ type: 'medium' }); } catch (e) {}
     scene.dirty = true;
+    _tempSlot.markDirty(captureState());
     checkWin();
   }
 
@@ -396,6 +448,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (tutorialMode && tutorialStep === 4 && id === tutorialMisplacedId) {
       tutorialStep = 5;
     }
+    _tempSlot.markDirty(captureState());
     scene.dirty = true;
   }
 
@@ -409,6 +462,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     dropped = [];
     selected = null;
+    _tempSlot.markDirty(captureState());
     scene.dirty = true;
   }
 
@@ -525,6 +579,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.staminaW = 92; L.staminaH = 22;
     L.staminaX = W - L.staminaW - pad;
     L.staminaY = L.diffY + (22 - L.staminaH) / 2 + 2;
+
+    // 💾 Save button — 4 px to the left of the stamina capsule, vertically centred.
+    L.saveBtn = slotUI.saveBtnLayout({ x: L.staminaX, y: L.staminaY, w: L.staminaW, h: L.staminaH });
 
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
@@ -816,6 +873,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var stTxt = '体力 ' + cur;
       if (cur < stamina.MAX_STAMINA) stTxt += '  ↻' + formatMMSS(rs);
       R.text(ctx, stTxt, L.staminaX + L.staminaW / 2, L.staminaY + 4, 10, '#E65100', 'center');
+      // 💾 Save button next to stamina capsule
+      if (L.saveBtn) slotUI.drawSaveBtn(ctx, L.saveBtn);
     }
 
     // (Tutorial bubble is rendered later, after palette + board, so it
@@ -1678,11 +1737,28 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         toast.msg = '';
       }
     }
+
+    // --- Save-slot modals (rendered on top of everything, including toast) ---
+    if (slotModal === 'save-picker') {
+      if (!slotPickerLayoutCache) {
+        slotPickerLayoutCache = slotUI.savePickerLayout(W, H, safeInsets);
+      }
+      R.overlay(ctx, W, H);
+      var _slots = _slotStore.readAllNamed();
+      slotUI.drawSavePicker(ctx, slotPickerLayoutCache, _slots, slotPickerSelectedIdx);
+    } else if (slotModal === 'overwrite-warning') {
+      if (!slotPickerLayoutCache) {
+        slotPickerLayoutCache = slotUI.overwriteWarningLayout(W, H, safeInsets);
+      }
+      R.overlay(ctx, W, H);
+      var _slots2 = _slotStore.readAllNamed();
+      var _on = slotUI.pickOldestNewest(_slots2);
+      slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx);
+    }
   };
 
   // ---- TOUCH ----
   scene.onTouchStart = function (x, y) {
-    gestureStart = { x: x, y: y, t: Date.now(), fromEdge: x < 24 };
 
     // Modal win card swallows palette drags etc.
     if (isWon && !winCardDismissed && L.winCard) return;
@@ -1820,6 +1896,98 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // ── Save-slot modals: intercept ALL taps while a modal is open. ──
+    if (slotModal === 'save-picker' && slotPickerLayoutCache) {
+      var hit = slotUI.savePickerHitTest(x, y, slotPickerLayoutCache);
+      if (hit === 'cancel') {
+        slotModal = null; slotPickerLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      if (hit && hit.indexOf('slot-') === 0) {
+        var idx = parseInt(hit.slice(5), 10);
+        var allSlots = _slotStore.readAllNamed();
+        if (allSlots[idx] === null) {
+          // Empty slot: instant save — bind FIRST so captureState sees the bound id.
+          _slotBinding.bind(NAMED_SLOT_IDS[idx]);
+          _slotStore.writeSlot(NAMED_SLOT_IDS[idx], captureState());
+          _slotStore.deleteSlot('temp');
+          _tempSlot.cancelPending();
+          slotModal = null; slotPickerLayoutCache = null;
+          showToast('已存到槽位 ' + (idx + 1));
+          scene.dirty = true;
+          return;
+        } else {
+          // Occupied slot: switch to overwrite-warning, pre-selecting this slot
+          slotPickerSelectedIdx = idx;
+          slotModal = 'overwrite-warning';
+          slotPickerLayoutCache = null;
+          scene.dirty = true;
+          return;
+        }
+      }
+      // Tap on overlay outside panel or on panel non-interactive area: swallow.
+      return;
+    }
+
+    if (slotModal === 'overwrite-warning' && slotPickerLayoutCache) {
+      var hit2 = slotUI.overwriteWarningHitTest(x, y, slotPickerLayoutCache);
+      if (hit2 === 'cancel') {
+        slotModal = null; slotPickerLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      if (hit2 && hit2.indexOf('slot-') === 0) {
+        slotPickerSelectedIdx = parseInt(hit2.slice(5), 10);
+        scene.dirty = true;
+        return;
+      }
+      if (hit2 === 'confirm') {
+        var slotIds2 = NAMED_SLOT_IDS;
+        var targetId2 = slotIds2[slotPickerSelectedIdx];
+        // Bind FIRST so captureState records the correct boundSlotId.
+        _slotBinding.bind(targetId2);
+        _slotStore.writeSlot(targetId2, captureState());
+        _slotStore.deleteSlot('temp');
+        _tempSlot.cancelPending();
+        slotModal = null; slotPickerLayoutCache = null;
+        showToast('已覆盖槽位 ' + (slotPickerSelectedIdx + 1));
+        scene.dirty = true;
+        return;
+      }
+      return;
+    }
+
+    // ── Save button tap: silent overwrite if bound; otherwise open picker. ──
+    if (L.saveBtn && R.hitTest(x, y, L.saveBtn)) {
+      var bound = _slotBinding.getBound();
+      if (bound) {
+        // Auto-save is already covering this slot. Show a passive indicator.
+        _tempSlot.flush();                             // ensure any pending edit is written NOW
+        showToast('已自动保存到槽位 ' + bound.slice(-1));
+        scene.dirty = true;
+        return;
+      }
+      // No binding: open save picker. Pre-select first empty slot.
+      var allSlots = _slotStore.readAllNamed();
+      var firstEmpty = -1;
+      for (var fei = 0; fei < allSlots.length; fei++) {
+        if (allSlots[fei] === null) { firstEmpty = fei; break; }
+      }
+      if (firstEmpty === -1) {
+        // All occupied: jump straight to overwrite-warning; pre-select oldest.
+        slotModal = 'overwrite-warning';
+        var _onBound = slotUI.pickOldestNewest(allSlots);
+        slotPickerSelectedIdx = _onBound.oldestIdx !== null ? _onBound.oldestIdx : 0;
+      } else {
+        slotModal = 'save-picker';
+        slotPickerSelectedIdx = firstEmpty;
+      }
+      slotPickerLayoutCache = null;
+      scene.dirty = true;
+      return;
+    }
+
     // ── Win modal: × dismisses; 随机下一题 / 完成新手教程 advances; share
     //    shares; tap outside dismisses; tap inside (not a button) is swallowed.
     if (isWon && !winCardDismissed && L.winCard) {
@@ -1829,6 +1997,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
         progress.markTutorialDone();
         clearInterval(timerInterval);
+        _tempSlot.flush();
         callbacks.onBack();
         return;
       }
@@ -1859,6 +2028,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (L.tutorialSkipBtn && R.hitTest(x, y, L.tutorialSkipBtn)) {
       progress.markTutorialDone();
       clearInterval(timerInterval);
+      _tempSlot.flush();
       callbacks.onBack();
       return;
     }
@@ -2191,6 +2361,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Back
     if (L.backBtn && R.hitTest(x, y, L.backBtn)) {
       clearInterval(timerInterval);
+      _tempSlot.flush();
       callbacks.onBack();
       return;
     }
@@ -2289,16 +2460,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // Edge swipe back
-    if (gestureStart.fromEdge && !dragging) {
-      var sdx = x - gestureStart.x;
-      var sdy = Math.abs(y - gestureStart.y);
-      if (sdx > 60 && sdy < sdx) {
-        clearInterval(timerInterval);
-        callbacks.onBack();
-        return;
-      }
-    }
   };
 
   scene.update = function () {};

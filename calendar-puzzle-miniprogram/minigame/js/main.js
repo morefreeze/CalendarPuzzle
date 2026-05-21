@@ -6,6 +6,7 @@ var shareState = require('./shareState');
 var progress = require('./progress');
 var cloudClient = require('./cloudClient');
 var Voucher = require('./voucher');
+var slotsGlobal = require('./slotsGlobal');
 
 var ctx, W, H, safeInsets, menuRect;
 var currentScene = null;
@@ -164,31 +165,34 @@ function showLoading() {
 
 function goToSelect() {
   if (currentScene && currentScene.destroy) currentScene.destroy();
-  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty) {
-    startGame(difficulty);
+  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty, savedState) {
+    startGame(difficulty, savedState);
   }, {
     onReplayTutorial: function () { startTutorial(); },
   });
   currentScene.dirty = true;
 }
 
-function startGame(difficulty) {
+function startGame(difficulty, savedState) {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = null; // clear while generating
 
   showLoading();
 
   setTimeout(function () {
-    var puzzle = PG.generatePuzzle(difficulty);
+    var puzzle = PG.generatePuzzle(difficulty, {
+      date: savedState ? new Date(savedState.date) : new Date(),
+      comboIndex: savedState ? savedState.comboIndex : undefined,
+    });
     if (!puzzle) {
       goToSelect();
       return;
     }
-    launchGameScene(difficulty, puzzle);
+    launchGameScene(difficulty, puzzle, savedState);
   }, 50);
 }
 
-function launchGameScene(difficulty, puzzle) {
+function launchGameScene(difficulty, puzzle, savedState) {
   shareState.setCurrent({
     difficulty: difficulty,
     difficultyLabel: PG.DIFFICULTY_CONFIG[difficulty].label,
@@ -210,7 +214,7 @@ function launchGameScene(difficulty, puzzle) {
       }
       goToSelect();
     },
-  });
+  }, savedState);
   currentScene.dirty = true;
 }
 
@@ -249,6 +253,25 @@ function onShow(query) {
   // tryConsumeInviterLink dedups internally so back-to-back init+onShow with the
   // same (inviter,t) only call helpInvite once.
   tryConsumeInviterLink(query || {});
+}
+
+// Floating-window (悬浮窗) and background-hide lifecycle: flush pending temp-slot
+// write so the most recent state lands in whichever slot is active (temp or bound).
+// This protects against force-kill while the game is in the floating window or
+// otherwise backgrounded. Does NOT promote temp → named (that's only via explicit
+// 💾 button or 继续游戏 grid load).
+if (typeof wx !== 'undefined' && wx.onHide) {
+  wx.onHide(function () {
+    try { slotsGlobal.tempSlot.flush(); } catch (e) { /* swallow */ }
+  });
+}
+
+// P3 placeholder: re-trigger cloudSlotSync.mergeOnLogin() on show to pick up
+// updates from other devices. No-op for P1/P2.
+if (typeof wx !== 'undefined' && wx.onShow) {
+  wx.onShow(function () {
+    // TODO(P3): cloudSlotSync.mergeOnLogin(currentOpenid)
+  });
 }
 
 module.exports = {

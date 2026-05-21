@@ -1,0 +1,656 @@
+// slotUI.js — pure layout / draw / hit-test helpers for save-slot UI.
+// No internal state, no wx.* calls. The scene caller owns modal state
+// and handles overlay drawing; slotUI draws only the panel itself.
+
+var R  = require('./render');
+var B  = require('./board');
+var PG = require('./puzzleGenerator');
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+var BRAND       = '#FFB300';
+var BRAND_DARK  = '#E65100';
+var DANGER      = '#E53935';
+var TEXT_DARK   = '#5D4037';
+var TEXT_LIGHT  = '#FFFFFF';
+var EMPTY_GREY  = '#BDBDBD';
+var PANEL_BG    = '#FFFFFF';
+var PANEL_RADIUS = 14;
+var BTN_RADIUS   = 8;
+var SAVE_BTN_SIZE = { w: 32, h: 22 };
+
+// ─── Block color palette for thumbnails ──────────────────────────────────────
+var BLOCK_COLORS = {
+  'I-block': '#42A5F5',
+  'T-block': '#AB47BC',
+  'L-block': '#26A69A',
+  'J-block': '#EC407A',
+  'S-block': '#66BB6A',
+  'Z-block': '#EF5350',
+  'O-block': '#FFA726',
+  'U-block': '#8D6E63',
+  'V-block': '#78909C',
+  'W-block': '#29B6F6',
+  'Y-block': '#D4E157',
+  'F-block': '#FF7043',
+  'N-block': '#26C6DA',
+  'P-block': '#9CCC65',
+};
+
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse a "YYYY-MM-DD" date string to a local Date.
+ * Returns null for invalid / missing input.
+ */
+function parseDateStr(s) {
+  if (!s) return null;
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
+/**
+ * Format epoch milliseconds to "M/D HH:mm" in local time.
+ * Returns '' for null/undefined.
+ */
+function formatSavedAt(epochMs) {
+  if (epochMs == null) return '';
+  var d = new Date(epochMs);
+  var month = d.getMonth() + 1;
+  var day   = d.getDate();
+  var hh    = String(d.getHours()).padStart(2, '0');
+  var mm    = String(d.getMinutes()).padStart(2, '0');
+  return month + '/' + day + ' ' + hh + ':' + mm;
+}
+
+/**
+ * Given a 3-element array of slot objects or nulls, return
+ * { oldestIdx, newestIdx } where each is the index (or null if 0 occupied).
+ * If 1 occupied: both point to the same index.
+ * Ties: smaller index wins for "oldest", larger wins for "newest".
+ */
+function pickOldestNewest(slots) {
+  var oldestIdx = null;
+  var newestIdx = null;
+  for (var i = 0; i < slots.length; i++) {
+    if (slots[i] == null) continue;
+    var t = slots[i].savedAt;
+    if (oldestIdx === null) {
+      oldestIdx = i;
+      newestIdx = i;
+    } else {
+      // Ties: smaller index wins for oldest (strict <)
+      if (t < slots[oldestIdx].savedAt) oldestIdx = i;
+      // Ties: larger index wins for newest (>=)
+      if (t >= slots[newestIdx].savedAt) newestIdx = i;
+    }
+  }
+  return { oldestIdx: oldestIdx, newestIdx: newestIdx };
+}
+
+/**
+ * Map difficulty key to Chinese label. Unknown keys pass through unchanged.
+ * Pulls from puzzleGenerator.DIFFICULTY_CONFIG so labels stay in sync with the game.
+ */
+function difficultyLabel(diffKey) {
+  if (!diffKey) return '';
+  var cfg = PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[diffKey];
+  return (cfg && cfg.label) ? cfg.label : diffKey;  // fall back to raw key for unknown
+}
+
+// ─── Layout helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Position the 💾 save button 4 px to the left of the stamina capsule,
+ * vertically centred to it.
+ * Input: { x, y, w, h } of the stamina capsule.
+ * Output: { x, y, w, h } for the save button.
+ */
+function saveBtnLayout(staminaRect) {
+  var w = SAVE_BTN_SIZE.w;
+  var h = SAVE_BTN_SIZE.h;
+  return {
+    x: staminaRect.x - w - 4,
+    y: staminaRect.y + (staminaRect.h - h) / 2,
+    w: w,
+    h: h,
+  };
+}
+
+/**
+ * Compute the layout for the save-picker modal (centered panel).
+ * Returns:
+ *   { panel, headerY, slotRects:[r,r,r], cancelBtn }
+ * (No confirmBtn — tap-slot = instant action in this modal.)
+ */
+function savePickerLayout(W, H, safeInsets) {
+  var panelH = 320;
+  var panelW = Math.min(W * 0.85, 320);
+  var panelX = (W - panelW) / 2;
+  var panelY = (H - panelH) / 2;
+
+  var headerY = panelY + 18;
+
+  var cardW  = panelW - 40;
+  var cardH  = 64;
+  var cardGap = 8;
+  var cardX  = panelX + (panelW - cardW) / 2;
+  var cardStartY = headerY + 28;
+
+  var slotRects = [];
+  for (var i = 0; i < 3; i++) {
+    slotRects.push({
+      x: cardX,
+      y: cardStartY + i * (cardH + cardGap),
+      w: cardW,
+      h: cardH,
+    });
+  }
+
+  var btnW = 120;
+  var btnH = 36;
+  var btnY  = panelY + panelH - btnH - 16;
+  var btnStartX = panelX + (panelW - btnW) / 2;
+
+  return {
+    panel: { x: panelX, y: panelY, w: panelW, h: panelH },
+    headerY: headerY,
+    slotRects: slotRects,
+    cancelBtn: { x: btnStartX, y: btnY, w: btnW, h: btnH },
+  };
+}
+
+/**
+ * Layout for the overwrite-warning modal.
+ * Same structure as savePickerLayout but with a taller panel
+ * to accommodate the warning header.
+ */
+function overwriteWarningLayout(W, H, safeInsets) {
+  var panelH = 340;
+  var panelW = Math.min(W * 0.85, 320);
+  var panelX = (W - panelW) / 2;
+  var panelY = (H - panelH) / 2;
+
+  var headerY = panelY + 18;
+
+  var cardW  = panelW - 40;
+  var cardH  = 64;
+  var cardGap = 8;
+  var cardX  = panelX + (panelW - cardW) / 2;
+  var cardStartY = headerY + 36;
+
+  var slotRects = [];
+  for (var i = 0; i < 3; i++) {
+    slotRects.push({
+      x: cardX,
+      y: cardStartY + i * (cardH + cardGap),
+      w: cardW,
+      h: cardH,
+    });
+  }
+
+  var btnW = 120;
+  var btnH = 36;
+  var btnY  = panelY + panelH - btnH - 16;
+  var totalBtnW = btnW * 2 + 12;
+  var btnStartX = panelX + (panelW - totalBtnW) / 2;
+
+  return {
+    panel: { x: panelX, y: panelY, w: panelW, h: panelH },
+    headerY: headerY,
+    slotRects: slotRects,
+    confirmBtn: { x: btnStartX,          y: btnY, w: btnW, h: btnH },
+    cancelBtn:  { x: btnStartX + btnW + 12, y: btnY, w: btnW, h: btnH },
+  };
+}
+
+/**
+ * Layout for the "continue or discard" modal.
+ * Returns: { panel, closeBtn, previewRect, continueBtn, discardBtn }
+ */
+function continueDiscardLayout(W, H, safeInsets) {
+  var panelW = Math.min(W * 0.85, 300);
+  var panelH = 238;  // +18 px to accommodate pending-difficulty hint above discard button
+  var panelX = (W - panelW) / 2;
+  var panelY = (H - panelH) / 2;
+
+  var thumbW = 64;
+  var thumbH = 56;
+  var thumbX = panelX + (panelW - thumbW) / 2;
+  var thumbY = panelY + 36;
+
+  var btnW = 120;
+  var btnH = 36;
+  var btnY  = panelY + panelH - btnH - 16;
+  var totalBtnW = btnW * 2 + 12;
+  var btnStartX = panelX + (panelW - totalBtnW) / 2;
+
+  var closeBtn = {
+    x: panelX + panelW - 32,
+    y: panelY + 8,
+    w: 24,
+    h: 24,
+  };
+
+  return {
+    panel:       { x: panelX, y: panelY, w: panelW, h: panelH },
+    closeBtn:    closeBtn,
+    previewRect: { x: thumbX, y: thumbY, w: thumbW, h: thumbH },
+    continueBtn: { x: btnStartX,           y: btnY, w: btnW, h: btnH },
+    discardBtn:  { x: btnStartX + btnW + 12, y: btnY, w: btnW, h: btnH },
+  };
+}
+
+/**
+ * Full-screen "继续游戏" slot grid layout.
+ * slotCount: typically 3 (free tier), can be higher for dev override.
+ * Returns: { backBtn, titleY, slotRects, emptyHintY }
+ */
+function slotGridLayout(W, H, safeInsets, slotCount) {
+  var topInset = (safeInsets && safeInsets.top) || 0;
+
+  var backBtnW = 60;
+  var backBtnH = 32;
+  var backBtnX = (safeInsets && safeInsets.left) || 12;
+  var backBtnY = topInset + 12;
+
+  var titleY = backBtnY + backBtnH + 12;
+
+  var cardW   = W * 0.78;
+  var cardH   = 80;
+  var cardGap = 12;
+  var cardX   = (W - cardW) / 2;
+  var cardStartY = titleY + 36;
+
+  var slotRects = [];
+  for (var i = 0; i < slotCount; i++) {
+    slotRects.push({
+      x: cardX,
+      y: cardStartY + i * (cardH + cardGap),
+      w: cardW,
+      h: cardH,
+    });
+  }
+
+  var lastCardBottom = slotRects.length > 0
+    ? slotRects[slotRects.length - 1].y + cardH
+    : cardStartY;
+
+  return {
+    backBtn:    { x: backBtnX, y: backBtnY, w: backBtnW, h: backBtnH },
+    titleY:     titleY,
+    slotRects:  slotRects,
+    emptyHintY: lastCardBottom + 24,
+  };
+}
+
+// ─── Drawing functions ────────────────────────────────────────────────────────
+// These use ctx (canvas 2D context) and have side effects; not unit-tested.
+// The scene caller is responsible for drawing the overlay before calling these.
+
+/**
+ * Draw the 💾 save button (BRAND-coloured rounded rect with white icon text).
+ */
+function drawSaveBtn(ctx, rect) {
+  R.roundRect(ctx, rect.x, rect.y, rect.w, rect.h, BTN_RADIUS, BRAND);
+  R.text(ctx, '💾', rect.x + rect.w / 2, rect.y + rect.h / 2, 14,
+    TEXT_LIGHT, 'center', 'middle');
+}
+
+/**
+ * Draw the save-slot picker panel.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} layout - from savePickerLayout()
+ * @param {Array}  slots  - 3-element array (Slot|null)
+ * @param {number|null} selectedIdx - currently highlighted slot index
+ */
+function drawSavePicker(ctx, layout, slots, selectedIdx) {
+  var p = layout.panel;
+  // Panel shadow
+  ctx.shadowColor    = 'rgba(0,0,0,0.22)';
+  ctx.shadowBlur     = 14;
+  ctx.shadowOffsetY  = 4;
+  R.roundRect(ctx, p.x, p.y, p.w, p.h, PANEL_RADIUS, PANEL_BG, BRAND);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur  = 0;
+  ctx.shadowOffsetY = 0;
+
+  // Header
+  R.textBold(ctx, '保存到哪一槽？',
+    p.x + p.w / 2, layout.headerY, 15, BRAND, 'center', 'top');
+
+  // Slot cards
+  for (var i = 0; i < 3; i++) {
+    var r = layout.slotRects[i];
+    var slot = slots[i];
+    var isSelected = (i === selectedIdx);
+    var borderColor = isSelected ? BRAND : '#DDDDDD';
+    var borderWidth = isSelected ? 2.5 : 1;
+
+    if (slot == null) {
+      // Empty slot
+      R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, '#F5F5F5', EMPTY_GREY);
+      R.text(ctx, '空', r.x + r.w / 2, r.y + r.h / 2, 14, EMPTY_GREY,
+        'center', 'middle');
+    } else {
+      // Occupied slot
+      ctx.lineWidth = borderWidth;
+      R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, PANEL_BG, borderColor);
+      drawThumbnail(ctx, r.x + 6, r.y + (r.h - 48) / 2, 48, 48, slot);
+      R.textBold(ctx, difficultyLabel(slot.difficulty),
+        r.x + 62, r.y + 12, 12, TEXT_DARK, 'left', 'top');
+      R.text(ctx, formatSavedAt(slot.savedAt),
+        r.x + 62, r.y + 30, 11, '#888888', 'left', 'top');
+    }
+  }
+
+  // Button (cancel only — slot tap is the action)
+  R.button(ctx, layout.cancelBtn.x, layout.cancelBtn.y,
+    layout.cancelBtn.w, layout.cancelBtn.h, '取消', '#EEEEEE', '#333333', BTN_RADIUS);
+}
+
+/**
+ * Draw the overwrite-warning panel (all 3 slots occupied).
+ */
+function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx) {
+  var p = layout.panel;
+  ctx.shadowColor   = 'rgba(0,0,0,0.22)';
+  ctx.shadowBlur    = 14;
+  ctx.shadowOffsetY = 4;
+  R.roundRect(ctx, p.x, p.y, p.w, p.h, PANEL_RADIUS, PANEL_BG, DANGER);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur  = 0;
+  ctx.shadowOffsetY = 0;
+
+  R.textBold(ctx, '⚠️ 槽位已满 — 覆盖哪个？',
+    p.x + p.w / 2, layout.headerY, 14, DANGER, 'center', 'top');
+
+  for (var i = 0; i < 3; i++) {
+    var r = layout.slotRects[i];
+    var slot = slots[i];
+    R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, PANEL_BG, '#DDDDDD');
+    if (slot) {
+      drawThumbnail(ctx, r.x + 6, r.y + (r.h - 48) / 2, 48, 48, slot);
+      var label = difficultyLabel(slot.difficulty);
+      if (i === oldestIdx) label += ' (最旧)';
+      else if (i === newestIdx) label += ' (最近)';
+      R.textBold(ctx, label, r.x + 62, r.y + 12, 12, TEXT_DARK, 'left', 'top');
+      R.text(ctx, formatSavedAt(slot.savedAt),
+        r.x + 62, r.y + 30, 11, '#888888', 'left', 'top');
+    }
+  }
+
+  R.button(ctx, layout.confirmBtn.x, layout.confirmBtn.y,
+    layout.confirmBtn.w, layout.confirmBtn.h, '覆盖', DANGER, TEXT_LIGHT, BTN_RADIUS);
+  R.button(ctx, layout.cancelBtn.x, layout.cancelBtn.y,
+    layout.cancelBtn.w, layout.cancelBtn.h, '取消', '#EEEEEE', '#333333', BTN_RADIUS);
+}
+
+/**
+ * Draw the "continue or discard" modal for an unsaved temp slot.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} layout - from continueDiscardLayout()
+ * @param {object|null} unsavedSlot - the saved-but-not-submitted session
+ * @param {string} [pendingDifficulty] - difficulty key the player just tapped;
+ *   when provided, a small hint label is drawn above the discard button.
+ */
+function drawContinueDiscard(ctx, layout, unsavedSlot, pendingDifficulty) {
+  var p = layout.panel;
+  ctx.shadowColor   = 'rgba(0,0,0,0.22)';
+  ctx.shadowBlur    = 14;
+  ctx.shadowOffsetY = 4;
+  R.roundRect(ctx, p.x, p.y, p.w, p.h, PANEL_RADIUS, PANEL_BG, BRAND);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur  = 0;
+  ctx.shadowOffsetY = 0;
+
+  R.textBold(ctx, '还有未完成的对局',
+    p.x + p.w / 2, p.y + 14, 15, TEXT_DARK, 'center', 'top');
+
+  // Close (×) button — top-right of panel
+  R.text(ctx, '×', layout.closeBtn.x + layout.closeBtn.w / 2,
+         layout.closeBtn.y + layout.closeBtn.h / 2, 22, EMPTY_GREY, 'center', 'middle');
+
+  var pr = layout.previewRect;
+  drawThumbnail(ctx, pr.x, pr.y, pr.w, pr.h, unsavedSlot);
+
+  if (unsavedSlot) {
+    var infoY = pr.y + pr.h + 8;
+    R.text(ctx, difficultyLabel(unsavedSlot.difficulty) + '  ' + (unsavedSlot.date || ''),
+      p.x + p.w / 2, infoY, 12, '#666666', 'center', 'top');
+  }
+
+  R.button(ctx, layout.continueBtn.x, layout.continueBtn.y,
+    layout.continueBtn.w, layout.continueBtn.h, '继续未完成', BRAND, TEXT_LIGHT, BTN_RADIUS);
+
+  // Hint: show pending new-game difficulty above the discard button.
+  if (pendingDifficulty) {
+    var label = difficultyLabel(pendingDifficulty);
+    if (label) {
+      R.text(ctx, label, layout.discardBtn.x + layout.discardBtn.w / 2,
+             layout.discardBtn.y - 6, 11, EMPTY_GREY, 'center', 'bottom');
+    }
+  }
+
+  R.button(ctx, layout.discardBtn.x, layout.discardBtn.y,
+    layout.discardBtn.w, layout.discardBtn.h, '放弃，开新局', '#EEEEEE', '#333333', BTN_RADIUS);
+}
+
+/**
+ * Draw the full-screen slot grid ("我的存档").
+ */
+function drawSlotGrid(ctx, layout, slots) {
+  // Back button
+  R.button(ctx, layout.backBtn.x, layout.backBtn.y,
+    layout.backBtn.w, layout.backBtn.h, '← 返回', '#EEEEEE', '#333333', BTN_RADIUS);
+
+  // Title
+  R.textBold(ctx, '我的存档',
+    layout.backBtn.x + layout.backBtn.w + 10,
+    layout.titleY, 16, TEXT_DARK, 'left', 'top');
+
+  // Slot cards
+  var allEmpty = true;
+  for (var i = 0; i < layout.slotRects.length; i++) {
+    var r = layout.slotRects[i];
+    var slot = slots ? slots[i] : null;
+    if (slot == null) {
+      R.roundRect(ctx, r.x, r.y, r.w, r.h, 10, '#F5F5F5', EMPTY_GREY);
+      R.text(ctx, '空', r.x + r.w / 2, r.y + r.h / 2, 14, EMPTY_GREY,
+        'center', 'middle');
+    } else {
+      allEmpty = false;
+      R.roundRect(ctx, r.x, r.y, r.w, r.h, 10, PANEL_BG, '#DDDDDD');
+      drawThumbnail(ctx, r.x + 8, r.y + (r.h - 56) / 2, 56, 56, slot);
+      R.textBold(ctx, difficultyLabel(slot.difficulty),
+        r.x + 72, r.y + 14, 13, TEXT_DARK, 'left', 'top');
+      R.text(ctx, slot.date || '',
+        r.x + 72, r.y + 32, 12, '#888888', 'left', 'top');
+      R.text(ctx, formatSavedAt(slot.savedAt),
+        r.x + 72, r.y + 48, 11, '#AAAAAA', 'left', 'top');
+    }
+  }
+
+  // Empty hint
+  if (allEmpty) {
+    R.text(ctx, '暂无存档',
+      layout.backBtn.x + 10, layout.emptyHintY, 14, EMPTY_GREY, 'left', 'top');
+  }
+}
+
+/**
+ * Draw a small thumbnail of the full board state, mirroring the manual-pick
+ * (手动选题) thumbnail style: board background, date-marker cells (gold),
+ * pre-placed locked blocks, and the player's placed blocks.
+ *
+ * Board is 7 cols × 8 rows.
+ * If slot is null/undefined: just outline + light grey fill.
+ *
+ * slot fields used:
+ *   .date            "YYYY-MM-DD" — used to derive uncoverable cells
+ *   .prePlacedBlocks  (optional, Approach B) — locked blocks
+ *   .placedBlocks     — player-placed blocks
+ */
+function drawThumbnail(ctx, x, y, w, h, slot) {
+  var COLS = 7;
+  var ROWS = 8;
+  var cs = Math.min((w - 2) / COLS, (h - 2) / ROWS);
+  var ox = x + (w - cs * COLS) / 2;
+  var oy = y + (h - cs * ROWS) / 2;
+
+  // Outline + background
+  ctx.fillStyle   = '#F5F5F5';
+  ctx.strokeStyle = '#CCCCCC';
+  ctx.lineWidth   = 1;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeRect(x, y, w, h);
+
+  if (!slot) return;
+
+  // Derive uncoverable (date-marker) cell coordinates from slot.date.
+  var uncov = [];
+  if (slot.date) {
+    var dt = parseDateStr(slot.date);
+    if (dt) uncov = B.getUncoverableCells(dt);
+  }
+
+  // Build a fast lookup for cells covered by blocks.
+  // key = "x,y" → color
+  var covered = {};
+  var prePlaced = slot.prePlacedBlocks || [];
+  var placed    = slot.placedBlocks    || [];
+
+  function markBlocks(blocks, alpha, forcedColor) {
+    for (var bi = 0; bi < blocks.length; bi++) {
+      var blk = blocks[bi];
+      if (!blk || !blk.shape) continue;
+      var color = forcedColor || blk.color || BLOCK_COLORS[blk.id] || '#90A4AE';
+      for (var ry = 0; ry < blk.shape.length; ry++) {
+        for (var cx2 = 0; cx2 < blk.shape[ry].length; cx2++) {
+          if (blk.shape[ry][cx2] !== 1) continue;
+          covered[(blk.x + cx2) + ',' + (blk.y + ry)] = { color: color, alpha: alpha };
+        }
+      }
+    }
+  }
+  markBlocks(prePlaced, 1.0, '#9E9E9E');  // locked blocks: unified grey, full opacity
+  markBlocks(placed,    1.0);              // player blocks: per-block colors, full opacity
+
+  // Draw every board cell.
+  for (var row = 0; row < ROWS; row++) {
+    for (var col = 0; col < COLS; col++) {
+      var px = ox + col * cs;
+      var py = oy + row * cs;
+      var key = col + ',' + row;
+      var cellDef = B.boardLayoutData[row][col];
+
+      var hit = covered[key];
+      if (hit) {
+        ctx.globalAlpha = hit.alpha;
+        ctx.fillStyle = hit.color;
+        ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        ctx.globalAlpha = 1;
+      } else {
+        // Check uncoverable (date marker) — gold
+        var isUncov = false;
+        for (var u = 0; u < uncov.length; u++) {
+          if (uncov[u].x === col && uncov[u].y === row) { isUncov = true; break; }
+        }
+        if (isUncov) {
+          ctx.fillStyle = '#FFB300';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        } else if (cellDef.t === 'empty') {
+          ctx.fillStyle = '#EEEEEE';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        } else {
+          ctx.fillStyle = '#DDDDDD';
+          ctx.fillRect(px, py, Math.max(1, cs - 0.5), Math.max(1, cs - 0.5));
+        }
+      }
+    }
+  }
+}
+
+// ─── Hit-test helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Returns 'slot-0' | 'slot-1' | 'slot-2' | 'cancel' | null.
+ * (No 'confirm' — tap-slot = instant action.)
+ */
+function savePickerHitTest(x, y, layout) {
+  for (var i = 0; i < layout.slotRects.length; i++) {
+    if (R.hitTest(x, y, layout.slotRects[i])) return 'slot-' + i;
+  }
+  if (R.hitTest(x, y, layout.cancelBtn)) return 'cancel';
+  return null;
+}
+
+/**
+ * Returns 'slot-0' | 'slot-1' | 'slot-2' | 'confirm' | 'cancel' | null.
+ */
+function overwriteWarningHitTest(x, y, layout) {
+  for (var i = 0; i < layout.slotRects.length; i++) {
+    if (R.hitTest(x, y, layout.slotRects[i])) return 'slot-' + i;
+  }
+  if (R.hitTest(x, y, layout.confirmBtn)) return 'confirm';
+  if (R.hitTest(x, y, layout.cancelBtn))  return 'cancel';
+  return null;
+}
+
+/**
+ * Returns 'close' | 'continue' | 'discard' | null.
+ */
+function continueDiscardHitTest(x, y, layout) {
+  if (R.hitTest(x, y, layout.closeBtn))    return 'close';
+  if (R.hitTest(x, y, layout.continueBtn)) return 'continue';
+  if (R.hitTest(x, y, layout.discardBtn))  return 'discard';
+  return null;
+}
+
+/**
+ * Returns 'back' | 'slot-0' | 'slot-1' | ... | null.
+ */
+function slotGridHitTest(x, y, layout) {
+  if (R.hitTest(x, y, layout.backBtn)) return 'back';
+  for (var i = 0; i < layout.slotRects.length; i++) {
+    if (R.hitTest(x, y, layout.slotRects[i])) return 'slot-' + i;
+  }
+  return null;
+}
+
+// ─── Exports ──────────────────────────────────────────────────────────────────
+module.exports = {
+  // Constants
+  BRAND:         BRAND,
+  BRAND_DARK:    BRAND_DARK,
+  DANGER:        DANGER,
+  TEXT_DARK:     TEXT_DARK,
+  TEXT_LIGHT:    TEXT_LIGHT,
+  EMPTY_GREY:    EMPTY_GREY,
+  PANEL_BG:      PANEL_BG,
+  PANEL_RADIUS:  PANEL_RADIUS,
+  BTN_RADIUS:    BTN_RADIUS,
+  SAVE_BTN_SIZE: SAVE_BTN_SIZE,
+  // Pure helpers
+  formatSavedAt:    formatSavedAt,
+  pickOldestNewest: pickOldestNewest,
+  difficultyLabel:  difficultyLabel,
+  // Layouts
+  saveBtnLayout:           saveBtnLayout,
+  savePickerLayout:        savePickerLayout,
+  overwriteWarningLayout:  overwriteWarningLayout,
+  continueDiscardLayout:   continueDiscardLayout,
+  slotGridLayout:          slotGridLayout,
+  // Drawing (ctx-dependent; not unit-tested)
+  drawSaveBtn:          drawSaveBtn,
+  drawSavePicker:       drawSavePicker,
+  drawOverwriteWarning: drawOverwriteWarning,
+  drawContinueDiscard:  drawContinueDiscard,
+  drawSlotGrid:         drawSlotGrid,
+  drawThumbnail:        drawThumbnail,
+  // Hit-tests
+  savePickerHitTest:       savePickerHitTest,
+  overwriteWarningHitTest: overwriteWarningHitTest,
+  continueDiscardHitTest:  continueDiscardHitTest,
+  slotGridHitTest:         slotGridHitTest,
+};
