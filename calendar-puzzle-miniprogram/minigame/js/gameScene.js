@@ -66,6 +66,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     palette = palette.filter(function (b) { return !seenInDropped[b.id]; });
   }
+  _slotBinding.clearActive();
   if (savedState) {
     dropped = (savedState.placedBlocks || []).map(B.cloneBlock);
     palette = (savedState.paletteBlocks || []).map(B.cloneBlock);
