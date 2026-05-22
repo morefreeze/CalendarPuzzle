@@ -351,8 +351,9 @@ function drawSavePicker(ctx, layout, slots, selectedIdx) {
 
 /**
  * Draw the overwrite-warning panel (all 3 slots occupied).
+ * @param {number|null} selectedIdx - currently highlighted slot index
  */
-function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx) {
+function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx, selectedIdx) {
   var p = layout.panel;
   ctx.shadowColor   = 'rgba(0,0,0,0.22)';
   ctx.shadowBlur    = 14;
@@ -368,7 +369,24 @@ function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx) {
   for (var i = 0; i < 3; i++) {
     var r = layout.slotRects[i];
     var slot = slots[i];
-    R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, PANEL_BG, '#DDDDDD');
+    var isSelected = (i === selectedIdx);
+    var borderColor = isSelected ? DANGER : '#DDDDDD';
+    R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, PANEL_BG, borderColor);
+    if (isSelected) {
+      // R.roundRect resets lineWidth to 1, so re-stroke with a thicker
+      // outline so the selection is actually visible at a glance.
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = DANGER;
+      ctx.beginPath();
+      ctx.moveTo(r.x + 8, r.y);
+      ctx.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + r.h, 8);
+      ctx.arcTo(r.x + r.w, r.y + r.h, r.x, r.y + r.h, 8);
+      ctx.arcTo(r.x, r.y + r.h, r.x, r.y, 8);
+      ctx.arcTo(r.x, r.y, r.x + r.w, r.y, 8);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
     if (slot) {
       drawThumbnail(ctx, r.x + 6, r.y + (r.h - 48) / 2, 48, 48, slot);
       var label = difficultyLabel(slot.difficulty);

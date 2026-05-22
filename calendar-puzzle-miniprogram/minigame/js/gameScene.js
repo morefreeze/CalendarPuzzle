@@ -1815,7 +1815,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.overlay(ctx, W, H);
       var _slots2 = _slotStore.readAllNamed();
       var _on = slotUI.pickOldestNewest(_slots2);
-      slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx);
+      slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx, slotPickerSelectedIdx);
     }
   };
 
