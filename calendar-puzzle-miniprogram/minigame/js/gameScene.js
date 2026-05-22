@@ -57,6 +57,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var prePlaced = puzzle.prePlacedBlocks;
   var dropped = [];
   var palette = puzzle.remainingBlocks.map(function (b) { return B.cloneBlock(b); });
+  var timer = 0;
   // If the puzzle ships pre-misplaced blocks (tutorial mode), seed dropped
   // and pull those ids out of palette.
   if (puzzle.initialDropped && puzzle.initialDropped.length) {
@@ -99,7 +100,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var tutorialPlaceableId = puzzle.placeableId || null;
   var tutorialUnplaceableId = puzzle.unplaceableId || null;
   var selected = null;
-  var timer = 0;
   var isWon = false;
   var hintMode = false;
   var hintTier = null;
@@ -138,6 +138,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       hintsUsed: 0,
     };
   }
+
+  // Re-snapshot before flush so timer ticks since the last markDirty (which
+  // only fires on block actions) are not lost on exit/onHide.
+  function flushSaveNow() {
+    if (!tutorialMode && !isWon) _tempSlot.markDirty(captureState());
+    _tempSlot.flush();
+  }
+  scene.onHide = flushSaveNow;
 
   // Stamp the initial game state into the active save target (temp slot for unbound
   // new games; bound named slot when restored from grid). This ensures that even a
@@ -213,9 +221,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         voucher.reconcile(cloudClient, currentPuzzleId());
         showToast('+1 张强提示');
         sourceMenuOpen = false; sourceMenuTier = null;
+        staminaConfirm = null;
         scene.dirty = true;
-      } else if (r && r.err === 'insufficient-help-credits') {
-        showToast('需要 2 张助力中提示');
+      } else if (r && (r.err === 'insufficient-medium-credits' || r.err === 'insufficient-help-credits')) {
+        showToast('需要 2 张中提示');
       } else {
         showToast('兑换失败：' + ((r && r.err) || '未知'));
       }
@@ -736,14 +745,36 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var rowH = 50, rowGap = 8;
         var rowY = L.hintPopup.y + 50;
         var tiers = ['weak', 'medium', 'strong'];
+        // Convert affordance: any 2 unused medium vouchers (any source) can
+        // be burned for 1 strong via convertHelpToStrong cloud function.
+        // When shown, medium/strong rows truncate on the right to make room.
+        var convertEligible = voucher.displayBalance('medium') >= 2;
+        var convertBtnW = 46;
+        var convertGap = 6;
         for (var ti = 0; ti < tiers.length; ti++) {
+          var _t = tiers[ti];
+          var _btnW = popW - 40;
+          if (convertEligible && (_t === 'medium' || _t === 'strong')) {
+            _btnW = popW - 40 - convertBtnW - convertGap;
+          }
           L.hintTierBtns.push({
             x: L.hintPopup.x + 20, y: rowY + ti * (rowH + rowGap),
-            w: popW - 40, h: rowH, tier: tiers[ti],
+            w: _btnW, h: rowH, tier: _t,
           });
+        }
+        if (convertEligible) {
+          L.hintConvertBtn = {
+            x: L.hintPopup.x + 20 + (popW - 40 - convertBtnW),
+            y: rowY + (rowH + rowGap),
+            w: convertBtnW,
+            h: rowH * 2 + rowGap,
+          };
+        } else {
+          L.hintConvertBtn = null;
         }
         L.hintItems = [];
       } else {
+        L.hintConvertBtn = null;
         var candidates = [];
         for (var ci2 = 0; ci2 < palette.length; ci2++) candidates.push(palette[ci2]);
         for (var cj = 0; cj < dropped.length; cj++) candidates.push(dropped[cj]);
@@ -780,7 +811,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var sby = L.sourceMenu.y + 90;
       var sbw = smW - 40;
       var sbh = 38;
-      var helpMed = voucher.getHelpMediumBalance();
+      var mediumBal = voucher.displayBalance('medium');
       if (sourceMenuTier === 'medium') {
         L.sourceMenuBtns.push({ kind: 'share', x: sbx, y: sby, w: sbw, h: sbh });
         sby += sbh + 10;
@@ -789,7 +820,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       } else if (sourceMenuTier === 'strong') {
         L.sourceMenuBtns.push({ kind: 'invite-help', x: sbx, y: sby, w: sbw, h: sbh });
         sby += sbh + 10;
-        if (helpMed >= 2) {
+        if (mediumBal >= 2) {
           L.sourceMenuBtns.push({ kind: 'convert', x: sbx, y: sby, w: sbw, h: sbh });
           sby += sbh + 10;
         }
@@ -1096,7 +1127,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (!hintTier) {
         R.textBold(ctx, '选择提示等级', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
         var tierLabels = {
-          weak:   '弱：揭示方向（旋转+镜像）',
+          weak:   '弱：揭示（固定）方块朝向',
           medium: '中：揭示落点格子（不告诉方向）',
           strong: '强：直接放置（自动腾位）',
         };
@@ -1120,6 +1151,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           var voucherBal = voucher.displayBalance(btn.tier);
           var bottomLine = costLabels[btn.tier] + ' · 剩余 ' + voucherBal + ' · ' + capStr;
           R.text(ctx, bottomLine, btn.x + 12, btn.y + 28, 11, disabled ? '#999' : 'rgba(255,255,255,0.85)', 'left');
+        }
+        if (L.hintConvertBtn) {
+          var cb = L.hintConvertBtn;
+          R.roundRect(ctx, cb.x, cb.y, cb.w, cb.h, 8, '#9C27B0');
+          R.textBold(ctx, '2', cb.x + cb.w / 2, cb.y + 14, 18, '#fff', 'center', 'top');
+          R.textBold(ctx, '↓', cb.x + cb.w / 2, cb.y + cb.h / 2, 18, '#fff', 'center', 'middle');
+          R.textBold(ctx, '1', cb.x + cb.w / 2, cb.y + cb.h - 14, 18, '#fff', 'center', 'bottom');
         }
       } else {
         R.textBold(ctx, '选择要提示的方块', L.hintPopup.x + L.hintPopup.w / 2, L.hintPopup.y + 18, 17, '#333', 'center');
@@ -1148,10 +1186,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // 常驻"邀请好友助力"入口（点开二级 menu，可看 stats + convert）
       if (L.tierFooterInviteBtn) {
         var footerHelps = voucher.getHelpsTodayCount();
-        var footerHelpMed = voucher.getHelpMediumBalance();
+        var footerMediumBal = voucher.displayBalance('medium');
         // "今日 N 次助力" = 今天有 N 位不同好友点了你的助力链接（同一好友一天 1 次）
         var footerLbl = '👥 邀请好友助力（今日 ' + footerHelps + ' 次助力';
-        if (footerHelpMed >= 2) footerLbl += ' · 可换 ' + Math.floor(footerHelpMed / 2) + ' 张强';
+        if (footerMediumBal >= 2) footerLbl += ' · 可换 ' + Math.floor(footerMediumBal / 2) + ' 张强';
         footerLbl += '）';
         R.roundRect(ctx, L.tierFooterInviteBtn.x, L.tierFooterInviteBtn.y,
           L.tierFooterInviteBtn.w, L.tierFooterInviteBtn.h, 6, '#E8F5E9', BRAND);
@@ -1166,7 +1204,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // --- 体力消耗确认弹窗（盖在 hint popup 之上）---
     if (hintMode && staminaConfirm) {
       R.overlay(ctx, W, H);
-      var cmW = Math.min(W * 0.78, 300), cmH = 220;
+      // 只有「强档 + 有 ≥2 助力中」时才提供兑换替代路径；其它情况维持原 2-按钮布局。
+      var scShowConvert = (staminaConfirm.tier === 'strong' && voucher.displayBalance('medium') >= 2);
+      var cmW = Math.min(W * 0.78, 300), cmH = scShowConvert ? 270 : 220;
       var cmX = (W - cmW) / 2, cmY = (H - cmH) / 2;
       L.staminaConfirmModal = { x: cmX, y: cmY, w: cmW, h: cmH };
       R.roundRect(ctx, cmX, cmY, cmW, cmH, 14, '#fff');
@@ -1195,9 +1235,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       L.staminaConfirmYesBtn = { x: cmX + 40 + scBtnW, y: scBtnY, w: scBtnW, h: scBtnH };
       R.button(ctx, L.staminaConfirmNoBtn.x, L.staminaConfirmNoBtn.y, scBtnW, scBtnH, '否', '#eee', '#333', 8);
       R.button(ctx, L.staminaConfirmYesBtn.x, L.staminaConfirmYesBtn.y, scBtnW, scBtnH, '是', BRAND, '#fff', 8);
+      if (scShowConvert) {
+        var scConvW = cmW - 40, scConvH = 36;
+        var scConvY = scBtnY - scConvH - 10;
+        L.staminaConfirmConvertBtn = { x: cmX + 20, y: scConvY, w: scConvW, h: scConvH };
+        R.button(ctx, L.staminaConfirmConvertBtn.x, L.staminaConfirmConvertBtn.y,
+          scConvW, scConvH, '用 2 张中提示兑换', '#9C27B0', '#fff', 8);
+      } else {
+        L.staminaConfirmConvertBtn = null;
+      }
     } else {
       L.staminaConfirmModal = null;
       L.staminaConfirmCheckbox = null;
+      L.staminaConfirmConvertBtn = null;
       L.staminaConfirmNoBtn = null;
       L.staminaConfirmYesBtn = null;
     }
@@ -1209,10 +1259,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, sm.x, sm.y, sm.w, sm.h, 14, '#fff');
       var tierName = sourceMenuTier === 'strong' ? '强提示' : (sourceMenuTier === 'medium' ? '中提示' : '提示');
       R.textBold(ctx, '怎么拿到 ' + tierName + '？', sm.x + sm.w / 2, sm.y + 22, 16, '#333', 'center');
-      // Stat line: 今日 N 次助力（不同好友数）· 已获取中提示 M 次（可兑换强提示的中券库存）
+      // Stat line: 今日 N 次助力 · 中提示券 M 张（任意来源都可 2→1 换强）
       var helpsTodayN = voucher.getHelpsTodayCount();
-      var helpMedN = voucher.getHelpMediumBalance();
-      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 已获取中提示 ' + helpMedN + ' 次',
+      var mediumBalN = voucher.displayBalance('medium');
+      R.text(ctx, '今日 ' + helpsTodayN + ' 次助力 · 中提示券 ' + mediumBalN + ' 张',
         sm.x + sm.w / 2, sm.y + 50, 12, '#666', 'center');
       R.text(ctx, '体力不足，可以换一种方式：', sm.x + 20, sm.y + 72, 12, '#999', 'left');
       for (var sbi = 0; sbi < L.sourceMenuBtns.length; sbi++) {
@@ -1220,7 +1270,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var lbl;
         if (smbtn.kind === 'share') lbl = '群分享换 1 张中提示';
         else if (smbtn.kind === 'invite-help') lbl = '邀请好友助力（每位 +1 张中提示）';
-        else if (smbtn.kind === 'convert') lbl = '🔄 用 2 张助力中换 1 张强提示';
+        else if (smbtn.kind === 'convert') lbl = '🔄 用 2 张中提示换 1 张强提示';
         else lbl = '';
         R.button(ctx, smbtn.x, smbtn.y, smbtn.w, smbtn.h, lbl, BRAND, '#fff', 8);
       }
@@ -1977,7 +2027,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var bound = _slotBinding.getBound();
       if (bound) {
         // Auto-save is already covering this slot. Show a passive indicator.
-        _tempSlot.flush();                             // ensure any pending edit is written NOW
+        flushSaveNow();                                // capture live timer + write NOW
         showToast('已自动保存到槽位 ' + bound.slice(-1));
         scene.dirty = true;
         return;
@@ -2011,7 +2061,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
         progress.markTutorialDone();
         clearInterval(timerInterval);
-        _tempSlot.flush();
+        flushSaveNow();
         callbacks.onBack();
         return;
       }
@@ -2042,7 +2092,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (L.tutorialSkipBtn && R.hitTest(x, y, L.tutorialSkipBtn)) {
       progress.markTutorialDone();
       clearInterval(timerInterval);
-      _tempSlot.flush();
+      flushSaveNow();
       callbacks.onBack();
       return;
     }
@@ -2087,6 +2137,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (hintMode) {
       // 体力消耗确认弹窗 — 优先级最高（盖在所有 hint 内容之上）
       if (staminaConfirm) {
+        if (L.staminaConfirmConvertBtn && R.hitTest(x, y, L.staminaConfirmConvertBtn)) {
+          triggerConvertHelpToStrong();
+          return;
+        }
         if (L.staminaConfirmCheckbox && R.hitTest(x, y, L.staminaConfirmCheckbox)) {
           staminaConfirm.skipChecked = !staminaConfirm.skipChecked;
           scene.dirty = true; return;
@@ -2126,6 +2180,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return; // swallow other clicks while submenu is open
       }
       // Tier selection
+      if (!hintTier && L.hintConvertBtn && R.hitTest(x, y, L.hintConvertBtn)) {
+        triggerConvertHelpToStrong();
+        return;
+      }
       if (!hintTier && L.hintTierBtns) {
         for (var tb = 0; tb < L.hintTierBtns.length; tb++) {
           if (R.hitTest(x, y, L.hintTierBtns[tb])) {
@@ -2375,7 +2433,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Back
     if (L.backBtn && R.hitTest(x, y, L.backBtn)) {
       clearInterval(timerInterval);
-      _tempSlot.flush();
+      flushSaveNow();
       callbacks.onBack();
       return;
     }
