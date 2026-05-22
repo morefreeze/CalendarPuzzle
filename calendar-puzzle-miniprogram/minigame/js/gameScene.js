@@ -237,7 +237,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
   var voucher = (GameGlobal && GameGlobal.voucher) || Voucher.create({ storage: wxStorage });
   var solvedPlacements = PG.solvedPlacements(puzzle.solvedBoard);
-  var uncov = B.getUncoverableCells();
+  var uncov = B.getUncoverableCells(PG.parseDateStr(puzzle.dateStr));
   var diffCfg = PG.DIFFICULTY_CONFIG[difficulty];
   var diffLabel = diffCfg.label;
   var diffSub = diffCfg.sub || '';
