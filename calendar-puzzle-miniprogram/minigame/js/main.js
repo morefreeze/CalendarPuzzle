@@ -100,10 +100,14 @@ function tryConsumeInviterLink(q) {
       };
       goToSelect();
     } else {
+      var errCode = (r && r.err) || 'unknown';
       var msg = ({
         'self-help': '不能给自己助力',
-        'bad-token': '链接无效',
-      })[r && r.err] || '助力失败';
+        'bad-token': '链接无效或已过期',
+        'invalid-input': '链接信息缺失',
+        'server-misconfigured': '助力服务暂不可用',
+        'log-failed': '助力失败（网络）',
+      })[errCode] || ('助力失败：' + errCode);
       if (typeof wx !== 'undefined' && wx.showToast) {
         wx.showToast({ title: msg, icon: 'none', duration: 2000 });
       }
