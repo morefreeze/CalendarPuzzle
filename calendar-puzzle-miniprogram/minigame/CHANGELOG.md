@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.5.2] — 2026-05-22
+
+> 提示兑换 UX 放宽 + 修掉 3 个存档恢复 bug（计时归零 / 计时停在上次操作 / 跨日日期 marker 错位）。
+
+### 强提示兑换 UX
+
+- **提示面板**：中/强 tier 卡片右侧多了一个竖向紫色「2 / ↓ / 1」按钮，点击直接消耗 2 张中提示换 1 张强提示，结果以 toast 反馈。中券 < 2 张时按钮隐藏、卡片回到全宽。
+- **体力确认弹窗（强档）**：在原「否/是」之上多了第三个按钮「用 2 张中提示兑换」，强档 + 中券 ≥ 2 张时出现。弹窗高度从 220 增加到 270 容纳。
+- **兑换门槛放宽**：现在**任意来源**的中提示券都能 2 → 1 换强（群分享 / 邀请好友助力 / 体力买的中提示都算），不再限定"助力"来源。云函数 `convertHelpToStrong` 同步去掉 `source: 'help'` 过滤；错误码 `insufficient-help-credits` → `insufficient-medium-credits`（客户端兼容新旧两种）。
+
+### 顺手修复（存档恢复）
+
+- **0.5.0 计时器归零**：恢复存档时 `var timer = 0;` 因为 hoisting 顺序晚于 `savedState.elapsedMs` 还原，导致还原值被覆盖回 0。声明上移到与 `dropped` / `palette` 同级。
+- **0.5.0 退出快照陈旧**：`_tempSlot.flush()` 只写最近一次 markDirty 的 payload，但 markDirty 只在放/拿方块时触发 —— 静置一段时间后点返回 / 切后台 / 进悬浮窗，落盘的 `elapsedMs` 仍是上次操作时的秒数。新增 `flushSaveNow()` 在所有退出路径（返回按钮 / 教程跳过 / 胜利返回 / 💾确认 / `wx.onHide`）先 `markDirty(captureState())` 抓最新 timer 再 flush。
+- **跨日恢复 marker 错位 + 通关失败**：`getUncoverableCells()` 没传日期参数，兜底成今天。导致跨日恢复存档时：(1) 棋盘金色 marker 显示今天的月/日/周几而非存档当天的；(2) 放置判定 & 胜利判定都按今天的 marker 算 —— 跨天存档**根本无法完成**。改为 `getUncoverableCells(PG.parseDateStr(puzzle.dateStr))`。
+
+### 小调整
+
+- 弱提示文案：「弱：揭示方向（旋转+镜像）」→「弱：揭示（固定）方块朝向」
+- 0.5.0 CHANGELOG「系统手势调整」一条加了 2026-05-22 更正：小游戏**不支持**左边缘右滑收悬浮窗系统手势（[官方答复](https://developers.weixin.qq.com/community/minigame/doc/0006ca0d65c550653e09102d45b400)）；当初移除的手势是对的，但理由是错的。
+
+### ⚠️ 上线步骤
+
+- 云函数 `convertHelpToStrong` 必须**手动在微信云开发控制台部署**才会生效。函数名保留（向后兼容老客户端），语义已放宽到任意来源中提示。部署前客户端兑换按钮虽然显示（前端门已放开），但实际 RPC 会撞老逻辑返回 `insufficient-help-credits`，客户端 toast 仍读「需要 2 张中提示」—— 不会误导用户但实际不会兑换成功。
+
+### 已知遗留
+
+- `createGameScene(savedState)` 整链路仍无集成测试。这次 3 个存档恢复 bug 都是手动发现的；建议下一轮补一组 mock-wx 集成用例覆盖 timer / uncov / 退出落盘三条路径。
+- 客户端 `voucher.applyGranted('strong', ...)` 是 eager grant，但 medium 余额的 -2 要等下一次 `reconcile` 才同步 —— 中间有几百毫秒的 UI 错配窗口（pre-existing，不在本次范围）。
+
 ## [0.5.1] — 2026-05-21
 
 > 存档槽位云同步：3 个命名槽位现在跨设备同步，登录后自动 newer-wins 合并。
