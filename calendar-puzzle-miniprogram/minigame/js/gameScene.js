@@ -139,6 +139,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     };
   }
 
+  // Stamp the initial game state into the active save target (temp slot for unbound
+  // new games; bound named slot when restored from grid). This ensures that even a
+  // "open and back out" session leaves a recoverable record. Tutorial mode is
+  // excluded so the onboarding puzzle doesn't pollute the temp slot.
+  if (!tutorialMode) {
+    _tempSlot.markDirty(captureState());
+  }
+
   function triggerShareGroup() {
     if (!cloudClient.getOpenid()) { showToast('需要网络'); return; }
     var share = shareState.buildShareData();
