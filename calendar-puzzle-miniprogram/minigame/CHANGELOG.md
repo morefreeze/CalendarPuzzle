@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.1] — 2026-05-21
+
+> 存档槽位云同步：3 个命名槽位现在跨设备同步，登录后自动 newer-wins 合并。
+
+### 跨设备同步
+
+- 命名槽位（3 个）现在镜像到微信云端。登录后自动 pull 云端 → 与本地 newer-wins 合并 → push 回云端。换设备登录同一个微信号，存档跟着走。
+- 临时槽不上云（继续保持纯本地崩溃保护语义）。
+- 触发时机：
+  - **登录成功后**：跑一次 mergeOnLogin。
+  - **`wx.onShow`（回前台）**：再跑一次 mergeOnLogin，及时拉取其他设备的更新。
+  - **保存到命名槽 / 覆盖 / 胜利清槽**：fire-and-forget push 到云端。
+  - **`wx.onHide`（切后台 / 进悬浮窗）**：把绑定的命名槽 push 一次，确保切走前的最新进度在云端。
+- 网络失败自动重试（指数退避 1s / 3s / 9s，最多 3 次），失败后静默丢弃 —— 下次 mergeOnLogin 会修复。
+
+### 工程基础
+
+- 1 个新云函数 `syncSlots`：单 RPC 完成 upload + download + merge。基于 `@cloudbase/node-sdk`，与 `listGrants` 等其他云函数同款脚手架。
+- 1 个新客户端模块 `cloudSlotSync.js`：mergeOnLogin + pushNamedSlot + 内部重试队列。
+- 195 / 195 node --test 通过：9 个 syncSlots 云函数测试（cloud-mock 驱动）+ 9 个 cloudSlotSync 客户端测试（fake cloudClient + fakeTimer 驱动）。
+- 云端表 `saveSlots`：一行一个 (openid, slotId)，含 `payload` / `savedAt` / `deletedAt` 字段，per-user 隔离。Tombstone 保留（不真删行），保证 newer-wins 在跨设备删除场景仍正确。
+
+### ⚠️ 上线步骤
+
+- `syncSlots` 云函数必须**手动在微信云开发控制台部署**才会生效，纯小游戏代码部署不会自动部署云函数。
+
+### 顺手修复
+
+- **0.5.0 临时槽遗漏**：3 槽满 / 不满都不是前提；只要点难度进游戏、不放块直接返回，临时槽不会被写入，下次进新局也不弹"继续/放弃"。现在 `createGameScene` 初始化时立即 stamp 一次状态到当前活跃槽（temp / 绑定的命名槽），保证"开了就退"也算一局可恢复。教程不受影响。
+
+### 已知遗留
+
+- 游戏中每秒的节流写不上云（避免高频 RPC）—— 云端只在显式保存 / 切后台 / 胜利时同步。强杀时如果距离最近一次 onHide 太久，云端可能滞后几秒；本地仍是最新的。
+- 没有冲突解决 UI：跨设备 newer-wins 是隐式的，玩家不会被告知"你的存档被另一台设备的新版覆盖了"。
+
 ## [0.5.0] — 2026-05-21
 
 > 存档槽位上线：3 个命名槽 + 1 个临时槽，自动保存到当前活跃槽。从此停下来去做别的事不再丢局，"继续游戏"入口随时回到之前的进度。

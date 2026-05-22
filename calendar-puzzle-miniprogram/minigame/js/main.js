@@ -45,6 +45,7 @@ function init(canvas, context, width, height, safe, menuBtn, launchQuery) {
       voucher.flushPendingUse(cloudClient).then(function () {
         return voucher.reconcile(cloudClient, null);
       });
+      slotsGlobal.cloudSlotSync.mergeOnLogin();
       tryConsumeInviterLink(launchQuery);
     }, function () { /* offline — game still playable via stamina */ });
   } catch (e) { /* wx.cloud unavailable — same fallback */ }
@@ -262,15 +263,17 @@ function onShow(query) {
 // 💾 button or 继续游戏 grid load).
 if (typeof wx !== 'undefined' && wx.onHide) {
   wx.onHide(function () {
-    try { slotsGlobal.tempSlot.flush(); } catch (e) { /* swallow */ }
+    try {
+      slotsGlobal.tempSlot.flush();
+      var bound = slotsGlobal.slotBinding.getBound();
+      if (bound) slotsGlobal.cloudSlotSync.pushNamedSlot(bound);
+    } catch (e) { /* swallow */ }
   });
 }
 
-// P3 placeholder: re-trigger cloudSlotSync.mergeOnLogin() on show to pick up
-// updates from other devices. No-op for P1/P2.
 if (typeof wx !== 'undefined' && wx.onShow) {
   wx.onShow(function () {
-    // TODO(P3): cloudSlotSync.mergeOnLogin(currentOpenid)
+    try { slotsGlobal.cloudSlotSync.mergeOnLogin(); } catch (e) {}
   });
 }
 

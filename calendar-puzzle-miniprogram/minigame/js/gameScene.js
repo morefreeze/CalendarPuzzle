@@ -51,6 +51,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var _slotStore = slotsGlobal.slotStore;
   var _tempSlot = slotsGlobal.tempSlot;
   var _slotBinding = slotsGlobal.slotBinding;
+  var _cloudSlotSync = slotsGlobal.cloudSlotSync;
 
   // ---- State ----
   var prePlaced = puzzle.prePlacedBlocks;
@@ -136,6 +137,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       elapsedMs: timer * 1000,
       hintsUsed: 0,
     };
+  }
+
+  // Stamp the initial game state into the active save target (temp slot for unbound
+  // new games; bound named slot when restored from grid). This ensures that even a
+  // "open and back out" session leaves a recoverable record. Tutorial mode is
+  // excluded so the onboarding puzzle doesn't pollute the temp slot.
+  if (!tutorialMode) {
+    _tempSlot.markDirty(captureState());
   }
 
   function triggerShareGroup() {
@@ -396,7 +405,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           insomniaUnique: insomniaUnique,
         };
         var _bound = _slotBinding.getBound();
-        if (_bound) _slotStore.deleteSlot(_bound);
+        if (_bound) {
+          _slotStore.deleteSlot(_bound);
+          _cloudSlotSync.pushNamedSlot(_bound);   // push tombstone — slot now absent locally
+        }
         _slotBinding.clearActive();
         _tempSlot.clear();
         clearInterval(timerInterval);
@@ -1913,6 +1925,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           _slotStore.writeSlot(NAMED_SLOT_IDS[idx], captureState());
           _slotStore.deleteSlot('temp');
           _tempSlot.cancelPending();
+          _cloudSlotSync.pushNamedSlot(NAMED_SLOT_IDS[idx]);
           slotModal = null; slotPickerLayoutCache = null;
           showToast('已存到槽位 ' + (idx + 1));
           scene.dirty = true;
@@ -1950,6 +1963,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         _slotStore.writeSlot(targetId2, captureState());
         _slotStore.deleteSlot('temp');
         _tempSlot.cancelPending();
+        _cloudSlotSync.pushNamedSlot(targetId2);
         slotModal = null; slotPickerLayoutCache = null;
         showToast('已覆盖槽位 ' + (slotPickerSelectedIdx + 1));
         scene.dirty = true;
