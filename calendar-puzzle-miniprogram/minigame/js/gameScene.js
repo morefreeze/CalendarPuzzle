@@ -118,12 +118,26 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
   var slotPickerSelectedIdx = 0;      // 0..2
   var slotPickerLayoutCache = null;   // cached layout for the active modal
-  var hintState = Hint.createHintState(
-    puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex
-  );
   function currentPuzzleId() {
     return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
   }
+  var hintState = Hint.restoreHintState(savedState && savedState.hintState, currentPuzzleId());
+
+  // playedCombos tracks combo indices the player has attempted. It carries
+  // across in-session puzzle switches via puzzle._playedCombos (set by
+  // executeRandomSwitch / executeManualSwitch). For cross-session continuity
+  // (slot reload), merge in savedState.playedCombos so "随机换一题" does not
+  // re-serve combos already attempted before exit. Declared up here (instead
+  // of next to its other use site below) so the first captureState() at scene
+  // init — which fires before any user action — already has the right value.
+  var playedCombos = puzzle._playedCombos || {};
+  if (savedState && savedState.playedCombos) {
+    for (var _pck in savedState.playedCombos) {
+      if (savedState.playedCombos[_pck]) playedCombos[_pck] = true;
+    }
+  }
+  playedCombos[puzzle.currentComboIndex] = true;
+  puzzle._playedCombos = playedCombos;
 
   function captureState() {
     return {
@@ -135,15 +149,21 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       paletteBlocks: palette.map(B.cloneBlock),
       prePlacedBlocks: prePlaced.map(B.cloneBlock),
       elapsedMs: timer * 1000,
-      hintsUsed: 0,
+      hintState: hintState,
+      playedCombos: Object.assign({}, playedCombos),
     };
   }
 
   // Re-snapshot before flush so timer ticks since the last markDirty (which
   // only fires on block actions) are not lost on exit/onHide.
+  //
+  // Exit-time spillover: when the session isn't already bound to a named slot
+  // (e.g. brand-new game, or recovered from temp), prefer to land the save in
+  // the first empty named slot instead of TEMP, and bind to it. Falls back to
+  // TEMP only when all named slots are occupied. See tempSlot.flush(opts).
   function flushSaveNow() {
     if (!tutorialMode && !isWon) _tempSlot.markDirty(captureState());
-    _tempSlot.flush();
+    _tempSlot.flush({ preferEmptyNamed: true, namedSlotIds: NAMED_SLOT_IDS });
   }
   scene.onHide = flushSaveNow;
 
@@ -248,10 +268,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var selectScrollY = 0;
   var selectScrolled = false;
   var helpOpen = false;
-  var solutionCount = -1;
-  var playedCombos = puzzle._playedCombos || {};
-  playedCombos[puzzle.currentComboIndex] = true;
-  puzzle._playedCombos = playedCombos;
   var wonCombos = puzzle._wonCombos || progress.getWonCombos(puzzle.dateStr, difficulty);
   puzzle._wonCombos = wonCombos;
 
@@ -273,13 +289,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     toast.dur = win ? 999999 : 5000;
     scene.dirty = true;
   }
-
-  // Async solution count
-  var solutionCountTimer = setTimeout(function () {
-    var combo = puzzle.allCombinations[puzzle.currentComboIndex];
-    solutionCount = PG.countSolutionsForCombo(puzzle.solvedBoard, combo.letters);
-    scene.dirty = true;
-  }, 50);
 
   // ---- Drag state ----
   var dragging = null;
@@ -1053,8 +1062,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (selected && !dragging && L.previewShape) {
       var prevCS = Math.floor(cs * 0.55);
       var rB = L.previewRotateBtn, fB = L.previewFlipBtn, sB = L.previewShape;
-      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '↻ 旋转', '#66BB6A', '#fff', 8);
-      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '⇋ 翻转', '#26A69A', '#fff', 8);
+      var orientationLocked = Hint.isOrientationLocked(hintState, selected.id);
+      var rotateFill = orientationLocked ? '#cfcfcf' : '#66BB6A';
+      var flipFill = orientationLocked ? '#cfcfcf' : '#26A69A';
+      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '↻ 旋转', rotateFill, '#fff', 8);
+      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '⇋ 翻转', flipFill, '#fff', 8);
       R.roundRect(ctx, sB.x, sB.y, sB.w, sB.h, 8, BRAND_LIGHT, BRAND);
       var sbw = selected.shape[0].length * prevCS;
       var sbh = selected.shape.length * prevCS;
@@ -2261,8 +2273,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               // 捕获到本地变量 — closure 里 hintTier/usingVoucherSource 几行后会被清零
               var capturedTier = hintTier;
               var capturedSource = usingVoucherSource;
-              voucher.applyUsed(capturedTier, capturedSource, pidUse);
-              cloudClient.useHint(capturedTier, pidUse).then(function (r) {
+              // applyUsed 现在返回 pendingUse 条目，里面带 attemptId — 透传给 cloud
+              // useHint 用于幂等去重（修 bug #3）。即便此处的 Promise callback 因为 scene
+              // 销毁/微信后台暂停 JS 丢失，下次 boot flushPendingUse 用同一个 attemptId 重发，
+              // cloud 命中 useHintAttempts 缓存原响应而不再 claim 第二张 grant。
+              var entry = voucher.applyUsed(capturedTier, capturedSource, pidUse);
+              cloudClient.useHint(capturedTier, pidUse, entry.attemptId).then(function (r) {
                 if (r && r.ok) {
                   // 云端 confirm — 出队（balance 在 applyUsed 时已 eager 扣减过了）
                   voucher.confirmUseSynced(capturedTier, capturedSource, pidUse, true);
@@ -2395,14 +2411,14 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         showToast('超出棋盘范围');
       }
       // Block came from the board and didn't land:
-      //   - 完全脱出 → 等同双击移除，把它放回 palette
+      //   - 完全脱出 → 把它放回 palette 并自动「选中」（等同点击候选卡片），方便玩家立刻再放下/旋转/镜像
       //   - 否则恢复到原位
       if (!placed && dragFromBoard) {
         if (fullyOff) {
           var rbOff = B.cloneBlock(dragging);
           delete rbOff.x; delete rbOff.y;
           palette.push(rbOff);
-          selected = null;
+          selected = rbOff;
           // 教程步骤 4：若拖出的是预设错位块，等同双击触发的推进。
           if (tutorialMode && tutorialStep === 4 && dragging.id === tutorialMisplacedId) {
             tutorialStep = 5;
@@ -2441,7 +2457,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Preview rotate / flip
     if (L.previewRotateBtn && R.hitTest(x, y, L.previewRotateBtn)) {
       if (selected) {
-        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('方向已被提示锁定，无法旋转'); return; }
         selected.shape = B.rotateShape(selected.shape);
         for (var rp = 0; rp < palette.length; rp++) {
           if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
@@ -2452,7 +2468,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (L.previewFlipBtn && R.hitTest(x, y, L.previewFlipBtn)) {
       if (selected) {
-        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('方向已被提示锁定，无法翻转'); return; }
         selected.shape = B.flipShape(selected.shape);
         for (var fp = 0; fp < palette.length; fp++) {
           if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
@@ -2547,7 +2563,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   scene.destroy = function () {
     clearInterval(timerInterval);
     clearInterval(animTimer);
-    if (solutionCountTimer) clearTimeout(solutionCountTimer);
   };
 
   return scene;
