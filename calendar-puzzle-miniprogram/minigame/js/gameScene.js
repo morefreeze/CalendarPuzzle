@@ -1062,8 +1062,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (selected && !dragging && L.previewShape) {
       var prevCS = Math.floor(cs * 0.55);
       var rB = L.previewRotateBtn, fB = L.previewFlipBtn, sB = L.previewShape;
-      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '↻ 旋转', '#66BB6A', '#fff', 8);
-      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '⇋ 翻转', '#26A69A', '#fff', 8);
+      var orientationLocked = Hint.isOrientationLocked(hintState, selected.id);
+      var rotateFill = orientationLocked ? '#cfcfcf' : '#66BB6A';
+      var flipFill = orientationLocked ? '#cfcfcf' : '#26A69A';
+      R.button(ctx, rB.x, rB.y, rB.w, rB.h, '↻ 旋转', rotateFill, '#fff', 8);
+      R.button(ctx, fB.x, fB.y, fB.w, fB.h, '⇋ 翻转', flipFill, '#fff', 8);
       R.roundRect(ctx, sB.x, sB.y, sB.w, sB.h, 8, BRAND_LIGHT, BRAND);
       var sbw = selected.shape[0].length * prevCS;
       var sbh = selected.shape.length * prevCS;
