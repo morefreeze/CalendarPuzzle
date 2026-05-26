@@ -2457,7 +2457,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // Preview rotate / flip
     if (L.previewRotateBtn && R.hitTest(x, y, L.previewRotateBtn)) {
       if (selected) {
-        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('方向已被提示锁定，无法旋转'); return; }
         selected.shape = B.rotateShape(selected.shape);
         for (var rp = 0; rp < palette.length; rp++) {
           if (palette[rp].id === selected.id) palette[rp].shape = selected.shape;
@@ -2468,7 +2468,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (L.previewFlipBtn && R.hitTest(x, y, L.previewFlipBtn)) {
       if (selected) {
-        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('该方块方向已锁定'); return; }
+        if (Hint.isOrientationLocked(hintState, selected.id)) { showToast('方向已被提示锁定，无法翻转'); return; }
         selected.shape = B.flipShape(selected.shape);
         for (var fp = 0; fp < palette.length; fp++) {
           if (palette[fp].id === selected.id) palette[fp].shape = selected.shape;
