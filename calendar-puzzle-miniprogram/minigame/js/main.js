@@ -268,6 +268,9 @@ function onShow(query) {
 if (typeof wx !== 'undefined' && wx.onHide) {
   wx.onHide(function () {
     try {
+      // Let the active scene re-snapshot first so the saved elapsedMs
+      // reflects the live timer (idle ticks aren't covered by markDirty).
+      if (currentScene && currentScene.onHide) currentScene.onHide();
       slotsGlobal.tempSlot.flush();
       var bound = slotsGlobal.slotBinding.getBound();
       if (bound) slotsGlobal.cloudSlotSync.pushNamedSlot(bound);

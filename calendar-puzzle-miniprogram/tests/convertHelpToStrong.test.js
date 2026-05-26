@@ -33,31 +33,31 @@ test('convertHelpToStrong: 2 help-medium → 1 strong/help, source rows marked u
   assert.strictEqual(strongs.data.length, 1);
 });
 
-test('convertHelpToStrong: < 2 help-medium → insufficient-help-credits', async function () {
+test('convertHelpToStrong: < 2 unused medium → insufficient-medium-credits', async function () {
   mock.reset();
   mock.setMockContext({ OPENID: 'alice' });
   await seed('medium', 'help', 1);
   var r = await convert._impl({}, mock);
   assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.err, 'insufficient-help-credits');
+  assert.strictEqual(r.err, 'insufficient-medium-credits');
 });
 
-test('convertHelpToStrong: 0 help-medium → insufficient-help-credits', async function () {
+test('convertHelpToStrong: 0 unused medium → insufficient-medium-credits', async function () {
   mock.reset();
   mock.setMockContext({ OPENID: 'alice' });
   var r = await convert._impl({}, mock);
   assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.err, 'insufficient-help-credits');
+  assert.strictEqual(r.err, 'insufficient-medium-credits');
 });
 
-test('convertHelpToStrong: does NOT consume medium/share or medium/stamina', async function () {
+test('convertHelpToStrong: DOES consume medium/share and medium/stamina (any source)', async function () {
   mock.reset();
   mock.setMockContext({ OPENID: 'alice' });
-  await seed('medium', 'share', 5);   // shouldn't help
-  await seed('medium', 'stamina', 3); // shouldn't help
+  await seed('medium', 'share', 1);
+  await seed('medium', 'stamina', 1);
   var r = await convert._impl({}, mock);
-  assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.err, 'insufficient-help-credits');
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(r.granted, { type: 'strong', source: 'help' });
 });
 
 test('convertHelpToStrong: 4 help-medium → can convert twice (2 strongs total)', async function () {
@@ -70,7 +70,7 @@ test('convertHelpToStrong: 4 help-medium → can convert twice (2 strongs total)
   assert.strictEqual(r2.ok, true);
   var r3 = await convert._impl({}, mock);
   assert.strictEqual(r3.ok, false);  // 0 left
-  assert.strictEqual(r3.err, 'insufficient-help-credits');
+  assert.strictEqual(r3.err, 'insufficient-medium-credits');
 
   var strongs = await mock.database().collection('hintGrants').where({
     openid: 'alice', type: 'strong', source: 'help', usedAt: null,

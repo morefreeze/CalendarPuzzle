@@ -1,11 +1,12 @@
-// Atomically (best-effort) converts 2 unused (medium, source='help') vouchers
-// into 1 strong/help voucher for the caller. Only source='help' vouchers are
-// eligible — regular medium/share or stamina-bought medium cannot be burned.
-// Returns { ok:false, err:'insufficient-help-credits' } if the caller has fewer
-// than 2 unused help vouchers.
+// Atomically (best-effort) converts 2 unused medium vouchers (any source —
+// help, share, stamina-bought, etc.) into 1 strong voucher for the caller.
+// Returns { ok:false, err:'insufficient-medium-credits' } if the caller has
+// fewer than 2 unused medium vouchers.
 // Non-atomic: between marking the 2 source rows used and inserting the new
 // strong row, a crash could leave the player short. Acceptable per the same
 // best-effort pattern as helpInvite + shareGroup.
+// Function name kept (`convertHelpToStrong`) for backwards-compat with deployed
+// client builds; semantics now broader than the name suggests.
 
 var _app;
 function _getApp() {
@@ -27,10 +28,10 @@ async function _impl(event, cloud) {
   var openid = cloud.getWXContext().OPENID;
 
   var unused = await db.collection('hintGrants').where({
-    openid: openid, type: 'medium', source: 'help', usedAt: null,
+    openid: openid, type: 'medium', usedAt: null,
   }).limit(2).get();
   if (!unused.data || unused.data.length < 2) {
-    return { ok: false, err: 'insufficient-help-credits' };
+    return { ok: false, err: 'insufficient-medium-credits' };
   }
 
   // Mark the 2 source rows used with a synthetic 'usedInPuzzle' marker so
