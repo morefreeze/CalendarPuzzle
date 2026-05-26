@@ -7,74 +7,85 @@
 
 ## 当前已验证 / Currently verified
 
-- **跨仓格局**：本仓 `CalendarPuzzle/` 持有 spec + plan + 旧三端（Python/React/小游戏）；新仓 `~/mygit/calendar-puzzle-godot/` 持有 Godot 4 Steam 移植代码。两仓物理独立，不互嵌 submodule。
-- **本仓 `feat/godot-steam` 分支**：3 commit on top of `origin/main`（含合并的 PR#9）：spec 初版 + spec 增量（KBM 重映射 + 3 皮肤）+ 12 份 M0-M11 plan。
-- **新仓 `main` 分支**：13 commit，M0 完整实施完。已 push 到 `git@github.com:morefreeze/calendar-puzzle-godot.git`（private repo）。
-- **M0 验证**：
-  - 6/6 GUT 单测 pass（test_game_manifest + test_calendar_puzzle_module + test_boot_module_load）
-  - `boot.tscn` headless 跑通：`[boot] module 'calendar_puzzle' started`
-  - GodotSteam 优雅降级（Steam 未运行时 standalone 模式）
-  - GitHub repo 可见、private、main 分支跟踪
+- **跨仓格局**：本仓 `CalendarPuzzle/` 持有 spec + plan；新仓 `~/mygit/calendar-puzzle-godot/` 持有 Godot 4 Steam 移植代码。
+- **本仓 `feat/godot-steam` 分支**：5 commit on top of `origin/main`（spec + spec 增量 + 12 plan + M0 handoff + M1 handoff）。
+- **新仓 `main` 分支**：23 commit，M0 + M1 完整实施完。已 push 到 `git@github.com:morefreeze/calendar-puzzle-godot.git`。
+- **M0 验证**：6/6 单测 + boot.tscn 端到端 + GodotSteam 优雅降级 + GitHub push（已 passing）
+- **M1 验证**：50/50 单测 + JS-vs-GDScript round-trip 50 ref puzzles + 100% 函数覆盖 + insomnia p95 6.7ms（R4 阈值 3000ms 450× headroom）（已 passing）
 
 ## 本轮改动 / This session's changes
 
-### CalendarPuzzle 仓（本仓，`feat/godot-steam` 分支）
-- `docs/superpowers/specs/2026-05-26-godot-steam-port-design.md` — Steam 移植 Phase 1 spec（18 locked decisions）
-- `docs/superpowers/plans/2026-05-26-godot-steam-m{0..11}-*.md` — 12 份 milestone 实施 plan（共 19,937 行）
-- `feature_list.json` — 移除 `minigame-known-bugs-batch`（PR#9 已合）；新增 `godot-steam-m0-scaffold` 条目 status=passing 含完整 evidence
-- `claude-progress.md` — 追加 2026-05-26 会话记录 + 更新"当前已验证状态"段
-- `session-handoff.md` — 本文件，覆盖
+### CalendarPuzzle 仓（`feat/godot-steam` 分支）
+- `feature_list.json`：新增 `godot-steam-m1-solver` 条目 priority=0 status=passing；`godot-steam-m0-scaffold` 降到 priority=1
+- `claude-progress.md`：追加 2026-05-26 (续) M1 会话记录 + 更新"当前已验证状态"段
+- `session-handoff.md`：本文件，覆盖
 
-### calendar-puzzle-godot 仓（新仓，`main` 分支）
-- 完整目录结构（`boot/` `games/calendar_puzzle/` `shared/` `tests/` `docs/` `addons/`）
-- 抽象接口层（`shared/`）：GameManifest / GameModule / GameDeps / SaveAdapter / InputContext / TranslationContext / PlatformBus
-- 4 个 platform stub 实现（`boot/platform/`）：SaveAdapter 内存版、InputContext no-op、TranslationContext key-passthrough、SteamPlatform 真接入 + 优雅降级
-- 游戏模块 stub（`games/calendar_puzzle/`）：game.gd + manifest.tres，启动后显示标签
-- boot 入口（`boot/boot.gd` + `boot/boot.tscn`）：DI 注入 + 模块加载
-- GodotSteam 4.19 GDExtension 装入（`addons/godotsteam/` 93MB 二进制）
-- GUT v9.5.0 装入（`addons/gut/`）+ `tests/run_tests.gd` headless 测试 runner
-- 文档：`README.md` + `docs/STEAM_SETUP.md` + `docs/DEVELOPMENT.md`
+### calendar-puzzle-godot 仓（`main` 分支，10 个新 commit）
+- `games/calendar_puzzle/solver/`：
+  - `dlx.gd` — Dancing Links 算法（157 行）
+  - `board.gd` — 8×7 棋盘 + 10 方块定义 + mark_date + 放置验证（165 行）
+  - `difficulty_config.gd` — 5 难度常量（26 行）
+  - `puzzle_generator.gd` — 题目生成（621 行；核心 solve + dig + combo + generate_puzzle 主入口）
+  - `pack_resource.gd` — PackResource 类
+  - `pack_free.tres` — 3MB 题库二进制，2562 date keys
+- `tests/` 新增：test_dlx.gd（5）+ test_board.gd（11）+ test_puzzle_generator.gd（18+3）+ test_difficulty_config.gd（3）+ test_pack_conversion.gd（4）= 44 新测试
+- `tools/`：
+  - `convert_pack.gd` — JS pack → tres 一次性转换
+  - `solver_benchmark.gd` — 50 puzzles 性能报告
+  - `coverage_check.py` — 函数级覆盖率静态分析（GUT 无 -gcoverage）
+  - `reference_puzzles.json` + `tests/fixtures/reference_puzzles.json` — JS round-trip fixture
+- `docs/`：m1-benchmark-report.md + m1-coverage.md
+- M1 在 `feat/m1-solver-port` 上累计，no-ff merge 到 main（merge commit c878a45）+ push + 删 feature branch
 
 ## 仍损坏或未验证 / Known risks / unverified
 
-1. **GUI 真机冒烟未做**（M0 Task 11）：subagent 跑不了桌面 GUI，需要用户在本机：
-   ```bash
-   cd ~/mygit/calendar-puzzle-godot
-   godot
-   ```
-   验证 1280×720 窗口显示 "Calendar Puzzle stub running" + 副标题，截图存 `docs/m0-smoke-screenshot.png`。
-2. **GodotSteam 93MB 二进制在普通 git**：建议在 M1 开工前迁 `addons/godotsteam/**/*.{so,dll,dylib,framework}` 到 git-lfs，避免后续 clone 越来越慢。
-3. **STEAM_APP_ID = 480**（Spacewar 测试 ID）：M11 上架前必须换成真实 App ID（需先付 $100 Steam Direct Fee，见 `docs/STEAM_SETUP.md`）。
-4. **三处 plan bug 修复需要回灌到 plan 文件**：
-   - M7 plan 写的 `i18n.tr()` 调用应改为 `i18n.translate()`（Object.tr 冲突，已在 M0 实施时改 API）
-   - M0/M6 plan 写的 GodotSteam 安装路径应改为 Godot Asset Library 2445 v4.19（GitHub 仓已 archive）
-   - M0 plan 的 `steam_platform.gd` 处理 `Steam.steamInit()` 应改 bool 而非 Dictionary（4.14+ 行为）
-5. **不可控外部依赖**：Apple Developer Program $99/yr 注册流程（M8 前需到位）、Steam Direct Fee $100 一次性（M6 前需到位）。
+1. **M0 GUI 真机冒烟仍未做**：用户需要在本机跑 `cd ~/mygit/calendar-puzzle-godot && godot` 验证 1280×720 窗口 + 截图 → `docs/m0-smoke-screenshot.png`。**跨 milestone 不阻塞 M2 推进**。
+2. **GodotSteam 93MB 二进制**：仍在普通 git。M2 + M9 还会加更多 GodotSteam 资源；建议 M2 开工前迁 git-lfs。
+3. **STEAM_APP_ID = 480**（Spacewar 测试 ID）：M11 上架前必须换；Steam Direct Fee $100 + Apple Developer $99/yr 异步推进。
+4. **5 处 plan bug 修复需要回灌**（M0 3 处 + M1 2 处）：
+   - M7 plan `i18n.tr()` 调用 → 应改 `i18n.translate()`（Object.tr 冲突）
+   - M0/M6 plan GodotSteam 安装路径 → Asset Library 2445 v4.19（GitHub archive）
+   - M0 plan `steam_platform.gd` Steam.steamInit() 返回 bool 处理
+   - M1 plan 测试期望 Tuesday 在 col 6 → 改 col 5
+   - M1 plan benchmark `count_solutions_for_combo` 全枚举太慢 → 改采样
+   - M1 plan coverage `-gcoverage` 不存在 → 改 `tools/coverage_check.py` Python 路径
 
 ## 下一步最佳动作 / Next best action
 
-1. **建议先做：迁 GodotSteam 二进制到 git-lfs**（在 M1 开工前；现在历史还小成本最低）
-2. **M0 GUI 冒烟**：用户在本机跑 `godot` 验证 + 截图
-3. **M1 plan 实施**：求解器移植（DLX + puzzle_generator + board 三个 GDScript 文件 + JS round-trip 测试 + benchmark）。plan 在 `docs/superpowers/plans/2026-05-26-godot-steam-m1-solver.md`，约 2041 行。
-4. 异步推进：Steam 开发者账号注册 + Apple Developer 账号注册
+1. **优先建议**：迁 `addons/godotsteam/**/*.{so,dll,dylib,framework}` 到 git-lfs（M2 开工前；现在 .git 32M+ 成本最低）
+2. **M2 plan 实施**：核心玩法场景（InputRouter 真实现 + BoardView 自绘 8×7 + 拖放 + R 旋转 + F 镜像 + 双击移除 + 胜利检测 + 集成测试）
+   - Plan: `docs/superpowers/plans/2026-05-26-godot-steam-m2-gameplay-scene.md`（1571 行，11 task）
+   - 建议拆 4 batch：A（ActionBindings + InputRouter）/ B（BoardView + PaletteView + WinOverlay）/ C（play_scene FSM + 接入）/ D（集成测试 + 手测）
+3. **异步推进**：Steam Direct Fee 注册 + Apple Developer 账号注册
 
-❌ **不要**：在 `~/mygit/calendar-puzzle-godot/main` 上直接堆 commit 做 M1（建议开 feature branch + PR）；不要修改 `boot/platform/stub_translation_context.gd` 改回 `tr/tr_n`（会与 Object.tr 冲突）；不要"修"已经合理的 plan bug 修复（subagent 改的 3 处都是真 bug）。
+❌ **不要**：
+- 不要在新仓 `main` 上直接堆 M2 commit（按 M1 的做法开 `feat/m2-gameplay-scene`）
+- 不要修改 `boot/platform/stub_translation_context.gd` 改回 `tr/tr_n`（与 Object.tr 冲突）
+- 不要"修"已经合理的 5 处 plan bug 修复
+- 不要在没跑 `godot --headless --quit-after 3 res://boot/boot.tscn` 回归就 mark milestone 完成
 
 ## 命令 / Commands
 
 ```bash
-# 切到本仓 spec/plan 分支
+# 本仓 spec/plan
 cd ~/mygit/CalendarPuzzle && git checkout feat/godot-steam
 
-# 切到新仓做 Godot 开发
+# 新仓 Godot 开发
 cd ~/mygit/calendar-puzzle-godot
+git checkout -b feat/m2-gameplay-scene  # M2 新 branch
 
-# 跑 Godot 单测
-godot --headless --script tests/run_tests.gd
+# 跑测试 (M0+M1)
+godot --headless --script tests/run_tests.gd  # 50/50 应全绿
 
 # 跑 boot 冒烟
-godot --headless --quit-after 3 res://boot/boot.tscn
+godot --headless --quit-after 3 res://boot/boot.tscn  # [boot] module 'calendar_puzzle' started
 
-# 看新仓 GitHub
+# 跑性能 benchmark
+godot --headless --script tools/solver_benchmark.gd
+
+# 跑覆盖率
+python3 tools/coverage_check.py
+
+# 看 GitHub 仓
 gh repo view morefreeze/calendar-puzzle-godot
 ```

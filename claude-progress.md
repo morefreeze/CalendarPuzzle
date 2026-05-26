@@ -10,7 +10,7 @@
 - **本仓 / This repo**: `/Users/bytedance/mygit/CalendarPuzzle`（spec + plan + 三端旧代码 Python/React/小游戏）
 - **新仓 / Sibling repo**: `/Users/bytedance/mygit/calendar-puzzle-godot`（Godot 4 Steam 移植，private GitHub: morefreeze/calendar-puzzle-godot）
 - **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；2 个 spec commit + 1 个 12 plan 大 commit）
-- **新仓当前分支 / Godot repo branch**: `main`（13 commit，M0 已完成并 push）
+- **新仓当前分支 / Godot repo branch**: `main`（23 commit，M0 + M1 已完成并 push；feat/m1-solver-port 已 merge 删除）
 - **标准启动路径 / Standard startup**:
   - 旧 Backend: `python server.py` (默认 `PORT=5001`)
   - 旧 Web: `cd my-cal && npm install && npm start` (CRA, :3000)
@@ -20,14 +20,44 @@
   - 小游戏单测: `cd calendar-puzzle-miniprogram && npm test`
   - Python: `python -m pytest -v`
   - Web E2E: `cd my-cal && npx playwright test`
-  - **Godot 单测**: `cd ~/mygit/calendar-puzzle-godot && godot --headless --script tests/run_tests.gd`（M0 6/6 pass）
+  - **Godot 单测**: `cd ~/mygit/calendar-puzzle-godot && godot --headless --script tests/run_tests.gd`（M0+M1 50/50 pass, 539 asserts, 6.6s）
+  - **Godot 性能 benchmark**: `godot --headless --script tools/solver_benchmark.gd`（产出 docs/m1-benchmark-report.md）
+  - **Godot 覆盖率**: `python3 tools/coverage_check.py`（产出 docs/m1-coverage.md，100% 函数覆盖）
   - **Godot boot 冒烟**: `godot --headless --quit-after 3 res://boot/boot.tscn` 看到 `[boot] module 'calendar_puzzle' started`
-- **当前最高优先级未完成功能 / Next priority feature**: `godot-steam-m1-solver`（即将开始；plan 已写在 docs/superpowers/plans/2026-05-26-godot-steam-m1-solver.md）
-- **当前 blocker / Current blocker**: 无（M0 已 passing；M1 求解器移植可随时开工）
+- **当前最高优先级未完成功能 / Next priority feature**: `godot-steam-m2-gameplay-scene`（即将开始；plan 在 docs/superpowers/plans/2026-05-26-godot-steam-m2-gameplay-scene.md，1571 行）
+- **当前 blocker / Current blocker**: 无（M0+M1 已 passing；M2 核心玩法场景可随时开工）
 
 ---
 
 ## 会话记录 / Session log
+
+### 2026-05-26 (续) — M1 实施完成：求解器层全部 GDScript 化 + benchmark
+
+- **本轮目标 / Goal**: 接 M0 完成后，按 M1 plan 把 JS 求解器层全部翻译到 GDScript + benchmark 验证 R4 性能门 + 100% 覆盖率。
+- **已完成 / Completed**: 在新仓 feat/m1-solver-port 分支上 4 个 subagent batch 串行：
+  - **Batch A** (Tasks 1-3, 3 commits)：dlx.gd 157 行 + board.gd 165 行 + difficulty_config.gd 26 行；16 GUT 单测
+  - **Batch B** (Tasks 4-5, 2 commits)：puzzle_generator.gd 621 行（核心 solve + dig + combo + generate_puzzle 主入口）；18 GUT 单测
+  - **Batch C** (Tasks 6-7, 2 commits)：convert_pack.gd 一次性 JS → tres 转换 + pack_resource.gd Resource 类 + pack_free.tres 3MB 入库；JS-vs-GDScript round-trip 50 ref puzzles（10 dates × 5 diffs）完全对齐
+  - **Batch D** (Tasks 8-10, 2 commits)：solver_benchmark.gd + docs/m1-benchmark-report.md（**insomnia p95 6.7ms，R4 阈值 3000ms，450× headroom**）+ Python coverage_check.py 静态分析（GUT 没 -gcoverage，自写）+ 6 补测把覆盖率推到 100%
+- **运行过的验证 / Validations run**:
+  - `godot --headless --script tests/run_tests.gd` → 50 passed, 0 failed, 539 asserts, 6.6s
+  - `godot --headless --script tools/solver_benchmark.gd` → 50 puzzles 总 1605ms wall
+  - `python3 tools/coverage_check.py` → 45/45 函数 100% 覆盖
+  - `godot --headless --quit-after 3 res://boot/boot.tscn` → M0 boot 仍绿
+- **已记录证据 / Evidence recorded**: feature_list.json `godot-steam-m1-solver` evidence 数组（5 条）
+- **提交记录 / Commits**:
+  - 新仓：feat/m1-solver-port 上 9 个 commits → no-ff merge 到 main (c878a45 合并 commit) → push origin/main
+  - 本仓：Task 14 一并 commit 到 feat/godot-steam（feature_list.json + claude-progress.md + session-handoff.md）
+- **已知风险或未解决问题 / Known risks**:
+  - 5 处 plan bug 修复需要回灌到对应 plan（其中两条已记录在 M0 handoff，新增 3 条）：
+    - M1 plan 测试 expected col 6 for "二" Tuesday 应改为 col 5
+    - M1 plan benchmark `count_solutions_for_combo` 不应每轮调用（175s/insomnia 全枚举），应注释为可选采样
+    - M1 plan coverage 用 `-gcoverage` 不存在；改 `tools/coverage_check.py` Python 静态分析路径
+  - M0 GUI 手测仍未做（Task 11 跨 milestone 不阻塞）
+  - GodotSteam 93MB 二进制建议 git-lfs（仍未做；M2 + M9 还会加更多资产）
+- **下一步最佳动作 / Next best action**: 开新 feature branch `feat/m2-gameplay-scene` 跑 M2 plan（核心玩法场景：InputRouter + 拖放 + 旋转/镜像 + 双击移除 + 胜利检测）。M2 ~1571 行 plan，预计 11 个 task / 4 个 batch / ~3 周 plan 工期；实际派 subagent 应在 1-2 个会话内推完。
+
+---
 
 ### 2026-05-26 — Steam port：brainstorm + 12 plan + M0 实施（编译通过）
 
