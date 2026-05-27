@@ -443,3 +443,19 @@ test('findMediumMismatch prioritises right-block-wrong-loc over wrong-block-on-h
   var r = H.findMediumMismatch(s, 'A-block', weird);
   assert.deepStrictEqual(r, { kind: 'right-block-wrong-loc', blockId: 'A-block' });
 });
+
+test('findMediumMismatch ignores mediumMismatchIgnored — that flag is the caller\'s guard, not the detector\'s', function () {
+  var s = H.createHintState('p-fm-6');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  var s2 = H.restoreHintState(Object.assign({}, s, { mediumMismatchIgnored: true }), 'p-fm-6');
+  var r = H.findMediumMismatch(s2, 'B-block', [{ x: 2, y: 3 }]);
+  assert.deepStrictEqual(r, { kind: 'wrong-block-on-hint', placedBlockId: 'B-block', hintedBlockId: 'A-block' });
+});
+
+test('findMediumMismatch returns null for null/empty blockCells', function () {
+  var s = H.createHintState('p-fm-7');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', null), null);
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', undefined), null);
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', []), null);
+});

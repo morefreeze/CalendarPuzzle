@@ -347,6 +347,7 @@ function applyStrong(state, blockId, palette, dropped, solvedPlacements) {
 //     another block's hint cell
 function findMediumMismatch(state, blockId, blockCells) {
   if (!state || !state.mediumLocked) return null;
+  if (!blockCells || blockCells.length === 0) return null;
   var ownHint = state.mediumLocked[blockId];
   if (ownHint && ownHint.length > 0) {
     // Scenario B — does blockCells contain every hinted cell?
