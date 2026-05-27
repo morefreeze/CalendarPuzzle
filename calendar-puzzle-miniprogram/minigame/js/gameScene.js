@@ -1304,31 +1304,31 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       // We need block shape + color from palette OR dropped (because the
       // placed block has just been pushed into dropped).
       var mmAllBlocks = palette.concat(dropped);
-      function _mmFindBlock(id) {
+      var _mmFindBlock = function (id) {
         for (var i = 0; i < mmAllBlocks.length; i++) if (mmAllBlocks[i].id === id) return mmAllBlocks[i];
         return null;
-      }
+      };
       var mmKind = mediumMismatchModal.kind;
       var mmPlacedId = mmKind === 'right-block-wrong-loc' ? mediumMismatchModal.blockId : mediumMismatchModal.placedBlockId;
       var mmPlacedBlk = _mmFindBlock(mmPlacedId);
       var mmHintedBlk = mmKind === 'wrong-block-on-hint' ? _mmFindBlock(mediumMismatchModal.hintedBlockId) : null;
 
       // Draw a mini block-shape icon at (x, y), returning the width drawn.
-      function _mmDrawIcon(blk, x, y) {
+      var _mmDrawIcon = function (blk, x, y) {
         if (!blk) return 0;
         var cell = 7;
         R.blockShape(ctx, blk.shape, blk.color, x, y, cell);
         return blk.shape[0].length * cell;
-      }
+      };
 
       var bodyY = mmY + 64;
       var lineH = 22;
       // Measure text width via ctx.measureText so inline icon positions don't
       // depend on eyeballed CJK glyph widths (varies across WeChat WebView fonts).
-      function _mmMeasure(str) {
+      var _mmMeasure = function (str) {
         ctx.font = '13px sans-serif';
         return ctx.measureText(str).width;
-      }
+      };
       var gap = 4;
       if (mmKind === 'right-block-wrong-loc') {
         R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
@@ -1951,6 +1951,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (helpOpen) return;
     if (hintMode) return;
+    if (mediumMismatchModal) return;
 
     // Grab a placed (non-locked) block from the board, if the touch lands on
     // one. The block is lifted into `dragging` and removed from dropped; on

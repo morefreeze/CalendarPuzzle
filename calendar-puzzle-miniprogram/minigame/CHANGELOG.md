@@ -17,7 +17,7 @@
 
 ### 测试
 
-- `tests/hint.test.js` +13 用例：`createHintState` 字段默认、`restoreHintState` 缺字段 / `true` round-trip、`applyWeak/Medium/Strong` 各自的字段保留回归、`findMediumMismatch` 全分支（null / right-block / wrong-block / 优先级 / blockCells null/空 / 不受 mediumMismatchIgnored 影响）、`setMediumMismatchIgnored` 不可变性。
+- `tests/hint.test.js` +14 用例：`createHintState` 字段默认、`restoreHintState` 缺字段 / `true` round-trip、`applyWeak/Medium/Strong` 各自的字段保留回归、`findMediumMismatch` 全分支（null / right-block / wrong-block / 优先级 / blockCells null/空 / 不受 mediumMismatchIgnored 影响）、`setMediumMismatchIgnored` 不可变性。
 - `npm test` → **234/234 pass**。
 - gameScene 模态渲染 + tap：无单元测试 harness，手测路径见下方。
 
