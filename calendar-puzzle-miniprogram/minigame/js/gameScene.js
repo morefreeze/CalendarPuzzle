@@ -1284,6 +1284,81 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       L.staminaConfirmYesBtn = null;
     }
 
+    // --- 中提示不一致弹窗 ---
+    if (mediumMismatchModal) {
+      R.overlay(ctx, W, H);
+      var mmW = Math.min(W * 0.78, 300), mmH = 200;
+      var mmX = (W - mmW) / 2, mmY = (H - mmH) / 2;
+      R.roundRect(ctx, mmX, mmY, mmW, mmH, 14, '#fff');
+
+      // Close (×) button — top right
+      var mmCloseR = 14;
+      var mmCloseX = mmX + mmW - mmCloseR - 12;
+      var mmCloseY = mmY + mmCloseR + 12;
+      R.roundRect(ctx, mmCloseX - mmCloseR, mmCloseY - mmCloseR, mmCloseR * 2, mmCloseR * 2, mmCloseR, '#f0f0f0');
+      R.textBold(ctx, '×', mmCloseX, mmCloseY, 16, '#666', 'center', 'middle');
+
+      R.textBold(ctx, '和中提示不一致', mmX + 20, mmY + 24, 15, '#333', 'left');
+
+      // Body — figure out which block(s) to draw + the prose around them.
+      // We need block shape + color from palette OR dropped (because the
+      // placed block has just been pushed into dropped).
+      var mmAllBlocks = palette.concat(dropped);
+      function _mmFindBlock(id) {
+        for (var i = 0; i < mmAllBlocks.length; i++) if (mmAllBlocks[i].id === id) return mmAllBlocks[i];
+        return null;
+      }
+      var mmKind = mediumMismatchModal.kind;
+      var mmPlacedId = mmKind === 'right-block-wrong-loc' ? mediumMismatchModal.blockId : mediumMismatchModal.placedBlockId;
+      var mmPlacedBlk = _mmFindBlock(mmPlacedId);
+      var mmHintedBlk = mmKind === 'wrong-block-on-hint' ? _mmFindBlock(mediumMismatchModal.hintedBlockId) : null;
+
+      // Draw a mini block-shape icon at (x, y), returning the width drawn.
+      function _mmDrawIcon(blk, x, y) {
+        if (!blk) return 0;
+        var cell = 7;
+        R.blockShape(ctx, blk.shape, blk.color, x, y, cell);
+        return blk.shape[0].length * cell;
+      }
+
+      var bodyY = mmY + 64;
+      var lineH = 22;
+      if (mmKind === 'right-block-wrong-loc') {
+        R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
+        var afterPrefix = mmX + 20 + 38;
+        var iconW = _mmDrawIcon(mmPlacedBlk, afterPrefix, bodyY - 10);
+        R.text(ctx, '放到了别的位置，', afterPrefix + iconW + 6, bodyY, 13, '#555', 'left', 'middle');
+        R.text(ctx, '但它的中提示还在等它。', mmX + 20, bodyY + lineH, 13, '#555', 'left', 'middle');
+      } else {
+        R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
+        var aP = mmX + 20 + 38;
+        var iw1 = _mmDrawIcon(mmPlacedBlk, aP, bodyY - 10);
+        R.text(ctx, '放到了', aP + iw1 + 6, bodyY, 13, '#555', 'left', 'middle');
+        var aP2 = aP + iw1 + 6 + 34;
+        var iw2 = _mmDrawIcon(mmHintedBlk, aP2, bodyY - 10);
+        R.text(ctx, '的中提示位置上。', aP2 + iw2 + 6, bodyY, 13, '#555', 'left', 'middle');
+      }
+
+      // Buttons
+      var mmBtnW = mmW - 40;
+      var mmTakeBackBtnH = 36;
+      var mmTakeBackY = mmY + mmH - mmTakeBackBtnH - 36;
+      R.button(ctx, mmX + 20, mmTakeBackY, mmBtnW, mmTakeBackBtnH, '取回并重新选中', '#43A047', '#fff', 8);
+
+      var mmIgnoreH = 20;
+      var mmIgnoreY = mmY + mmH - mmIgnoreH - 10;
+      R.text(ctx, '本局不再提示', mmX + mmW / 2, mmIgnoreY + mmIgnoreH / 2, 12, '#999', 'center', 'middle');
+
+      mediumMismatchLayoutCache = {
+        modal: { x: mmX, y: mmY, w: mmW, h: mmH },
+        closeBtn: { x: mmCloseX - mmCloseR, y: mmCloseY - mmCloseR, w: mmCloseR * 2, h: mmCloseR * 2 },
+        takeBackBtn: { x: mmX + 20, y: mmTakeBackY, w: mmBtnW, h: mmTakeBackBtnH },
+        ignoreBtn: { x: mmX + 20, y: mmIgnoreY, w: mmBtnW, h: mmIgnoreH + 4 },
+      };
+    } else {
+      mediumMismatchLayoutCache = null;
+    }
+
     // --- 获取路径 二级 menu ---
     if (sourceMenuOpen && L.sourceMenu) {
       R.overlay(ctx, W, H);
