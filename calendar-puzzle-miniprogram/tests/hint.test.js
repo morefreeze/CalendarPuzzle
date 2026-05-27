@@ -347,3 +347,20 @@ test('restoreHintState: strong-locked block stays locked after restore (regressi
   assert.strictEqual(H.isFullyLocked(restored, 'X-block'), true, 'strong-locked block must remain locked after reload');
   assert.strictEqual(H.canUse(restored, 'strong'), false, 'strong-hint cap (1) must remain enforced after reload');
 });
+
+test('createHintState initialises mediumMismatchIgnored to false', function () {
+  var s = H.createHintState('p-mm-1');
+  assert.strictEqual(s.mediumMismatchIgnored, false);
+});
+
+test('restoreHintState defaults mediumMismatchIgnored to false when absent', function () {
+  var saved = { puzzleId: 'p-mm-rt-1', weakLocked: {}, mediumLocked: {}, strongLocked: {}, usedWeak: 0, usedMedium: 0, usedStrong: 0 };
+  var s = H.restoreHintState(saved, 'p-mm-rt-1');
+  assert.strictEqual(s.mediumMismatchIgnored, false);
+});
+
+test('restoreHintState round-trips mediumMismatchIgnored: true', function () {
+  var saved = { puzzleId: 'p-mm-rt-2', weakLocked: {}, mediumLocked: {}, strongLocked: {}, usedWeak: 0, usedMedium: 0, usedStrong: 0, mediumMismatchIgnored: true };
+  var s = H.restoreHintState(saved, 'p-mm-rt-2');
+  assert.strictEqual(s.mediumMismatchIgnored, true);
+});

@@ -13,6 +13,7 @@ function createHintState(puzzleId) {
     usedWeak: 0,
     usedMedium: 0,
     usedStrong: 0,
+    mediumMismatchIgnored: false,
   };
 }
 
@@ -70,6 +71,7 @@ function restoreHintState(saved, puzzleId) {
     usedWeak: typeof saved.usedWeak === 'number' ? saved.usedWeak : 0,
     usedMedium: typeof saved.usedMedium === 'number' ? saved.usedMedium : 0,
     usedStrong: typeof saved.usedStrong === 'number' ? saved.usedStrong : 0,
+    mediumMismatchIgnored: saved.mediumMismatchIgnored === true,
   };
 }
 
