@@ -183,3 +183,50 @@ test('slotStore: writeSlot to temp preserves boundSlotId === null', function () 
   var got = ss.readSlot('temp');
   assert.strictEqual(got.boundSlotId, null);
 });
+
+test('slotStore: playedCombos map (numeric-keyed bool) round-trips intact', function () {
+  // Regression: playedCombos tracks which combo indices the player attempted this
+  // session. Without persistence, reload makes "随机换一题" eligible to re-serve
+  // puzzles the player already failed before exiting. Object keys become strings
+  // after JSON round-trip — verify lookup still works regardless of key form.
+  var ss = SS.create({ storage: fakeStorage() });
+  ss.writeSlot('named-1', {
+    date: '2026-05-20', difficulty: 'easy', comboIndex: 4,
+    placedBlocks: [], paletteBlocks: [],
+    playedCombos: { 0: true, 2: true, 4: true },
+  });
+  var got = ss.readSlot('named-1');
+  assert.deepStrictEqual(got.playedCombos, { 0: true, 2: true, 4: true });
+  assert.strictEqual(got.playedCombos[0], true);
+  assert.strictEqual(got.playedCombos['0'], true);
+  assert.strictEqual(got.playedCombos[1], undefined);
+});
+
+test('slotStore: nested hintState (weak/medium/strong locks + used counters) round-trips intact', function () {
+  // Regression: prior to the bug-fix, captureState wrote `hintsUsed: 0` and never
+  // included hintState, so loading a slot lost strong-hint locks and used* caps.
+  var ss = SS.create({ storage: fakeStorage() });
+  var hintState = {
+    puzzleId: '2026-05-20:easy:c0',
+    weakLocked: { 'X-block': true },
+    mediumLocked: { 'Y-block': [{ x: 3, y: 4 }, { x: 5, y: 6 }] },
+    strongLocked: { 'Z-block': { x: 1, y: 2 } },
+    usedWeak: 2,
+    usedMedium: 1,
+    usedStrong: 1,
+  };
+  ss.writeSlot('named-1', {
+    date: '2026-05-20', difficulty: 'easy', comboIndex: 0,
+    placedBlocks: [], paletteBlocks: [],
+    elapsedMs: 12000,
+    hintState: hintState,
+  });
+  var got = ss.readSlot('named-1');
+  assert.deepStrictEqual(got.hintState, hintState);
+  // Spot-check the load-bearing nested fields explicitly so a future regression
+  // shows up as a clear field mismatch, not a deepStrictEqual blob diff.
+  assert.strictEqual(got.hintState.strongLocked['Z-block'].x, 1);
+  assert.strictEqual(got.hintState.strongLocked['Z-block'].y, 2);
+  assert.strictEqual(got.hintState.mediumLocked['Y-block'].length, 2);
+  assert.strictEqual(got.hintState.usedStrong, 1);
+});

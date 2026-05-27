@@ -1,5 +1,127 @@
 # Changelog
 
+## [0.5.5] — 2026-05-25
+
+> 退出时自动占用第一个空的命名槽位，避免新对局沉到临时槽里被下次会话遗忘。
+
+### 改动一览
+
+- **退出自动存名槽**：当前对局**没绑命名槽**（新开局，或从临时槽恢复）时，按 back / 切后台 / 杀进程 触发的自动存档，会优先写入第一个空命名槽（named-1 → named-2 → named-3）并自动绑定到该槽。三个命名槽都满了才回落到临时槽（保留旧行为）。已绑命名槽的对局不变，仍写入自己绑定的那一槽。
+
+### 为什么
+
+之前：新开局或从临时槽恢复的对局，所有自动存档都落临时槽。下次会话用户必须主动从"继续上次"入口才能恢复，否则在槽位列表里看不到。  
+现在：只要还有空名槽，新对局会主动占一槽，下次会话直接在槽位列表里看到，跟手动 💾 保存的对局对齐。命名槽满了再回落临时槽，行为不打破。
+
+### 详情
+
+`tempSlot.flush()` 扩展接受 `{ preferEmptyNamed: true, namedSlotIds: [...] }`：
+- 已绑命名槽 → 直接走 bound 路径（不动）。
+- 未绑命名槽 → 扫 `namedSlotIds` 找第一个 `readSlot() === null` 的槽，把当前 pending（或如果 pending 是空、直接读 TEMP 现有记录）写进去，删掉 TEMP 记录，给 binding bind 到新槽。
+- 没空槽 → 回落老路径：pending 写入 bound|TEMP。
+
+`gameScene.flushSaveNow()`（4 个 exit 调用点 + `scene.onHide`/wx.onHide 共用同一个 helper）改成 `_tempSlot.flush({ preferEmptyNamed: true, namedSlotIds: NAMED_SLOT_IDS })`。其它路径（定时 debounce、放/拿/重置方块时的 markDirty）继续走老 flush，写 bound|TEMP——只有"退出"才触发挤压。
+
+### 测试
+
+- `tests/tempSlot.test.js` +7 用例：未绑 + named-1 空 → 写 named-1 + 删 temp + bind；未绑 + named-1 已用 + named-2 空 → 写 named-2；3 槽全满 → 回落 temp；已绑 → 尊重 binding 不挤压；`flush()` 无 opts → 旧行为不变；pending 为空但 temp 有记录 → 提升现有 temp；pending+temp 都空 → no-op return null。
+- `npm test` → **220/220 pass**（213 + 7）。
+
+### 手测路径
+
+- **空槽 → 新对局自动占**：清掉所有槽（删 named-1/2/3） → 新开一局 → 玩几步 → 按返回 → 进选择场景看槽位列表：应该看到 named-1 已占当前对局。
+- **占用 → 跳到下一空槽**：手动 💾 保存到 named-1 → 新开第二局 → 退出 → named-2 应该被自动占。
+- **全满 → 回落 temp**：所有 3 个命名槽都有数据 → 新开一局 → 退出 → 槽位列表显示三个原槽未变；"继续上次"入口能看到这一局（从 temp 恢复）。
+- **已绑不挤压**：从 named-2 恢复一局 → 玩几步 → 退出 → 名 1 仍空 → named-2 被覆盖更新（不要被挤到 named-1）。
+
+## [0.5.4] — 2026-05-25
+
+> 已知 bug 批修 5 单：存档恢复（hintState + playedCombos）、用券防回滚（useHint 幂等化）、失眠难度卡顿（删死代码）、拖出棋盘自动选中。
+
+### 改动一览
+
+- **存档恢复完整**：上次发的提示（含"强提示锁定方块"）和"已尝试过的 combo"现在会一起存进存档槽，重新加载游戏不再丢失。
+- **用券不再"鬼回血"**：用一张社交券（分享/助力券）后，就算被微信杀进程也不会在重进时把已用的券数加回来。
+- **失眠秒开**：选"失眠"难度进入立刻可玩，不再卡 1–5 秒。
+- **拖出 = 选中**：把棋盘上的方块拖出棋盘，立刻进入"已选中"态——可以直接点新位置放下，或者用旋转/镜像按钮调整，省一次点击。
+
+### ⚠️ 上线步骤
+
+1. **必须先在微信云开发控制台手动部署 `useHint` 云函数**——否则"用券不回血"那条修复客户端单方面无效（attemptId 会被老云函数无视，等同 legacy 行为）。其它 4 条修复纯客户端，发版即生效。
+2. 新 collection `useHintAttempts` 由云函数首次写入时自动创建，不必手动建表。建议运营一段时间后给 `(openid, attemptId)` 加 unique index + `createdAt` 加 7 天 TTL。
+
+### 手测路径（gameScene 整链路无集成测试，必须真机走一遍）
+
+1. **存档保留提示状态**：发一次强提示锁住某方块 → 退首页/切后台 → 从存档槽重入 → 该方块仍无法双击移除，"强提示 1/1" 计数还在。
+2. **存档保留 combo 历史**：多次随机换题 → 退出 → 重入存档 → 再点"随机换一题" → 不会立刻又抽到刚刚弃局的 combo。
+3. **用券防回滚**：用一张社交券 → 立刻杀进程 → 重新进入 → 券数 N-1 不变。云开发后台 `hintGrants` 表对应 grant 的 `usedAt` 已落，`useHintAttempts` 表有对应 attemptId 记录。
+4. **失眠秒开**：选"失眠"难度 → 立刻可拖动方块/触摸响应，不再有 1-5 秒卡顿。
+5. **拖出自动选中**：板上方块拖出 7×8 区域 → 候选卡片高亮（已选中态），旋转/镜像按钮立刻可用，点新位置直接放下。
+
+### 详情 — Bug #5: 拖块出棋盘后未自动选中
+
+**症状**：把棋盘上的方块拖动到棋盘外（完全脱出 7×8 区域）会被放回候选区，但 `selected` 被设成 `null`。玩家想立刻在另一个位置点放下，得先点候选卡片重新选中——比点击候选直接选中多一步。
+
+**改法**：`gameScene.js:2413` 把 `selected = null` 改成 `selected = rbOff`（rbOff 就是刚 push 进 palette 的那个 block）。拖出 = 选中。语义跟"点击候选卡片"对齐：放回 palette 同时进入「待放下」态，旋转/镜像按钮、tap-to-place、preview ghost 立刻可用。
+
+注意：双击移除（`removeDropped` at :462）依然 `selected = null`——那是"我不想要这个块了"的语义，与拖出"我想换地方放"不同。如果你也想让双击移除选中，告诉我。
+
+### 详情 — Bug #4: 进失眠难度卡 5 秒
+
+**症状**：选择"失眠"难度后界面卡顿 5 秒（不响应触摸 / 动画暂停）才能正常游玩。其它难度顺滑。
+
+**根因**：`gameScene.js` init 时启动一个 `setTimeout(50ms)` 调用 `PG.countSolutionsForCombo`，结果赋给 `solutionCount` 变量并触发 `scene.dirty = true` 重画。但 `solutionCount` 在整个 minigame codebase 里**没有任何读取点**（grep 零结果）。0.3.0 UX 重写（commit `f0dc6bc`）把展示位置删了，但忘了删这段计算。
+
+为什么只有失眠明显：失眠 `digCount=10` 表示棋盘上 10 块全部要玩家放，留下的空格大，DLX 穷举所有解时数量爆炸。实测今日（2026-05-24）：
+- easy/medium/hard：1-3 解，3-4ms
+- expert：7 解，10ms
+- **insomnia：877 解，247ms（开发机；真机 5-20× 慢 → 1-5s 卡顿）**
+
+**改法**：删 3 处共 ~9 行死代码：
+- `gameScene.js:266` `var solutionCount = -1;`
+- `gameScene.js:289-294` `setTimeout` + `countSolutionsForCombo` 调用
+- `gameScene.js:2566` `clearTimeout(solutionCountTimer)`（destroy 时）
+
+保留：`puzzleGenerator.js::countSolutionsForCombo` 函数本身 + 导出 — 公共 API，未来调试/统计可能再用，且无调用者不再拖慢任何路径。
+
+### 详情 — Bug #3: useHint 不幂等 → 用券后重入数量被恢复
+
+**症状**：玩家用一次提示消耗一张助力券（或任意社交券），后台/杀进程退出再进入游戏后，券数没变还能再用。
+
+**根因**：`cloudClient.useHint` 没有幂等键。最常见路径：
+1. 用户点用券 → `voucher.applyUsed` eager 扣减本地 balance + 入 `pendingUse` 队列 + 持久化。
+2. `cloudClient.useHint` 请求飞出，cloud 端**成功**标记 grant `usedAt`。
+3. 但响应回客户端时 scene 已销毁 / 微信把 JS runtime 后台挂起 → `confirmUseSynced(true)` 这条 callback 没跑到 → 本地 `pendingUse` 里那条记录没出队。
+4. 用户下次冷启动 → `main.init()` 跑 `flushPendingUse`，对那条 pending 重发 `useHint`。
+5. Cloud 这一次返回 `{ok: false, reason: 'no-grant'}`（grant 已用），客户端走 `_rollback` 把本地 balance 加回来。`reconcile` 通常能纠正，但**网络稍差或时序错开**就留下"券回来了"的可见 bug。
+
+**改法（幂等化）**：
+- 客户端 `voucher.applyUsed` 现在为每个 pending 条目生成 `attemptId`（`Date.now()` + 随机 8 位），存入 `pendingUse` 条目内一同落盘。
+- `voucher.applyUsed` 改成返回该条目（之前是 void），调用方拿 `entry.attemptId` 透传给 `cloudClient.useHint`。
+- `cloudClient.useHint(type, puzzleId, attemptId)` 签名扩展。`flushPendingUse` 重试时也用 `item.attemptId`。
+- **云函数 `useHint`**：进来先按 `(openid, attemptId)` 查新 collection `useHintAttempts`；命中就 replay 缓存的 response 不再 claim；未命中就走原 cap-check + claim 流程，结束时写入 `(openid, attemptId, response, createdAt)`。
+- 兼容：缺 `attemptId` 走 legacy（不去重）→ 老客户端 / 老云函数任一边没升级，仍然可用，只是失去幂等保护。两端都升级才彻底修。
+
+### 详情 — Bug #1: 存档丢失提示状态（含强提示锁定方块）
+
+- `captureState()` 之前只塞了占位符 `hintsUsed: 0`，从来不持久化 `hintState`。重新载入存档后：
+  - `strongLocked[blockId]` 丢失 → 强提示自动落下的方块可被双击移除（`isFullyLocked` 拦截失效）；
+  - `usedWeak/Medium/Strong` 计数清零 → 强提示一局 1 次的上限被绕过，玩家能在同一道题上无限再发强提示；
+  - `weakLocked` / `mediumLocked` 也一并丢失 → 弱提示锁的朝向、中提示已揭示的格子在重载后失效。
+  改法：`captureState` 把 `hintState` 直接落入 slot payload；`createGameScene` 初始化时改调新加的纯函数 `Hint.restoreHintState(saved, puzzleId)` —— 有合法旧状态就深拷贝，puzzleId 不匹配 / 缺字段 / 数据损坏一律回落到 `createHintState`，兼容历史存档。
+
+### 详情 — Bug #2: 存档丢失 playedCombos
+
+- `playedCombos`（本局已尝试的 combo 索引集合）只挂在 `puzzle._playedCombos` 上随 scene 共生死，从未进入 slot payload。重载存档后该集合清空 → `executeRandomSwitch` 把刚弃局的 combo 又抽中。改法：`captureState` 加 `playedCombos`；scene init 时 union 合并 `savedState.playedCombos`，最后再 `playedCombos[当前 combo] = true`。声明位置上提到 `captureState` 之前，避免 `var` 提升导致首次落盘 `playedCombos === undefined`。
+
+### 测试
+
+- `tests/hint.test.js` +7 用例（`restoreHintState` 全分支 + 强提示重载回归用例）。
+- `tests/slotStore.test.js` +2 用例（嵌套 `hintState` round-trip + `playedCombos` 数字键 round-trip）。
+- `tests/useHint.test.js` +5 用例（attemptId replay 缓存 / 业务失败缓存 / 无 attemptId legacy / 不同 attemptId 各自 claim / 按 openid 隔离）。
+- `tests/voucher.test.js` +5 用例（applyUsed 返回 entry / entry 有 attemptId / 唯一性 / 跨 storage round-trip / flushPendingUse 透传 attemptId）。
+- `npm test` → **213/213 pass**。
+
 ## [0.5.2] — 2026-05-22
 
 > 提示兑换 UX 放宽 + 修掉 3 个存档恢复 bug（计时归零 / 计时停在上次操作 / 跨日日期 marker 错位）。

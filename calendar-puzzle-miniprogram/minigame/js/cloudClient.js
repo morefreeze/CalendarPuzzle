@@ -51,8 +51,8 @@ function grantHint(type, source) {
   return _call('grantHint', { type: type, source: source });
 }
 
-function useHint(type, puzzleId) {
-  return _call('useHint', { type: type, puzzleId: puzzleId });
+function useHint(type, puzzleId, attemptId) {
+  return _call('useHint', { type: type, puzzleId: puzzleId, attemptId: attemptId });
 }
 
 function listGrants(puzzleId) {

@@ -226,3 +226,118 @@ test('tempSlot: cancelPending drops the timer + pending payload without writing'
   timer.fireAll();
   assert.strictEqual(store.readSlot('temp'), null);
 });
+
+// ---- flush spillover: prefer first empty named slot on exit ----
+// On exit the caller passes { preferEmptyNamed: true, namedSlotIds: [...] }.
+// If the session is NOT already bound, the pending (or any existing temp record)
+// is promoted to the first empty named slot instead of going to temp; the temp
+// record is deleted; the binding is updated so subsequent saves go to the same
+// named slot. Bound sessions ignore the option (writes still go to the bound slot).
+
+test('flush(preferEmptyNamed): unbound + named-1 empty → writes named-1, deletes temp, binds named-1', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [{ type: 'I-block' }] });
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, 'named-1');
+  assert.notStrictEqual(store.readSlot('named-1'), null);
+  assert.strictEqual(store.readSlot('named-1').date, '2026-05-20');
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(binding.getBound(), 'named-1');
+  assert.strictEqual(timer.pending(), 0);
+});
+
+test('flush(preferEmptyNamed): unbound + named-1 has data + named-2 empty → writes named-2', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  // Seed named-1 with existing data — should NOT be overwritten
+  store.writeSlot('named-1', { date: '2026-05-19', difficulty: 'hard', comboIndex: 0 });
+  var existingNamed1SavedAt = store.readSlot('named-1').savedAt;
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, 'named-2');
+  assert.strictEqual(store.readSlot('named-1').savedAt, existingNamed1SavedAt, 'named-1 must not be overwritten');
+  assert.strictEqual(store.readSlot('named-1').date, '2026-05-19');
+  assert.strictEqual(store.readSlot('named-2').date, '2026-05-20');
+  assert.strictEqual(binding.getBound(), 'named-2');
+});
+
+test('flush(preferEmptyNamed): all named slots full → falls back to temp', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  store.writeSlot('named-1', { date: '2026-05-01', difficulty: 'easy', comboIndex: 0 });
+  store.writeSlot('named-2', { date: '2026-05-02', difficulty: 'easy', comboIndex: 0 });
+  store.writeSlot('named-3', { date: '2026-05-03', difficulty: 'easy', comboIndex: 0 });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, null, 'no named slot promoted');
+  assert.strictEqual(store.readSlot('temp').date, '2026-05-20');
+  assert.strictEqual(binding.getBound(), null, 'binding unchanged when no spillover happens');
+});
+
+test('flush(preferEmptyNamed): already bound to a named slot → respects binding, no spillover', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var binding = fakeBinding('named-2');
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  // named-1 is empty but binding=named-2 → write must go to named-2, not promote to named-1
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, null);
+  assert.strictEqual(store.readSlot('named-1'), null);
+  assert.strictEqual(store.readSlot('named-2').date, '2026-05-20');
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(binding.getBound(), 'named-2', 'binding unchanged');
+});
+
+test('flush() without preferEmptyNamed option → unchanged legacy behavior (writes to temp when unbound)', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  ts.markDirty({ date: '2026-05-20', difficulty: 'easy', comboIndex: 0, placedBlocks: [] });
+  ts.flush();  // no options
+  assert.strictEqual(store.readSlot('temp').date, '2026-05-20');
+  assert.strictEqual(store.readSlot('named-1'), null);
+  assert.strictEqual(binding.getBound(), null);
+});
+
+test('flush(preferEmptyNamed): no pending but existing temp record → promotes the temp record to first empty named', function () {
+  var s = fakeStorage();
+  var store = SS.create({ storage: s });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  // Simulate: a prior debounce flush wrote temp; now no pending payload remains.
+  ts.markDirty({ date: '2026-05-18', difficulty: 'medium', comboIndex: 2 });
+  timer.fireAll();
+  assert.notStrictEqual(store.readSlot('temp'), null);
+  // Now exit handler calls flush(preferEmptyNamed) with empty pending.
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, 'named-1');
+  assert.strictEqual(store.readSlot('named-1').date, '2026-05-18');
+  assert.strictEqual(store.readSlot('named-1').comboIndex, 2);
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(binding.getBound(), 'named-1');
+});
+
+test('flush(preferEmptyNamed): no pending + no temp record → no-op, returns null', function () {
+  var store = SS.create({ storage: fakeStorage() });
+  var timer = fakeTimer();
+  var binding = fakeBinding(null);
+  var ts = TS.create({ store: store, binding: binding, scheduleTimeout: timer.schedule, cancelTimeout: timer.cancel });
+  var result = ts.flush({ preferEmptyNamed: true, namedSlotIds: ['named-1', 'named-2', 'named-3'] });
+  assert.strictEqual(result, null);
+  assert.strictEqual(store.readSlot('named-1'), null);
+  assert.strictEqual(store.readSlot('temp'), null);
+  assert.strictEqual(binding.getBound(), null);
+});

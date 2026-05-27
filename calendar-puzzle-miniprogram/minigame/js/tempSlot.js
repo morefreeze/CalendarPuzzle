@@ -34,9 +34,35 @@ function create(opts) {
     }, debounceMs);
   }
 
-  function flush() {
+  // flush(opts?):
+  //   default — drain pending payload to bound named slot (if any) or TEMP_SLOT_ID.
+  //   opts.preferEmptyNamed=true with opts.namedSlotIds — on exit, when the session
+  //     is NOT already bound, promote the save (pending payload, OR an existing
+  //     temp record if pending is null) into the first empty named slot from the
+  //     given list, delete the temp record, and bind to that named slot so any
+  //     subsequent in-session writes follow it. If every named slot is occupied,
+  //     falls back to the default (write pending to temp). Returns the slotId
+  //     it promoted to, or null when no promotion happened.
+  function flush(opts) {
+    opts = opts || {};
     if (timerToken !== null) { cancelTimeout(timerToken); timerToken = null; }
+
+    if (opts.preferEmptyNamed && !(binding && binding.getBound())) {
+      var slotIds = opts.namedSlotIds || [];
+      for (var i = 0; i < slotIds.length; i++) {
+        if (store.readSlot(slotIds[i]) !== null) continue;
+        var payload = pending || store.readSlot(TEMP_SLOT_ID);
+        if (!payload) return null;
+        pending = null;
+        store.writeSlot(slotIds[i], payload);
+        store.deleteSlot(TEMP_SLOT_ID);
+        if (binding) binding.bind(slotIds[i]);
+        return slotIds[i];
+      }
+    }
+
     if (pending) { _writeNow(pending); pending = null; }
+    return null;
   }
 
   function clear() {
