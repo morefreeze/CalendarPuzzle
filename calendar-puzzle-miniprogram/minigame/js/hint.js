@@ -158,6 +158,7 @@ function applyWeak(state, blockId, palette, dropped, solvedPlacements) {
     usedWeak: state.usedWeak + 1,
     usedMedium: state.usedMedium,
     usedStrong: state.usedStrong,
+    mediumMismatchIgnored: state.mediumMismatchIgnored,
   };
 
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped };
@@ -232,6 +233,7 @@ function applyMedium(state, blockId, palette, dropped, solvedPlacements) {
     usedWeak: state.usedWeak,
     usedMedium: state.usedMedium + 1,
     usedStrong: state.usedStrong,
+    mediumMismatchIgnored: state.mediumMismatchIgnored,
   };
 
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, hintedCell: newCell };
@@ -325,6 +327,7 @@ function applyStrong(state, blockId, palette, dropped, solvedPlacements) {
     usedWeak: state.usedWeak,
     usedMedium: state.usedMedium,
     usedStrong: state.usedStrong + 1,
+    mediumMismatchIgnored: state.mediumMismatchIgnored,
   };
 
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, evictedIds: evictedIds };

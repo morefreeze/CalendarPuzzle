@@ -364,3 +364,33 @@ test('restoreHintState round-trips mediumMismatchIgnored: true', function () {
   var s = H.restoreHintState(saved, 'p-mm-rt-2');
   assert.strictEqual(s.mediumMismatchIgnored, true);
 });
+
+test('applyWeak preserves mediumMismatchIgnored when true', function () {
+  var state = H.createHintState('p-prop-1');
+  state.mediumMismatchIgnored = true;
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 0], [1, 1]] } };
+  var res = H.applyWeak(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyWeak');
+});
+
+test('applyMedium preserves mediumMismatchIgnored when true', function () {
+  var state = H.createHintState('p-prop-2');
+  state.mediumMismatchIgnored = true;
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyMedium');
+});
+
+test('applyStrong preserves mediumMismatchIgnored when true', function () {
+  var state = H.createHintState('p-prop-3');
+  state.mediumMismatchIgnored = true;
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
+  var res = H.applyStrong(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyStrong');
+});
