@@ -136,3 +136,6 @@ ssl/nginx.key
 .vscode/settings.json
 .spec-workflow/session.json
 .worktrees/
+
+# Visual brainstorming companion
+.superpowers/
