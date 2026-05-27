@@ -1323,20 +1323,28 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
       var bodyY = mmY + 64;
       var lineH = 22;
+      // Measure text width via ctx.measureText so inline icon positions don't
+      // depend on eyeballed CJK glyph widths (varies across WeChat WebView fonts).
+      function _mmMeasure(str) {
+        ctx.font = '13px sans-serif';
+        return ctx.measureText(str).width;
+      }
+      var gap = 4;
       if (mmKind === 'right-block-wrong-loc') {
         R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
-        var afterPrefix = mmX + 20 + 38;
+        var afterPrefix = mmX + 20 + _mmMeasure('你刚把') + gap;
         var iconW = _mmDrawIcon(mmPlacedBlk, afterPrefix, bodyY - 10);
-        R.text(ctx, '放到了别的位置，', afterPrefix + iconW + 6, bodyY, 13, '#555', 'left', 'middle');
+        R.text(ctx, '放到了别的位置，', afterPrefix + iconW + gap, bodyY, 13, '#555', 'left', 'middle');
         R.text(ctx, '但它的中提示还在等它。', mmX + 20, bodyY + lineH, 13, '#555', 'left', 'middle');
       } else {
         R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
-        var aP = mmX + 20 + 38;
+        var aP = mmX + 20 + _mmMeasure('你刚把') + gap;
         var iw1 = _mmDrawIcon(mmPlacedBlk, aP, bodyY - 10);
-        R.text(ctx, '放到了', aP + iw1 + 6, bodyY, 13, '#555', 'left', 'middle');
-        var aP2 = aP + iw1 + 6 + 34;
+        var afterPlaced = aP + iw1 + gap;
+        R.text(ctx, '放到了', afterPlaced, bodyY, 13, '#555', 'left', 'middle');
+        var aP2 = afterPlaced + _mmMeasure('放到了') + gap;
         var iw2 = _mmDrawIcon(mmHintedBlk, aP2, bodyY - 10);
-        R.text(ctx, '的中提示位置上。', aP2 + iw2 + 6, bodyY, 13, '#555', 'left', 'middle');
+        R.text(ctx, '的中提示位置上。', aP2 + iw2 + gap, bodyY, 13, '#555', 'left', 'middle');
       }
 
       // Buttons
