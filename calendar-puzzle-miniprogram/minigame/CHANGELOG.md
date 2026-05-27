@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.0] — 2026-05-27
+
+> 中提示位置违规检测 — drop 后如果跟中提示对不上，弹个对话框让玩家立刻取回重选。
+
+### 改动一览
+
+- **中提示不一致对话框**：drop 后如果（a）刚放的方块占了别的方块的中提示位，或（b）刚放的方块是被中提示的那一块但没盖全提示位，弹一个白底圆角对话框。主按钮「取回并重新选中」一键撤回 + 自动选中那块；次级文字按钮「本局不再提示」整局闭嘴；右上角 × 仅关闭这次（下次再违规还弹）。
+- **跨重载**：「本局不再提示」状态搭车 `hintState.mediumMismatchIgnored` 走存档；同一道题恢复后继续闭嘴，换题或新开局自动重置。
+
+### 详情
+
+- `hint.js` 新增纯函数 `findMediumMismatch(state, blockId, blockCells)` + `setMediumMismatchIgnored(state)`，检测逻辑优先级：自己有中提示但没盖全 → `right-block-wrong-loc`；别的块的中提示位被占 → `wrong-block-on-hint`；都没命中返回 null。一次 drop 最多弹一次（找到第一个违规就返回）。
+- `gameScene.js` `placeBlock` 末尾、`checkWin` 之前插入检测调用；触发时模态层渲染对话框、tap handler 接管所有点击直到关闭。modal state 是 in-memory（`var mediumMismatchModal = null`），不参与存档；`hintState.mediumMismatchIgnored` 持久。
+- `restoreHintState` 兜底新字段：缺字段 → 默认 `false`，向后兼容历史存档。`applyWeak`/`applyMedium`/`applyStrong` 全部转写新字段，避免下一次提示把 ignored 状态吃掉。
+
+### 测试
+
+- `tests/hint.test.js` +13 用例：`createHintState` 字段默认、`restoreHintState` 缺字段 / `true` round-trip、`applyWeak/Medium/Strong` 各自的字段保留回归、`findMediumMismatch` 全分支（null / right-block / wrong-block / 优先级 / blockCells null/空 / 不受 mediumMismatchIgnored 影响）、`setMediumMismatchIgnored` 不可变性。
+- `npm test` → **234/234 pass**。
+- gameScene 模态渲染 + tap：无单元测试 harness，手测路径见下方。
+
+### 手测路径
+
+1. 任意题打开 → 用中提示在 A 块上揭一格 → 把 B 块（≠ A）拖到那一格 → 对话框弹出，文案带两个块的 mini-icon → 点「取回并重新选中」→ B 块回 palette 并自动选中。
+2. 同上揭 A 块一格 → A 块拖到别处（没盖到提示位）→ 对话框弹「你刚把 A 放到了别的位置」→ 关 × → 下次再这样放还弹。
+3. 同上揭 A 块一格 → B 块拖到提示位 → 点「本局不再提示」→ 之后再随便错放都不弹 → 退游戏 → 从存档恢复 → 错放还是不弹。换题或新开局后恢复弹。
+4. 教程模式 / 存档 `initialDropped` 自动放置不走 `placeBlock` → 不弹。
+
 ## [0.5.5] — 2026-05-25
 
 > 退出时自动占用第一个空的命名槽位，避免新对局沉到临时槽里被下次会话遗忘。
