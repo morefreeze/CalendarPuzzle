@@ -2445,7 +2445,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               showToast('已提示 ' + hBlock.label + ' 的正确方向');
             } else if (hintTier === 'medium') {
               res = Hint.applyMedium(hintState, hBlock.id, palette, dropped, solvedPlacements);
-              showToast('已提示 ' + hBlock.label + ' 的落点');
             } else {
               res = Hint.applyStrong(hintState, hBlock.id, palette, dropped, solvedPlacements);
               showToast('已为 ' + hBlock.label + ' 落子');
