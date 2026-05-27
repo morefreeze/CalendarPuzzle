@@ -2073,6 +2073,43 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // ── Medium-hint mismatch modal: intercept ALL taps while open. ──
+    if (mediumMismatchModal && mediumMismatchLayoutCache) {
+      var mmL = mediumMismatchLayoutCache;
+      // Take back: remove the offending placed block + re-select it in palette.
+      if (R.hitTest(x, y, mmL.takeBackBtn)) {
+        var mmPlacedId = mediumMismatchModal.kind === 'right-block-wrong-loc'
+          ? mediumMismatchModal.blockId
+          : mediumMismatchModal.placedBlockId;
+        removeDropped(mmPlacedId);
+        for (var pi = palette.length - 1; pi >= 0; pi--) {
+          if (palette[pi].id === mmPlacedId) { selected = palette[pi]; break; }
+        }
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Ignore for the rest of this puzzle (persists across reload via hintState).
+      if (R.hitTest(x, y, mmL.ignoreBtn)) {
+        hintState = Hint.setMediumMismatchIgnored(hintState);
+        _tempSlot.markDirty(captureState());
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Close — dismiss this instance only; next mismatch re-opens dialog.
+      if (R.hitTest(x, y, mmL.closeBtn)) {
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Tap on dialog backdrop / anywhere else — swallow, no fall-through.
+      return;
+    }
+
     // ── Save-slot modals: intercept ALL taps while a modal is open. ──
     if (slotModal === 'save-picker' && slotPickerLayoutCache) {
       var hit = slotUI.savePickerHitTest(x, y, slotPickerLayoutCache);
