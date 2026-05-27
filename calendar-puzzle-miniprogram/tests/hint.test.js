@@ -238,3 +238,112 @@ test('applyStrong accepts and passes through source param', function () {
   var res = H.applyStrong(state, 'X-block', palette, dropped, solved, 'help');
   assert.strictEqual(res.newState.usedStrong, 1);
 });
+
+// ---- restoreHintState ----
+// Used when reloading a save slot: prefers the saved hint state if it is well-formed
+// AND its puzzleId matches the current puzzle; otherwise returns a fresh state.
+
+test('restoreHintState: null/undefined saved → fresh state with given puzzleId', function () {
+  var fresh = H.restoreHintState(null, 'p1');
+  assert.strictEqual(fresh.puzzleId, 'p1');
+  assert.deepStrictEqual(fresh.weakLocked, {});
+  assert.deepStrictEqual(fresh.mediumLocked, {});
+  assert.deepStrictEqual(fresh.strongLocked, {});
+  assert.strictEqual(fresh.usedWeak, 0);
+  assert.strictEqual(fresh.usedMedium, 0);
+  assert.strictEqual(fresh.usedStrong, 0);
+
+  var fresh2 = H.restoreHintState(undefined, 'p2');
+  assert.strictEqual(fresh2.puzzleId, 'p2');
+});
+
+test('restoreHintState: matching puzzleId + well-formed state → deep-cloned restore', function () {
+  // Build a non-trivial saved state via a real apply sequence
+  var solved = {
+    'X-block': { x: 2, y: 3, shape: [[0, 1], [1, 1]] },
+    'Y-block': { x: 5, y: 1, shape: [[1, 1]] },
+  };
+  var palette = [
+    { id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] },
+    { id: 'Y-block', label: 'Y', shape: [[1, 1]] },
+  ];
+  var s0 = H.createHintState('2026-05-20:easy:c0');
+  var w = H.applyWeak(s0, 'X-block', palette, [], solved);
+  var m = H.applyMedium(w.newState, 'Y-block', w.updatedPalette, w.updatedDropped, solved);
+  var st = H.applyStrong(m.newState, 'Y-block', m.updatedPalette, m.updatedDropped, solved);
+  var saved = st.newState;
+
+  // Round-trip via JSON to simulate slot persistence
+  var rehydrated = JSON.parse(JSON.stringify(saved));
+  var restored = H.restoreHintState(rehydrated, '2026-05-20:easy:c0');
+
+  assert.strictEqual(restored.puzzleId, '2026-05-20:easy:c0');
+  assert.strictEqual(restored.weakLocked['X-block'], true);
+  assert.strictEqual(restored.mediumLocked['Y-block'].length, 1);
+  assert.deepStrictEqual(restored.strongLocked['Y-block'], { x: 5, y: 1 });
+  assert.strictEqual(restored.usedWeak, 1);
+  assert.strictEqual(restored.usedMedium, 1);
+  assert.strictEqual(restored.usedStrong, 1);
+
+  // Must be a deep clone — mutating restored state must not mutate the saved record
+  restored.weakLocked['Z-block'] = true;
+  restored.mediumLocked['Y-block'].push({ x: 99, y: 99 });
+  restored.strongLocked['Y-block'].x = -1;
+  assert.strictEqual(rehydrated.weakLocked['Z-block'], undefined);
+  assert.strictEqual(rehydrated.mediumLocked['Y-block'].length, 1);
+  assert.strictEqual(rehydrated.strongLocked['Y-block'].x, 5);
+});
+
+test('restoreHintState: puzzleId mismatch → fresh state for the requested puzzleId', function () {
+  var saved = {
+    puzzleId: '2026-05-19:easy:c0',
+    weakLocked: { 'X-block': true },
+    mediumLocked: {},
+    strongLocked: { 'Y-block': { x: 1, y: 2 } },
+    usedWeak: 2, usedMedium: 0, usedStrong: 1,
+  };
+  var restored = H.restoreHintState(saved, '2026-05-20:easy:c0');
+  assert.strictEqual(restored.puzzleId, '2026-05-20:easy:c0');
+  assert.deepStrictEqual(restored.weakLocked, {});
+  assert.deepStrictEqual(restored.strongLocked, {});
+  assert.strictEqual(restored.usedWeak, 0);
+  assert.strictEqual(restored.usedStrong, 0);
+});
+
+test('restoreHintState: missing maps default to {} and missing counters to 0', function () {
+  var partial = { puzzleId: 'p1' };
+  var restored = H.restoreHintState(partial, 'p1');
+  assert.deepStrictEqual(restored.weakLocked, {});
+  assert.deepStrictEqual(restored.mediumLocked, {});
+  assert.deepStrictEqual(restored.strongLocked, {});
+  assert.strictEqual(restored.usedWeak, 0);
+  assert.strictEqual(restored.usedMedium, 0);
+  assert.strictEqual(restored.usedStrong, 0);
+});
+
+test('restoreHintState: malformed input (string/number/array) → fresh state', function () {
+  assert.strictEqual(H.restoreHintState('garbage', 'p1').usedWeak, 0);
+  assert.strictEqual(H.restoreHintState(42, 'p1').usedWeak, 0);
+  assert.strictEqual(H.restoreHintState([], 'p1').usedWeak, 0);
+  assert.strictEqual(H.restoreHintState('garbage', 'p1').puzzleId, 'p1');
+});
+
+test('restoreHintState: strong-locked block stays locked after restore (regression for slot-load bug)', function () {
+  // Reproduces the user-reported bug: after loading a slot, strong-hinted blocks
+  // were no longer marked as locked, so the player could remove them and burn
+  // another strong hint (which is supposed to cap at 1 per puzzle).
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 1]] } };
+  var afterStrong = H.applyStrong(
+    H.createHintState('p1'),
+    'X-block',
+    [{ id: 'X-block', label: 'X', shape: [[1, 1]] }],
+    [],
+    solved
+  );
+  // Save → reload (JSON round-trip)
+  var slot = JSON.parse(JSON.stringify(afterStrong.newState));
+  var restored = H.restoreHintState(slot, 'p1');
+
+  assert.strictEqual(H.isFullyLocked(restored, 'X-block'), true, 'strong-locked block must remain locked after reload');
+  assert.strictEqual(H.canUse(restored, 'strong'), false, 'strong-hint cap (1) must remain enforced after reload');
+});

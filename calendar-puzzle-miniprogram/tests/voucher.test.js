@@ -225,6 +225,66 @@ test('voucher: reconcile subtracts pending uses from cloud balance', async funct
   assert.strictEqual(v.getBalance().medium, 0);
 });
 
+// ---- attemptId (bug #3: useHint idempotency) ----
+
+test('voucher: applyUsed returns the pushed pendingUse entry', function () {
+  var v = V.create({ storage: fakeStorage() });
+  v.applyGranted('medium', 'share');
+  var entry = v.applyUsed('medium', 'share', 'p1');
+  assert.ok(entry, 'applyUsed must return the entry');
+  assert.strictEqual(entry.type, 'medium');
+  assert.strictEqual(entry.source, 'share');
+  assert.strictEqual(entry.puzzleId, 'p1');
+});
+
+test('voucher: applyUsed entry has a non-empty attemptId', function () {
+  var v = V.create({ storage: fakeStorage() });
+  v.applyGranted('medium', 'share');
+  var entry = v.applyUsed('medium', 'share', 'p1');
+  assert.ok(entry.attemptId, 'entry must have attemptId');
+  assert.strictEqual(typeof entry.attemptId, 'string');
+  assert.ok(entry.attemptId.length > 0);
+});
+
+test('voucher: multiple applyUsed calls produce distinct attemptIds', function () {
+  var v = V.create({ storage: fakeStorage() });
+  v.applyGranted('medium', 'share');
+  v.applyGranted('medium', 'share');
+  v.applyGranted('medium', 'share');
+  var a = v.applyUsed('medium', 'share', 'p1');
+  var b = v.applyUsed('medium', 'share', 'p1');
+  var c = v.applyUsed('medium', 'share', 'p2');
+  assert.notStrictEqual(a.attemptId, b.attemptId);
+  assert.notStrictEqual(b.attemptId, c.attemptId);
+  assert.notStrictEqual(a.attemptId, c.attemptId);
+});
+
+test('voucher: attemptId persists across reload (so flushPendingUse on next boot has the same id)', function () {
+  var s = fakeStorage();
+  var v1 = V.create({ storage: s });
+  v1.applyGranted('strong', 'help');
+  var entry = v1.applyUsed('strong', 'help', 'p1');
+  var v2 = V.create({ storage: s });
+  var pending = v2.getPendingUse();
+  assert.strictEqual(pending.length, 1);
+  assert.strictEqual(pending[0].attemptId, entry.attemptId, 'attemptId must round-trip via storage');
+});
+
+test('voucher: flushPendingUse passes item.attemptId to client.useHint', async function () {
+  var v = V.create({ storage: fakeStorage() });
+  v.applyGranted('medium', 'share');
+  var entry = v.applyUsed('medium', 'share', 'p1');
+  var seenArgs = null;
+  var fakeClient = {
+    useHint: function (type, puzzleId, attemptId) {
+      seenArgs = { type: type, puzzleId: puzzleId, attemptId: attemptId };
+      return Promise.resolve({ ok: true });
+    },
+  };
+  await v.flushPendingUse(fakeClient);
+  assert.deepStrictEqual(seenArgs, { type: 'medium', puzzleId: 'p1', attemptId: entry.attemptId });
+});
+
 test('voucher: getHelpsTodayCount filters by local-day boundaries', function () {
   var v = V.create({ storage: fakeStorage() });
   var d = new Date();

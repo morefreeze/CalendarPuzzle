@@ -16,6 +16,63 @@ function createHintState(puzzleId) {
   };
 }
 
+// Used when reloading a save slot. Returns a deep-cloned hint state when the
+// saved record is a plain object whose puzzleId matches; otherwise returns a
+// fresh state for the requested puzzleId (so a slot from a different puzzle, a
+// legacy slot without hintState, or corrupt data all fall back safely).
+function _cloneCellsMap(src) {
+  var out = {};
+  if (!src || typeof src !== 'object') return out;
+  for (var k in src) {
+    if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+    var cells = src[k];
+    if (!Array.isArray(cells)) continue;
+    var copy = [];
+    for (var i = 0; i < cells.length; i++) {
+      var c = cells[i];
+      if (c && typeof c === 'object') copy.push({ x: c.x, y: c.y });
+    }
+    out[k] = copy;
+  }
+  return out;
+}
+function _cloneStrongMap(src) {
+  var out = {};
+  if (!src || typeof src !== 'object') return out;
+  for (var k in src) {
+    if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+    var v = src[k];
+    if (v && typeof v === 'object') out[k] = { x: v.x, y: v.y };
+  }
+  return out;
+}
+function _cloneBoolMap(src) {
+  var out = {};
+  if (!src || typeof src !== 'object') return out;
+  for (var k in src) {
+    if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+    if (src[k]) out[k] = true;
+  }
+  return out;
+}
+function restoreHintState(saved, puzzleId) {
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+    return createHintState(puzzleId);
+  }
+  if (saved.puzzleId !== puzzleId) {
+    return createHintState(puzzleId);
+  }
+  return {
+    puzzleId: puzzleId,
+    weakLocked: _cloneBoolMap(saved.weakLocked),
+    mediumLocked: _cloneCellsMap(saved.mediumLocked),
+    strongLocked: _cloneStrongMap(saved.strongLocked),
+    usedWeak: typeof saved.usedWeak === 'number' ? saved.usedWeak : 0,
+    usedMedium: typeof saved.usedMedium === 'number' ? saved.usedMedium : 0,
+    usedStrong: typeof saved.usedStrong === 'number' ? saved.usedStrong : 0,
+  };
+}
+
 function countUsed(state, type) {
   if (type === 'weak') return state.usedWeak;
   if (type === 'medium') return state.usedMedium;
@@ -276,6 +333,7 @@ module.exports = {
   COSTS: COSTS,
   FIRST_WEAK_FREE: FIRST_WEAK_FREE,
   createHintState: createHintState,
+  restoreHintState: restoreHintState,
   countUsed: countUsed,
   canUse: canUse,
   isOrientationLocked: isOrientationLocked,

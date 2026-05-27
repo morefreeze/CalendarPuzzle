@@ -45,6 +45,13 @@ function _write(storage, state) {
   try { storage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
 }
 
+// Idempotency key for a single voucher-use attempt. Cloud `useHint` records
+// (openid, attemptId) → response; retries with the same id replay the cached
+// result instead of claiming another grant. Compact unique enough per user.
+function _genAttemptId() {
+  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
 function create(opts) {
   opts = opts || {};
   var storage = opts.storage;
@@ -99,11 +106,14 @@ function create(opts) {
         consumedHelpMedium = true;
       }
     }
-    state.pendingUse.push({
+    var entry = {
       type: type, source: source, puzzleId: puzzleId, ts: Date.now(),
       consumedHelpMedium: consumedHelpMedium,
-    });
+      attemptId: _genAttemptId(),
+    };
+    state.pendingUse.push(entry);
     _write(storage, state);
+    return entry;
   }
 
   function setBalance(b) {
@@ -172,7 +182,7 @@ function create(opts) {
     function step() {
       if (idx >= queue.length) return Promise.resolve();
       var item = queue[idx++];
-      return client.useHint(item.type, item.puzzleId).then(function (r) {
+      return client.useHint(item.type, item.puzzleId, item.attemptId).then(function (r) {
         if (r && r.ok) {
           // 云端 confirm，balance 在 applyUsed 时已经扣过，只需要出队
           _removeFromQueue(item);
