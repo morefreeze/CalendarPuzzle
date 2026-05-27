@@ -333,6 +333,51 @@ function applyStrong(state, blockId, palette, dropped, solvedPlacements) {
   return { newState: newState, updatedPalette: newPalette, updatedDropped: newDropped, evictedIds: evictedIds };
 }
 
+// Returns the first medium-hint violation caused by placing `blockId` at the
+// cells in `blockCells`. Priority: a block that has its own active medium
+// hint and fails to cover all of its hint cells wins over a block (own or
+// foreign) that happens to land on another block's hint cells. Pure function.
+//   state: hintState
+//   blockId: string — the block that was just dropped
+//   blockCells: Array<{x, y}> — the cells `blockId` occupies after the drop
+// Returns:
+//   null — no violation
+//   { kind: 'right-block-wrong-loc', blockId } — own hint not fully covered
+//   { kind: 'wrong-block-on-hint', placedBlockId, hintedBlockId } — covers
+//     another block's hint cell
+function findMediumMismatch(state, blockId, blockCells) {
+  if (!state || !state.mediumLocked) return null;
+  var ownHint = state.mediumLocked[blockId];
+  if (ownHint && ownHint.length > 0) {
+    // Scenario B — does blockCells contain every hinted cell?
+    var coversAll = true;
+    for (var i = 0; i < ownHint.length; i++) {
+      var hc = ownHint[i];
+      var found = false;
+      for (var j = 0; j < blockCells.length; j++) {
+        if (blockCells[j].x === hc.x && blockCells[j].y === hc.y) { found = true; break; }
+      }
+      if (!found) { coversAll = false; break; }
+    }
+    if (!coversAll) return { kind: 'right-block-wrong-loc', blockId: blockId };
+  }
+  // Scenario A — does blockCells intersect any other block's mediumLocked cells?
+  for (var hintedId in state.mediumLocked) {
+    if (!Object.prototype.hasOwnProperty.call(state.mediumLocked, hintedId)) continue;
+    if (hintedId === blockId) continue;
+    var cells = state.mediumLocked[hintedId];
+    if (!cells || cells.length === 0) continue;
+    for (var ci = 0; ci < cells.length; ci++) {
+      for (var bi = 0; bi < blockCells.length; bi++) {
+        if (blockCells[bi].x === cells[ci].x && blockCells[bi].y === cells[ci].y) {
+          return { kind: 'wrong-block-on-hint', placedBlockId: blockId, hintedBlockId: hintedId };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 module.exports = {
   CAPS: CAPS,
   COSTS: COSTS,
@@ -345,6 +390,7 @@ module.exports = {
   isCellLocked: isCellLocked,
   isFullyLocked: isFullyLocked,
   isMediumExhausted: isMediumExhausted,
+  findMediumMismatch: findMediumMismatch,
   applyWeak: applyWeak,
   applyMedium: applyMedium,
   applyStrong: applyStrong,

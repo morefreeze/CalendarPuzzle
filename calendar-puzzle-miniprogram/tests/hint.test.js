@@ -400,3 +400,46 @@ test('applyStrong preserves mediumMismatchIgnored when true', function () {
   var res = H.applyStrong(state, 'X-block', palette, dropped, solved);
   assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyStrong');
 });
+
+function _cellEq(a, b) { return a.x === b.x && a.y === b.y; }
+function _cellsContain(set, c) { for (var i = 0; i < set.length; i++) if (_cellEq(set[i], c)) return true; return false; }
+function _isSubset(sub, sup) { for (var i = 0; i < sub.length; i++) if (!_cellsContain(sup, sub[i])) return false; return true; }
+
+test('findMediumMismatch returns null when mediumLocked is empty', function () {
+  var s = H.createHintState('p-fm-1');
+  var cells = [{ x: 0, y: 0 }, { x: 1, y: 0 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', cells), null);
+});
+
+test('findMediumMismatch returns null when block covers all its own hint cells', function () {
+  var s = H.createHintState('p-fm-2');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var coversAll = [{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', coversAll), null);
+});
+
+test('findMediumMismatch returns right-block-wrong-loc when block misses any own hint cell', function () {
+  var s = H.createHintState('p-fm-3');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var missesOne = [{ x: 2, y: 3 }, { x: 2, y: 4 }];
+  var r = H.findMediumMismatch(s, 'A-block', missesOne);
+  assert.deepStrictEqual(r, { kind: 'right-block-wrong-loc', blockId: 'A-block' });
+});
+
+test('findMediumMismatch returns wrong-block-on-hint when foreign block covers another hint cell', function () {
+  var s = H.createHintState('p-fm-4');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  var foreign = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var r = H.findMediumMismatch(s, 'B-block', foreign);
+  assert.deepStrictEqual(r, { kind: 'wrong-block-on-hint', placedBlockId: 'B-block', hintedBlockId: 'A-block' });
+});
+
+test('findMediumMismatch prioritises right-block-wrong-loc over wrong-block-on-hint', function () {
+  var s = H.createHintState('p-fm-5');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  s.mediumLocked['B-block'] = [{ x: 5, y: 5 }];
+  // A-block is the placed block, misses one of its own cells (3,3), AND covers B-block's (5,5)
+  var weird = [{ x: 2, y: 3 }, { x: 5, y: 5 }];
+  var r = H.findMediumMismatch(s, 'A-block', weird);
+  assert.deepStrictEqual(r, { kind: 'right-block-wrong-loc', blockId: 'A-block' });
+});
