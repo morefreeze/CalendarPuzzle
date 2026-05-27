@@ -118,6 +118,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
   var slotPickerSelectedIdx = 0;      // 0..2
   var slotPickerLayoutCache = null;   // cached layout for the active modal
+
+  // ---- Medium-hint mismatch modal state ----
+  // null when no dialog open. Set by placeBlock() to one of:
+  //   { kind: 'right-block-wrong-loc', blockId }
+  //   { kind: 'wrong-block-on-hint', placedBlockId, hintedBlockId }
+  var mediumMismatchModal = null;
+  var mediumMismatchLayoutCache = null;
   function currentPuzzleId() {
     return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
   }
@@ -461,6 +468,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     try { wx.vibrateShort && wx.vibrateShort({ type: 'medium' }); } catch (e) {}
     scene.dirty = true;
     _tempSlot.markDirty(captureState());
+    if (!hintState.mediumMismatchIgnored) {
+      var bCells = [];
+      for (var sy = 0; sy < nb.shape.length; sy++) {
+        for (var sx = 0; sx < nb.shape[sy].length; sx++) {
+          if (nb.shape[sy][sx] === 1) bCells.push({ x: nb.x + sx, y: nb.y + sy });
+        }
+      }
+      var mm = Hint.findMediumMismatch(hintState, nb.id, bCells);
+      if (mm) {
+        mediumMismatchModal = mm;
+        return;
+      }
+    }
     checkWin();
   }
 
