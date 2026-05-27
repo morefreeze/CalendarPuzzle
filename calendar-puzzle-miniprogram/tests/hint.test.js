@@ -459,3 +459,11 @@ test('findMediumMismatch returns null for null/empty blockCells', function () {
   assert.strictEqual(H.findMediumMismatch(s, 'A-block', undefined), null);
   assert.strictEqual(H.findMediumMismatch(s, 'A-block', []), null);
 });
+
+test('setMediumMismatchIgnored returns new state with flag true, original untouched', function () {
+  var s = H.createHintState('p-set-1');
+  var s2 = H.setMediumMismatchIgnored(s);
+  assert.strictEqual(s2.mediumMismatchIgnored, true);
+  assert.strictEqual(s.mediumMismatchIgnored, false, 'original state must not be mutated');
+  assert.notStrictEqual(s2, s, 'must return a new object reference');
+});

@@ -379,6 +379,13 @@ function findMediumMismatch(state, blockId, blockCells) {
   return null;
 }
 
+// Immutable setter for the per-puzzle "stop bugging me about medium mismatches"
+// flag. Caller writes the returned state back into hintState; the field
+// survives save/reload via restoreHintState.
+function setMediumMismatchIgnored(state) {
+  return Object.assign({}, state, { mediumMismatchIgnored: true });
+}
+
 module.exports = {
   CAPS: CAPS,
   COSTS: COSTS,
@@ -392,6 +399,7 @@ module.exports = {
   isFullyLocked: isFullyLocked,
   isMediumExhausted: isMediumExhausted,
   findMediumMismatch: findMediumMismatch,
+  setMediumMismatchIgnored: setMediumMismatchIgnored,
   applyWeak: applyWeak,
   applyMedium: applyMedium,
   applyStrong: applyStrong,
