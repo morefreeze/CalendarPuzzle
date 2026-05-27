@@ -10,7 +10,8 @@
 - **本仓 / This repo**: `/Users/bytedance/mygit/CalendarPuzzle`（spec + plan + 三端旧代码 Python/React/小游戏）
 - **新仓 / Sibling repo**: `/Users/bytedance/mygit/calendar-puzzle-godot`（Godot 4 Steam 移植，private GitHub: morefreeze/calendar-puzzle-godot）
 - **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；2 个 spec commit + 1 个 12 plan 大 commit）
-- **新仓当前分支 / Godot repo branch**: `main`（23 commit，M0 + M1 已完成并 push；feat/m1-solver-port 已 merge 删除）
+- **新仓当前分支 / Godot repo branch**: `main`（36 commit，M0 + M1 + M2 + M8-mac-shortcut 已完成并 push；所有 feature 分支已 merge 删除）
+- **可玩 Mac app**: `~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（190MB universal binary，本机直接 open 可启动）
 - **标准启动路径 / Standard startup**:
   - 旧 Backend: `python server.py` (默认 `PORT=5001`)
   - 旧 Web: `cd my-cal && npm install && npm start` (CRA, :3000)
@@ -24,12 +25,45 @@
   - **Godot 性能 benchmark**: `godot --headless --script tools/solver_benchmark.gd`（产出 docs/m1-benchmark-report.md）
   - **Godot 覆盖率**: `python3 tools/coverage_check.py`（产出 docs/m1-coverage.md，100% 函数覆盖）
   - **Godot boot 冒烟**: `godot --headless --quit-after 3 res://boot/boot.tscn` 看到 `[boot] module 'calendar_puzzle' started`
-- **当前最高优先级未完成功能 / Next priority feature**: `godot-steam-m2-gameplay-scene`（即将开始；plan 在 docs/superpowers/plans/2026-05-26-godot-steam-m2-gameplay-scene.md，1571 行）
-- **当前 blocker / Current blocker**: 无（M0+M1 已 passing；M2 核心玩法场景可随时开工）
+- **当前最高优先级未完成功能 / Next priority feature**: 用户拍 — 可选 (a) M3 (难度+日历+预生成) 继续主路径；(b) M4-M7 补齐 UI/存档/提示/i18n 让 Mac app 体验更完整；(c) 完整 M8 (Apple Developer 公证 + Win/Linux/Deck) 让游戏可外发。
+- **当前 blocker / Current blocker**: 无
 
 ---
 
 ## 会话记录 / Session log
+
+### 2026-05-27 — M2 完成 + M8-mac shortcut：产出可启动 Mac .app
+
+- **本轮目标 / Goal**: 接 M1 完成后，用户说"一直实施直到有 mac 的 app 产出"。orchestrator 提了 shortcut（M2 + M8-mac，跳 M3-M7）—— 用户同意走 M2。M2 跑完后直接接 M8-mac。
+- **已完成 / Completed**:
+  - **M2** 在 feat/m2-gameplay-scene 上 4 个 subagent batch 串行 → merge → push（10 commits + merge commit 8490f8f）：
+    - Batch A (Tasks 1-3)：ActionBindings + InputRouter + boot 接入（19 tests）
+    - Batch B (Tasks 4-7)：Fixture + BoardView + PaletteView + WinOverlay（29 tests）
+    - Batch C (Tasks 8-9)：PlayScene FSM + game.gd 切 PlayScene（11 tests）
+    - Batch D (Task 10)：7 接受路径集成测试
+  - **M8-mac shortcut** 单 subagent batch：装 Godot 4.5 export templates → 配 export_presets.cfg 仅 macOS preset → godot --headless --export-release 出 universal binary → 验证 launch（2 commits 8e7f85b export preset + bbd6cfa .uid 清理）
+- **运行过的验证 / Validations run**:
+  - `godot --headless --script tests/run_tests.gd` → 116 passed, 680 asserts, 7.2s
+  - `godot --headless --quit-after 3 res://boot/boot.tscn` → [boot] module 'calendar_puzzle' started + PlayScene 挂载
+  - test_play_scene_integration.gd 7 path 全过
+  - `open build/mac/CalendarPuzzle.app` → 进程启动无 Gatekeeper 阻挡（本机构建无 quarantine）
+  - `file build/mac/CalendarPuzzle.app/Contents/MacOS/Calendar Puzzle` → Mach-O universal binary (x86_64 + arm64)
+- **已记录证据 / Evidence recorded**: feature_list.json 新增 `godot-steam-m8-mac-shortcut` priority=0 + `godot-steam-m2-gameplay-scene` priority=1
+- **提交记录 / Commits**:
+  - 新仓：M2 10 commits → merge 8490f8f → push；M8-mac 2 commits → push（HEAD bbd6cfa）；共 36 commits on main
+  - 本仓：feat/godot-steam 一并 commit handoff
+- **已知风险或未解决问题 / Known risks**:
+  - Mac app 190MB（universal binary + 引擎 + GodotSteam libs）。考虑发布时拆开 arm64 / x86_64 各发一份（一半大小）
+  - 不公证 → 外部下载玩家右键打开绕开 Gatekeeper（说明文档应写好）
+  - tests/fixtures/easy_seeded_puzzle.gd date 不一致（M3 修）
+  - 7 处累计 plan bug 修复仍未回灌到 plan 文件（M0/M1/M2 各几处）
+  - addons/godotsteam 仍 93MB 普通 git；M9 再加资产时压力会更大，git-lfs 越拖越贵
+- **下一步最佳动作 / Next best action**:
+  - 短期：让用户跑 `open build/mac/CalendarPuzzle.app` 真机验证玩一局
+  - 中期：M3（难度系统 + 日历选题 + 预生成 daily_puzzles.tres）继续主线，或 M4（UI/存档/设置）让游戏不再只能玩 hard-coded easy 题
+  - 长期：完整 M8（Apple Developer 注册 + 公证 + Win/Linux/Deck export）让 Mac app 可外发；剩 M4-M7 + M9-M11 才到上架
+
+---
 
 ### 2026-05-26 (续) — M1 实施完成：求解器层全部 GDScript 化 + benchmark
 
