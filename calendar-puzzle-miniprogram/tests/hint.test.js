@@ -365,9 +365,17 @@ test('restoreHintState round-trips mediumMismatchIgnored: true', function () {
   assert.strictEqual(s.mediumMismatchIgnored, true);
 });
 
+function _stateWithIgnored(puzzleId) {
+  return H.restoreHintState({
+    puzzleId: puzzleId,
+    weakLocked: {}, mediumLocked: {}, strongLocked: {},
+    usedWeak: 0, usedMedium: 0, usedStrong: 0,
+    mediumMismatchIgnored: true,
+  }, puzzleId);
+}
+
 test('applyWeak preserves mediumMismatchIgnored when true', function () {
-  var state = H.createHintState('p-prop-1');
-  state.mediumMismatchIgnored = true;
+  var state = _stateWithIgnored('p-prop-1');
   var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
   var dropped = [];
   var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 0], [1, 1]] } };
@@ -376,8 +384,7 @@ test('applyWeak preserves mediumMismatchIgnored when true', function () {
 });
 
 test('applyMedium preserves mediumMismatchIgnored when true', function () {
-  var state = H.createHintState('p-prop-2');
-  state.mediumMismatchIgnored = true;
+  var state = _stateWithIgnored('p-prop-2');
   var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
   var dropped = [];
   var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
@@ -386,8 +393,7 @@ test('applyMedium preserves mediumMismatchIgnored when true', function () {
 });
 
 test('applyStrong preserves mediumMismatchIgnored when true', function () {
-  var state = H.createHintState('p-prop-3');
-  state.mediumMismatchIgnored = true;
+  var state = _stateWithIgnored('p-prop-3');
   var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
   var dropped = [];
   var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
