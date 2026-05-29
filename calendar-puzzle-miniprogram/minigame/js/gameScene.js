@@ -434,12 +434,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         if (isInsomnia) {
           insomniaUnique = progress.markUniqueInsomnia(puzzle.dateStr, buildBoardKey());
         }
+        var hardcoreClear = false;
+        if (M.isHardcore(mode)) {
+          progress.markHardcoreCleared(puzzle.dateStr, difficulty);
+          hardcoreClear = true;
+        }
         winStats = {
           time: timer,
           isNewPB: pb.isNew,
           prevPB: pb.prev,
           todayDone: progress.countCompletedForDate(puzzle.dateStr),
           insomniaUnique: insomniaUnique,
+          hardcore: hardcoreClear,
         };
         var _bound = _slotBinding.getBound();
         if (_bound) {
@@ -1804,6 +1810,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.textBold(ctx, '×', L.winCloseBtn.x + clz / 2, L.winCloseBtn.y + clz / 2 - 1, 20, '#666', 'center', 'middle');
 
       R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 22, 20, BRAND_DARK, 'center');
+      if (winStats.hardcore) {
+        R.textBold(ctx, '🔥 硬核通关', cardX + cardW / 2, cardY + 44, 16, '#E64A19', 'center', 'middle');
+      }
       R.textBold(ctx, B.formatTime(winStats.time),
         cardX + cardW / 2, cardY + 60, 26, '#333', 'center', 'middle');
       var sub;
