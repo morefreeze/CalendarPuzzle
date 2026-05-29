@@ -121,6 +121,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
   var staminaConfirm = null;
 
+  // ---- Pause-menu state ----
+  var pauseMenuOpen = false;
+
   // ---- Save-slot modal state ----
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
   var slotPickerSelectedIdx = 0;      // 0..2
@@ -947,6 +950,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       ctx.lineTo(bcx + 5, bcy + 7);
       ctx.stroke();
     }
+
+    // ☰ Pause-menu entry (top-right). Positioned mirror of backBtn relative to safe area.
+    var pmSize = 36;
+    L.pauseBtn = { x: W - pad - pmSize, y: L.backBtn.y, w: pmSize, h: pmSize };
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.beginPath();
+    ctx.arc(L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2, pmSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    R.textBold(ctx, '☰', L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2 - 1, 22, '#555', 'center', 'middle');
 
     // Tutorial mode hides difficulty / sub / timer / stamina so the focus
     // is purely on the puzzle and the guidance bubble.
@@ -1956,6 +1968,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var _on = slotUI.pickOldestNewest(_slots2);
       slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx, slotPickerSelectedIdx);
     }
+
+    // --- Pause-menu sheet ---
+    if (pauseMenuOpen) {
+      R.overlay(ctx, W, H);
+      var sheetH = Math.floor(H * 0.5);
+      var sheetY = H - sheetH;
+      R.roundRect(ctx, 0, sheetY, W, sheetH, 18, '#fff');
+      R.textBold(ctx, '菜单', W / 2, sheetY + 28, 18, '#333', 'center', 'middle');
+      L.pauseSheet = { x: 0, y: sheetY, w: W, h: sheetH };
+      // Entries rendered in Task 7. This block leaves a blank pane for now.
+    } else {
+      L.pauseSheet = null;
+    }
   };
 
   // ---- TOUCH ----
@@ -2098,6 +2123,23 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // Pause-menu interactions take precedence when open (modal sheet).
+    if (pauseMenuOpen) {
+      // Tap inside the sheet rect: keep open (entries handled in Task 7).
+      if (L.pauseSheet && R.hitTest(x, y, L.pauseSheet)) {
+        return;
+      }
+      // Tap outside (the dimmed overlay) closes the sheet.
+      pauseMenuOpen = false;
+      scene.dirty = true;
+      return;
+    }
+    if (L.pauseBtn && R.hitTest(x, y, L.pauseBtn)) {
+      pauseMenuOpen = true;
+      scene.dirty = true;
+      return;
+    }
+
     // ── Medium-hint mismatch modal: intercept ALL taps while open. ──
     if (mediumMismatchModal && mediumMismatchLayoutCache) {
       var mmL = mediumMismatchLayoutCache;
