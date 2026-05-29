@@ -1452,3 +1452,155 @@ git commit -m "test(m3): record full GUT pass log + difficulty/calendar QA evide
 4. **Batch D** = Task 8（依赖 Task 5 + Task 7）
 
 如 M1 / M2 出现 API 名分歧（Task 4 / Task 7 的备注），执行 Task 4 / Task 7 的 subagent 必须先 `grep -rn "generate_from_seed\|setup_board" games/` 确认实际 API 后再写代码，不可盲粘。
+
+---
+
+## Plan-bug log (post-execution corrections — 2026-05-29)
+
+> 本段在首次执行 M3 时（2026-05-29）现场发现并修正的 plan 偏差。**原 task 文本未改，保留 diff 价值**；如未来重跑 M3 plan，按本段调整代码再粘。
+
+### 1. Task 2 — `func test_save_and_load_round_trip(tmp_path = "user://...")` 无效
+
+GUT 调 test 函数时不传参，所以 default 参数等价于函数体里 `var tmp_path = "..."`，看起来一样但 Godot 解析器更严格的情况下报警。改为：
+
+```gdscript
+func test_save_and_load_round_trip():
+    var tmp_path = "user://test_table_round_trip.tres"
+    ...
+```
+
+### 2. Task 4 + Task 7 — `PuzzleGenerator.generate_from_seed(seed, dig_count)` 不存在
+
+M1 实际 API 是：
+
+```gdscript
+static func generate_puzzle(difficulty: String, opts: Dictionary) -> Variant
+```
+
+`opts` 字典消费：
+- `date: Dictionary` — required，`{year, month, day, weekday}`（weekday 0=Sunday..6=Saturday，与 `mark_date` 一致）
+- `pack_data: Dictionary` — optional，传 `pack_free.tres` 的 `.data` 字段以走预解算 fast path（zero live DLX solve）
+- `combo_index: int` — optional，给定时直接选第 N 个 combo（确定性）
+- `rng: RandomNumberGenerator` — optional，仅当 `combo_index` 未提供时用 RNG 抽 combo
+
+返回 Dictionary（含 `current_combo_index: int`）或 `null`。
+
+**Task 4 (precompute) 改法**：预生成阶段用 RNG 路径
+
+```gdscript
+var rng := RandomNumberGenerator.new()
+rng.seed = _seed_for(date_str, diff)
+var result = PuzzleGenerator.generate_puzzle(diff, {
+    "date": date_struct,
+    "pack_data": pack_data,
+    "rng": rng,
+})
+table.entries[date_str][diff] = {
+    "seed": rng.seed,
+    "combo_index": int(result.current_combo_index),
+}
+```
+
+**Task 7 (`play_scene.load_puzzle`) 改法**：运行时用 combo_index 路径（运行时已知道 combo_index，不需要 RNG）
+
+```gdscript
+var generated = PuzzleGenerator.generate_puzzle(payload.difficulty, {
+    "date": date_struct,
+    "pack_data": pack_data,
+    "combo_index": int(payload.combo_index),
+})
+```
+
+### 3. Task 4 + Task 7 — `Time.get_datetime_dict_from_datetime_string("YYYY-MM-DD", false)` 不返回 weekday
+
+只返回 year/month/day。需要 unix round-trip 才能得到 weekday：
+
+```gdscript
+func _iso_to_date_struct(iso: String) -> Dictionary:
+    var dt := Time.get_datetime_dict_from_datetime_string(iso, false)
+    var y := int(dt.year); var mo := int(dt.month); var da := int(dt.day)
+    var unix := Time.get_unix_time_from_datetime_dict({
+        "year": y, "month": mo, "day": da,
+        "hour": 0, "minute": 0, "second": 0,
+    })
+    var dt2 := Time.get_datetime_dict_from_unix_time(unix)
+    return { "year": y, "month": mo, "day": da, "weekday": int(dt2.weekday) }
+```
+
+`Calendar._day_of_week` (Zeller) 也可以但语义上 Godot 的 unix 路径更标准。两处（precompute_daily.gd + play_scene.gd）各自带一份此 helper。
+
+### 4. Task 6 — select_scene.gd 的 `@onready` 路径漏 `Body/` 中间节点
+
+plan 的 .tscn 把 Calendar 和 RightPanel 放在 `Layout/Body/` 下（Body 是 `HBoxContainer` 做横向布局），但 plan 的 .gd 写 `@onready var _calendar = get_node_or_null("Layout/CalendarPanel/Calendar")` 漏了 Body。修：
+
+- `_calendar`: `Layout/Body/CalendarPanel/Calendar`
+- `_diff_buttons`: `Layout/Body/RightPanel/DifficultyButtons`
+
+其它 4 个 `@onready`（DateLabel / TodayButton / StartButton / BackButton）在 `Header` / `Footer` 下，不经 Body，无需改。
+
+### 5. Task 7 — M2 play_scene 没有 `setup_board()` / `setup_blocks()` 方法
+
+M2 模式是写 scene-level state vars (`uncoverable`, `placed_blocks`, `palette_blocks`) 后调 `board_view.set_uncoverable(...) / set_placed(...)` + `palette_view.set_blocks(...)`。Task 7 plan 写的 `setup_board(puzzle.board) + setup_blocks(puzzle.remaining_blocks)` 不存在，需提炼成共享 helper：
+
+```gdscript
+# play_scene.gd
+func _load_puzzle() -> void:  # M2 fallback path
+    puzzle = EasySeededPuzzle.build()
+    _apply_puzzle(puzzle)
+
+func _apply_puzzle(p: Dictionary) -> void:
+    puzzle = p
+    uncoverable = Board.get_uncoverable_cells(puzzle.date)
+    placed_blocks = []
+    for b in puzzle.pre_placed_blocks: placed_blocks.append(Board.clone_block(b))
+    palette_blocks = []
+    for b in puzzle.remaining_blocks: palette_blocks.append(Board.clone_block(b))
+    board_view.set_uncoverable(uncoverable)
+    board_view.set_placed(placed_blocks)
+    palette_view.set_blocks(palette_blocks)
+
+func load_puzzle(payload: Dictionary) -> void:  # M3 seeded path
+    var date_struct := _iso_to_date_struct(payload.date)
+    var pack_data := (load(PACK_PATH) as PackResource).data
+    var generated = PuzzleGenerator.generate_puzzle(payload.difficulty, {
+        "date": date_struct, "pack_data": pack_data,
+        "combo_index": int(payload.combo_index),
+    })
+    if generated == null: push_error(...); return
+    _apply_puzzle({
+        "date": date_struct,
+        "pre_placed_blocks": generated.pre_placed_blocks,
+        "remaining_blocks": generated.remaining_blocks,
+    })
+```
+
+`_load_puzzle` 保留是为了让 M2 既有 7 个 `test_play_scene_integration.gd` 集成测试不回归——它们不调 `load_puzzle`，靠 scene `_ready()` 默认走 `_load_puzzle` → `EasySeededPuzzle.build()`。
+
+### 6. Task 7 — `test_calendar_puzzle_module.gd` 既有 M2 用例需要更新
+
+`test_start_returns_play_scene_control_node` assert `start(deps)` 返回 PlayScene Control，但 M3 改成返回 `Node`（CalendarPuzzleRoot）下挂 SelectScene。这是 M3 设计意图的直接体现，不是 bug。Task 7 应同步把该测试 rename 为 `test_start_returns_select_scene_as_root_child` 并断言新形状。
+
+### 7. Task 7 — game.gd root 节点选 `Node` 而非 `Node2D`
+
+plan 写 `_root = Node2D.new()`，但 SelectScene + PlayScene 都是 `Control`，`Node2D` 父节点会引入不需要的 2D transform 上下文。改用 `Node.new()`。
+
+### 8. Task 7 — boot/boot.gd 不需改动
+
+plan 写 "Modify: boot/boot.gd"，实际无需改。boot.gd 已经 `add_child(_game_root)`，`_game_root` 是 `module.start(deps)` 返回值——M3 的新 game.gd 返回 Node 容器，boot 完全不感知。
+
+---
+
+## Execution log (2026-05-29)
+
+Branch: `feat/m3-puzzle-generation` on `~/mygit/calendar-puzzle-godot/`，从 `main` (commit `55616ae` = M2 follow-up window+drag-test fix) 派生。
+
+| Task | Commit | Tests | Note |
+|---|---|---|---|
+| 1 Difficulty | `2fc4add` | 123/123 | byte-for-byte from plan |
+| 2 DailyPuzzleTable | `193601f` | 130/130 | plan-bug #1 fix (default 参数) |
+| 3 Calendar widget | `acb02d8` | 141/141 | byte-for-byte from plan |
+| 4 precompute tool | `89b24a0` | 141/141 | plan-bug #2 + #3 fix；smoke 5 天 25/25 in 1.3s |
+| 5 full precompute | TBD | TBD | 后台 7 date/s，~14 min；ETA 收尾 |
+| 6 select_scene UI | `040c01a` | 148/148 | plan-bug #4 fix（@onready Body/） |
+| 7 boot wiring | `fd23a4b` | 148/148 | plan-bug #2 + #3 + #5 + #6 + #7 + #8 fix |
+| 8 全链路 QA | TBD | TBD | 待 Task 5 + 补 load_puzzle 单测 |

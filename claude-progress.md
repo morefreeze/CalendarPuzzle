@@ -9,9 +9,9 @@
 
 - **本仓 / This repo**: `/Users/bytedance/mygit/CalendarPuzzle`（spec + plan + 三端旧代码 Python/React/小游戏）
 - **新仓 / Sibling repo**: `/Users/bytedance/mygit/calendar-puzzle-godot`（Godot 4 Steam 移植，private GitHub: morefreeze/calendar-puzzle-godot）
-- **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；2 个 spec commit + 1 个 12 plan 大 commit）
-- **新仓当前分支 / Godot repo branch**: `main`（36 commit，M0 + M1 + M2 + M8-mac-shortcut 已完成并 push；所有 feature 分支已 merge 删除）
-- **可玩 Mac app**: `~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（190MB universal binary，本机直接 open 可启动）
+- **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；spec + 12 plan + M0/M1/M2/M8-mac handoff + 2026-05-29 M3 plan-bug log）
+- **新仓当前分支 / Godot repo branch**: `feat/m3-puzzle-generation`（从 main commit 55616ae = M2 follow-up window+drag-test fix 派生；8 个 M3 commit 本地未 push）。main 上有 M0 + M1 + M2 + M8-mac-shortcut + 2026-05-29 fix(m2): window + test gap 已 push GitHub
+- **可玩 Mac app**: `~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（193MB universal binary，含 M3 select_scene + 1.6MB daily_puzzles.tres；本机直接 open 可启动；启动后默认进 select_scene 而非 play_scene）
 - **标准启动路径 / Standard startup**:
   - 旧 Backend: `python server.py` (默认 `PORT=5001`)
   - 旧 Web: `cd my-cal && npm install && npm start` (CRA, :3000)
@@ -25,12 +25,43 @@
   - **Godot 性能 benchmark**: `godot --headless --script tools/solver_benchmark.gd`（产出 docs/m1-benchmark-report.md）
   - **Godot 覆盖率**: `python3 tools/coverage_check.py`（产出 docs/m1-coverage.md，100% 函数覆盖）
   - **Godot boot 冒烟**: `godot --headless --quit-after 3 res://boot/boot.tscn` 看到 `[boot] module 'calendar_puzzle' started`
-- **当前最高优先级未完成功能 / Next priority feature**: 用户拍 — 可选 (a) M3 (难度+日历+预生成) 继续主路径；(b) M4-M7 补齐 UI/存档/提示/i18n 让 Mac app 体验更完整；(c) 完整 M8 (Apple Developer 公证 + Win/Linux/Deck) 让游戏可外发。
-- **当前 blocker / Current blocker**: 无
+- **当前最高优先级未完成功能 / Next priority feature**: M4 (UI 外壳 + 存档 + 设置) — M3 完成后 select_scene 已经在，主菜单/暂停/设置面板/3 槽手动存档/缩略图待补。
+- **当前 blocker / Current blocker**: 无（但等用户做 GUI 手测 Mac app 验 M2/M3 行为：拖块/5 难度/日历/Today/边界禁用）
 
 ---
 
 ## 会话记录 / Session log
+
+### 2026-05-29 — M2 follow-up + M3 (5 难度 + 日历 + 预生成) 一波打通
+
+- **本轮目标 / Goal**: 用户报告之前 Mac app 三 bug：(1) 窗口小 (2) 方块拖不动 (3) 布局不像小游戏。诊断完决定按 spec 推主线（用户选 B）。然后"继续做后面不阻塞的任务" → 推 M3。
+- **已完成 / Completed**:
+  - **诊断 M2 三 bug**：systematic-debugging 走 Phase 1。Bug #2 用 Explore agent 误诊为 WinOverlay STOP 吃事件，我自己核对发现 `_input(event)` 是 Node 级回调，不受 `mouse_filter` 影响，agent 诊断错。换 RED 测试 + tools/diag_real_window_click.gd 在真窗口注入 InputEventMouseButton 证明 InputRouter chain 在源码层完全 OK → drag 不能动是窗口太小 + UX 期待差距的二次伤害。Bug #3 是 spec 故意（Locked decisions #3 砍 F2P）。
+  - **M2 follow-up commit 55616ae on main**：project.godot 加 `window/size/mode=2`（Maximized）+ `resizable=true`；加 tests/test_real_input_path.gd（2 个真实路径 regression guard 防 TestInputContext bypass 再次蒙混过关）+ tools/diag_real_window_click.gd（Mac 调试用，不 shipping）。118/118 pass。
+  - **M3 全 8 task 完成** 在 feat/m3-puzzle-generation 分支：Task 1 Difficulty (2fc4add) → Task 2 DailyPuzzleTable (193601f) → Task 3 Calendar 月历 (acb02d8) → Task 4 precompute tool (89b24a0) → Task 6 select_scene UI (040c01a) → Task 7 boot wiring (fd23a4b) → Task 5 全量 precompute 1.6MB .tres (510c999) → Task 8 load_puzzle round-trip 单测 + final evidence (775a72a)。
+  - **跨任务并发**：Task 5 全量 precompute（838s/14min）后台跑，期间并行 Task 6 + Task 7 implementer subagent，省全程 ~20 分钟。
+  - **8 处 plan-bug 现场修正** 全回灌 plan 文件底部新加的"Plan-bug log"段：(1) GUT 不传参 → test_save_and_load_round_trip 默认参数挪函数体；(2)+(3) M1 真 API generate_puzzle(diff, opts) 非 generate_from_seed + Time.get_datetime_dict 缺 weekday 要 unix round-trip；(4) select_scene @onready 漏 Body/；(5) M2 没 setup_board/setup_blocks 要 _apply_puzzle helper 提炼；(6) test_calendar_puzzle_module 既有用例需改名以匹配 M3 返回 Node 容器；(7) game.gd _root 用 Node 非 Node2D；(8) boot.gd 不需改。
+  - **Mac app 重建**：build/mac/CalendarPuzzle.app 193MB（M3 +3MB = .tres + select_scene），boot 输出干净。
+- **运行过的验证 / Validations run**:
+  - `godot --headless -s tests/run_tests.gd` → **153/153 pass, 846 asserts**（M0+M1+M2 既有 118 + M3 新 35）
+  - `godot --headless -s /tmp/verify_table.gd` → 5 dates × 5 difficulties = 25 lookups 全 {seed, combo_index} 非空，range [2020-01-01, 2035-12-31]
+  - `godot --headless --quit-after 3 res://boot/boot.tscn` → `[boot] module 'calendar_puzzle' started`，无 ERROR，无 .tres-missing warning
+  - `open build/mac/CalendarPuzzle.app` boot 输出干净（Mac app 测试启动 OK；GUI 手测交付给用户）
+- **已记录证据 / Evidence recorded**: feature_list.json M3 entry 升 passing + 完整 evidence 数组；docs/m3-evidence/all-tests-final.log committed at 775a72a；docs/superpowers/plans/2026-05-26-godot-steam-m3-puzzle-generation.md 底部加 Plan-bug log + Execution log 段（M3 plan 重跑时按本段补）。
+- **提交记录 / Commits**:
+  - calendar-puzzle-godot main: `55616ae` fix(m2): window + test gap（本地未 push）
+  - calendar-puzzle-godot feat/m3-puzzle-generation: 8 commit（2fc4add → 193601f → acb02d8 → 89b24a0 → 040c01a → fd23a4b → 510c999 → 775a72a），全本地未 push
+  - CalendarPuzzle feat/godot-steam: 本会话末尾的 handoff/plan 更新待 commit
+- **已知风险或未解决问题 / Known risks**:
+  - 所有 commit local only，未 push GitHub（等用户验证后再 push）
+  - GUI 手测 5 难度 + 日历边界 + Today + 拖块在新 Mac app 上**未做**——subagent + tests 都只能验源码 + headless 输出
+  - tests/fixtures/easy_seeded_puzzle.gd 的 date/board 不一致仍未修（plan Task 6/8 路径都没碰它；M2 既有防御性绕过仍 OK）
+- **下一步最佳动作 / Next best action**:
+  1. 让用户 `open ~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app` 跑 M3：默认进 select_scene → 5 难度任选 → 月历挑日期 → Start → play 一局；验证拖放在新 Maximized 窗口下能动
+  2. 用户验过后 push feat/m3-puzzle-generation 到 GitHub，merge to main
+  3. 决定下一段：(a) M4 UI shell + 3 槽存档 + 设置面板（主路径）/ (b) 把 Mac app M8 公证流程做完发外测 / (c) 修 fixture date/board 不一致
+
+---
 
 ### 2026-05-27 — M2 完成 + M8-mac shortcut：产出可启动 Mac .app
 
