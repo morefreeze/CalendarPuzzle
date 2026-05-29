@@ -137,7 +137,8 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         expert: '#7E57C2', insomnia: '#E53935',
       };
       // Shrink button height if buttons would overflow the remaining space.
-      var availH = H - y - padBottom - 16;
+      var TOGGLE_ROW_RESERVE = 56; // hardcore toggle row (36) + gap (2) + caption (18); see render block below
+      var availH = H - y - padBottom - 16 - TOGGLE_ROW_RESERVE;
       var needH = diffs.length * btnH + (diffs.length - 1) * btnGap;
       if (needH > availH) {
         btnH = Math.max(44, Math.floor((availH - (diffs.length - 1) * btnGap) / diffs.length));
@@ -341,7 +342,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
             showMsg('体力不足！需要 ' + pdCost + ' 点，当前 ' + stamina.getStamina() + ' 点');
             return;
           }
-          onSelect(pd, null, null);
+          onSelect(pd, null, { hardcore: hardcoreOn });
         }
         return;
       }
