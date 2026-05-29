@@ -653,23 +653,36 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // it needs to point at. Skip button is placed inside the bubble (laid
     // out at render time, not here).
 
-    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons (2 in insomnia
-    // mode, where switching puzzle is conceptually nonexistent).
+    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line.
+    // Layout collapses based on capabilities:
+    //   default:  [💡 提示] [↺ 重开] [🎲 随机] [🎯 选题]      (4 buttons)
+    //   insomnia: [💡 提示] [↺ 重开]                          (2 buttons; no swap)
+    //   hardcore: [🧹 清空]                                    (1 button; replaces 重开)
     // Hidden during tutorial mode to keep the focus on the banner step.
     L.hintBtn = null;
     L.resetBtn = null;
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
     if (!tutorialMode) {
+      var showHint = M.canUseHint(mode);
+      var showSwap = M.canSwapPuzzle(mode) && !isInsomnia;
+      var hardcore = M.isHardcore(mode);
+      var nCtrl = (showHint ? 1 : 0) + 1 /* reset/clear */ + (showSwap ? 2 : 0);
       var btnH = 36, btnGap = 8;
-      var nCtrl = isInsomnia ? 2 : 4;
       var ctrlBtnW = Math.floor((W - 2 * pad - (nCtrl - 1) * btnGap) / nCtrl);
       L.ctrlY = y;
-      L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
-      L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
-      if (!isInsomnia) {
-        L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
-        L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+      var idx = 0;
+      if (showHint) {
+        L.hintBtn  = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
+      }
+      L.resetBtn   = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH, kind: hardcore ? 'clear' : 'reset' };
+      idx++;
+      if (showSwap) {
+        L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
+        L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
       }
       y += btnH + 10;
     }
@@ -961,9 +974,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     //  can compute targets from their freshly-laid-out rects.)
 
     // --- Control row: 提示 / 重开 / 🎲 / 🎯 (hidden during tutorial) ---
-    if (L.hintBtn) {
-      R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
-      R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
+    if (L.resetBtn) {
+      if (L.hintBtn) {
+        R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
+      }
+      var resetLabel = L.resetBtn.kind === 'clear' ? '🧹 清空' : '↺ 重开';
+      R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, resetLabel, dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
       if (L.switchRandomBtn) {
         var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
         var randomFg = switchMode === 'random' ? '#fff' : '#666';
@@ -2640,8 +2656,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;
-      resetAllPlaced();
-      showToast('已重开当前题');
+      if (L.resetBtn.kind === 'clear') {
+        // Hardcore: clear all dropped blocks back to palette; DO NOT reset timer.
+        resetAllPlaced();
+        showToast('已清空棋盘');
+      } else {
+        // Default restart: delegates to resetAllPlaced (no timer state here).
+        resetAllPlaced();
+        showToast('已重开当前题');
+      }
       return;
     }
     if (L.switchRandomBtn && R.hitTest(x, y, L.switchRandomBtn)) {
