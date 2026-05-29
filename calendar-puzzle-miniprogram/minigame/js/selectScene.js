@@ -27,6 +27,8 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
 
   var btnRects = [];
   var infoBtn = null;
+  var hardcoreOn = false;
+  var hardcoreToggleRect = null;
   var helpOpen = false;
   var replayBtn = null;
   var message = '';
@@ -180,6 +182,33 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         btnRects.push({ x: bx, y: y, w: btnW, h: btnH, diff: d });
         y += btnH + btnGap;
       }
+
+      // ── Hardcore mode toggle (per-session; not persisted) ─────────────
+      var hcRowH = 36;
+      var hcTrackW = 56, hcTrackH = 28;
+      var hcKnobR = 11;
+      var hcLabelX = (W - btnW) / 2;
+      var hcTrackX = hcLabelX + btnW - hcTrackW;
+      var hcTrackY = y + (hcRowH - hcTrackH) / 2;
+      // Label
+      R.textBold(ctx, '🔥 硬核模式', hcLabelX, y + hcRowH / 2, 16, '#333', 'left', 'middle');
+      // Track + knob
+      R.roundRect(ctx, hcTrackX, hcTrackY, hcTrackW, hcTrackH, hcTrackH / 2,
+        hardcoreOn ? '#FF7043' : '#BDBDBD');
+      var knobX = hardcoreOn
+        ? hcTrackX + hcTrackW - hcKnobR - 4
+        : hcTrackX + hcKnobR + 4;
+      ctx.beginPath();
+      ctx.arc(knobX, hcTrackY + hcTrackH / 2, hcKnobR, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      hardcoreToggleRect = { x: hcLabelX, y: y, w: btnW, h: hcRowH };
+      y += hcRowH + 2;
+      // Caption (small grey)
+      R.text(ctx, '关闭提示・换题・券，重开变为清空棋盘',
+        hcLabelX, y + 8, 11, '#888', 'left');
+      y += 18;
+      // ──────────────────────────────────────────────────────────────────
 
       // Info / rules button (top-right, below capsule menu).
       var iSize = 32;
@@ -371,6 +400,12 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
       return;
     }
 
+    if (hardcoreToggleRect && R.hitTest(x, y, hardcoreToggleRect)) {
+      hardcoreOn = !hardcoreOn;
+      scene.dirty = true;
+      return;
+    }
+
     // Difficulty buttons — with temp-slot intercept.
     for (var i = 0; i < btnRects.length; i++) {
       if (R.hitTest(x, y, btnRects[i])) {
@@ -389,7 +424,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
           showMsg('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }
-        onSelect(d, null, null);
+        onSelect(d, null, { hardcore: hardcoreOn });
         return;
       }
     }
