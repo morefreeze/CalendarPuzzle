@@ -960,8 +960,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
     // ☰ Pause-menu entry (bottom-left). Avoids collision with the WeChat
     // capsule menu at top-right and the centered palette/hint at bottom.
+    // safeInsets.bottom is the home-indicator inset; padBottom is local to
+    // computeLayout, not in scope here.
     var pmSize = 36;
-    L.pauseBtn = { x: pad, y: H - padBottom - pmSize - 4, w: pmSize, h: pmSize };
+    L.pauseBtn = { x: pad, y: H - (safeInsets.bottom || 0) - pmSize - 4, w: pmSize, h: pmSize };
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.beginPath();
     ctx.arc(L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2, pmSize / 2, 0, Math.PI * 2);
