@@ -1786,7 +1786,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cardW = Math.min(W - 32, 320);
       // Tutorial stacks 2 (finish + invite). Regular win stacks 3
       // (restart / moments-hint / invite), so grow the card to match.
-      var cardH = tutorialMode ? 250 : 310;
+      var hcShift = (winStats && winStats.hardcore) ? 24 : 0;
+      var cardH = (tutorialMode ? 250 : 310) + hcShift;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       // Clamp against the bottom safe area so the taller 3-button card
@@ -1811,10 +1812,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
       R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 22, 20, BRAND_DARK, 'center');
       if (winStats.hardcore) {
-        R.textBold(ctx, '🔥 硬核通关', cardX + cardW / 2, cardY + 44, 16, '#E64A19', 'center', 'middle');
+        R.textBold(ctx, '🔥 硬核通关', cardX + cardW / 2, cardY + 50, 16, '#E64A19', 'center', 'middle');
       }
       R.textBold(ctx, B.formatTime(winStats.time),
-        cardX + cardW / 2, cardY + 60, 26, '#333', 'center', 'middle');
+        cardX + cardW / 2, cardY + 60 + hcShift, 26, '#333', 'center', 'middle');
       var sub;
       if (winStats.isNewPB && winStats.prevPB != null) {
         sub = '🏆 新纪录！（前最佳 ' + B.formatTime(winStats.prevPB) + '）';
@@ -1823,18 +1824,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       } else {
         sub = '最佳 ' + B.formatTime(progress.getBestTime(puzzle.dateStr, difficulty));
       }
-      R.text(ctx, sub, cardX + cardW / 2, cardY + 88, 12,
+      R.text(ctx, sub, cardX + cardW / 2, cardY + 88 + hcShift, 12,
         winStats.isNewPB ? '#FF8F00' : '#888', 'center');
       if (isInsomnia && winStats.insomniaUnique) {
         var iu = winStats.insomniaUnique;
         var iuTxt = iu.isNew
           ? '✨ 新摆法 · 今日已发现 ' + iu.count + ' 种'
           : '🌙 这种摆法见过了 · 今日 ' + iu.count + ' 种';
-        R.text(ctx, iuTxt, cardX + cardW / 2, cardY + 110, 12,
+        R.text(ctx, iuTxt, cardX + cardW / 2, cardY + 110 + hcShift, 12,
           iu.isNew ? '#FF8F00' : '#888', 'center');
       } else {
         R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
-          cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
+          cardX + cardW / 2, cardY + 110 + hcShift, 12, '#666', 'center');
       }
 
       // Stacked CTAs. Tutorial: [finish, invite]. Normal win:
