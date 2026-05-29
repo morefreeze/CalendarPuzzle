@@ -111,6 +111,37 @@ function markUniqueInsomnia(dateStr, boardKey) {
   return { isNew: true, count: arr.length };
 }
 
+// Hardcore mode: per-day per-difficulty clear flag.
+// Storage shape: { "2026-05-27": { "expert": true, "easy": true }, ... }
+var HARDCORE_KEY = 'calendarPuzzleHardcoreDays';
+
+function loadHardcore() {
+  try { var r = wx.getStorageSync(HARDCORE_KEY); if (r) return JSON.parse(r); } catch (e) {}
+  return {};
+}
+
+function saveHardcore(d) {
+  try { wx.setStorageSync(HARDCORE_KEY, JSON.stringify(d)); } catch (e) {}
+}
+
+// Returns true on first-time-at-this-(date, difficulty); false if already set.
+function markHardcoreCleared(dateStr, difficulty) {
+  if (!dateStr || !difficulty) return false;
+  var all = loadHardcore();
+  var entry = all[dateStr] = all[dateStr] || {};
+  if (entry[difficulty]) return false;
+  entry[difficulty] = true;
+  saveHardcore(all);
+  return true;
+}
+
+function hasHardcoreCleared(dateStr, difficulty) {
+  if (!dateStr || !difficulty) return false;
+  var all = loadHardcore();
+  var entry = all[dateStr];
+  return !!(entry && entry[difficulty]);
+}
+
 // First-launch onboarding completion flag.
 var TUTORIAL_KEY = 'calendarPuzzleTutorialDone';
 
@@ -132,4 +163,6 @@ module.exports = {
   markUniqueInsomnia: markUniqueInsomnia,
   isTutorialDone: isTutorialDone,
   markTutorialDone: markTutorialDone,
+  markHardcoreCleared: markHardcoreCleared,
+  hasHardcoreCleared: hasHardcoreCleared,
 };
