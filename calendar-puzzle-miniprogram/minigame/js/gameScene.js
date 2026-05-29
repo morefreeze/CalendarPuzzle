@@ -958,9 +958,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       ctx.stroke();
     }
 
-    // ☰ Pause-menu entry (top-right). Positioned mirror of backBtn relative to safe area.
+    // ☰ Pause-menu entry (bottom-left). Avoids collision with the WeChat
+    // capsule menu at top-right and the centered palette/hint at bottom.
     var pmSize = 36;
-    L.pauseBtn = { x: W - pad - pmSize, y: L.backBtn.y, w: pmSize, h: pmSize };
+    L.pauseBtn = { x: pad, y: H - padBottom - pmSize - 4, w: pmSize, h: pmSize };
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     ctx.beginPath();
     ctx.arc(L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2, pmSize / 2, 0, Math.PI * 2);
