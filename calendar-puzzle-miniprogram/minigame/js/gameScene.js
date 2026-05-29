@@ -123,6 +123,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- Pause-menu state ----
   var pauseMenuOpen = false;
+  var abandonConfirmOpen = false;
 
   // ---- Save-slot modal state ----
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
@@ -1977,9 +1978,45 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, 0, sheetY, W, sheetH, 18, '#fff');
       R.textBold(ctx, '菜单', W / 2, sheetY + 28, 18, '#333', 'center', 'middle');
       L.pauseSheet = { x: 0, y: sheetY, w: W, h: sheetH };
-      // Entries rendered in Task 7. This block leaves a blank pane for now.
+      var rowH = 56, rowGap = 8;
+      var rowX = 16, rowY = sheetY + 60, rowW = W - 32;
+
+      L.pauseRowAbandon = null;
+      if (M.isHardcore(mode)) {
+        R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#FFF3E0');
+        R.textBold(ctx, '🔥 放弃硬核', rowX + 16, rowY + rowH / 2, 16, '#E64A19', 'left', 'middle');
+        L.pauseRowAbandon = { x: rowX, y: rowY, w: rowW, h: rowH };
+        rowY += rowH + rowGap;
+      }
+
+      R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#F5F5F5');
+      R.textBold(ctx, '🏠 返回首页', rowX + 16, rowY + rowH / 2, 16, '#333', 'left', 'middle');
+      L.pauseRowBack = { x: rowX, y: rowY, w: rowW, h: rowH };
+      rowY += rowH + rowGap;
+
+      // Read-only title block
+      var difficultyLabel = (PG && PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[difficulty] && PG.DIFFICULTY_CONFIG[difficulty].label) || difficulty;
+      var titleStr = puzzle.dateStr + ' · ' + difficultyLabel + (M.isHardcore(mode) ? ' · 🔥 硬核' : '');
+      R.text(ctx, titleStr, rowX, rowY + 8, 13, '#666', 'left');
     } else {
       L.pauseSheet = null;
+    }
+
+    if (abandonConfirmOpen) {
+      R.overlay(ctx, W, H);
+      var dW = W * 0.84, dH = 200;
+      var dx = (W - dW) / 2, dy = (H - dH) / 2;
+      R.roundRect(ctx, dx, dy, dW, dH, 14, '#fff');
+      R.textBold(ctx, '放弃硬核?', dx + dW / 2, dy + 32, 18, '#333', 'center', 'middle');
+      R.text(ctx, '放弃后本局不再计入今日硬核通关，确定?', dx + dW / 2, dy + 70, 13, '#666', 'center');
+      var cBtnW = (dW - 48) / 2, cBtnH = 44;
+      L.abandonCancelBtn  = { x: dx + 16,                  y: dy + dH - 16 - cBtnH, w: cBtnW, h: cBtnH };
+      L.abandonConfirmBtn = { x: dx + 16 + cBtnW + 16,     y: dy + dH - 16 - cBtnH, w: cBtnW, h: cBtnH };
+      R.button(ctx, L.abandonCancelBtn.x,  L.abandonCancelBtn.y,  cBtnW, cBtnH, '取消',     '#eee',    '#333', 8);
+      R.button(ctx, L.abandonConfirmBtn.x, L.abandonConfirmBtn.y, cBtnW, cBtnH, '确定放弃', '#E64A19', '#fff', 8);
+    } else {
+      L.abandonCancelBtn = null;
+      L.abandonConfirmBtn = null;
     }
   };
 
@@ -2002,6 +2039,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (hintMode) return;
     if (mediumMismatchModal) return;
     if (pauseMenuOpen) return;
+    if (abandonConfirmOpen) return;
 
     // Grab a placed (non-locked) block from the board, if the touch lands on
     // one. The block is lifted into `dragging` and removed from dropped; on
@@ -2083,6 +2121,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   scene.onTouchMove = function (x, y) {
     if (pauseMenuOpen) return;
+    if (abandonConfirmOpen) return;
     if (selectPanelOpen && L.selectPanel) {
       if (!dragging) {
         var scrollDelta = dragStart.y - y;
@@ -2126,12 +2165,40 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   scene.onTouchEnd = function (x, y) {
     // Pause-menu interactions take precedence when open (modal sheet).
-    if (pauseMenuOpen) {
-      // Tap inside the sheet rect: keep open (entries handled in Task 7).
-      if (L.pauseSheet && R.hitTest(x, y, L.pauseSheet)) {
+    if (abandonConfirmOpen) {
+      if (L.abandonCancelBtn && R.hitTest(x, y, L.abandonCancelBtn)) {
+        abandonConfirmOpen = false;
+        scene.dirty = true;
         return;
       }
-      // Tap outside (the dimmed overlay) closes the sheet.
+      if (L.abandonConfirmBtn && R.hitTest(x, y, L.abandonConfirmBtn)) {
+        // Downgrade: rebuild mode without hardcore, repaint, persist.
+        mode = M.createMode({ hardcore: false });
+        scene.mode = mode;
+        abandonConfirmOpen = false;
+        pauseMenuOpen = false;
+        _tempSlot.markDirty(captureState());
+        showToast('已切回普通模式');
+        scene.dirty = true;
+        return;
+      }
+      return; // swallow taps elsewhere while confirm is open
+    }
+    if (pauseMenuOpen) {
+      if (L.pauseRowAbandon && R.hitTest(x, y, L.pauseRowAbandon)) {
+        abandonConfirmOpen = true;
+        scene.dirty = true;
+        return;
+      }
+      if (L.pauseRowBack && R.hitTest(x, y, L.pauseRowBack)) {
+        pauseMenuOpen = false;
+        // Same callback path as the top-left back arrow uses.
+        if (callbacks && callbacks.onBack) callbacks.onBack();
+        return;
+      }
+      if (L.pauseSheet && R.hitTest(x, y, L.pauseSheet)) {
+        return; // tap on blank sheet area = no-op
+      }
       pauseMenuOpen = false;
       scene.dirty = true;
       return;
