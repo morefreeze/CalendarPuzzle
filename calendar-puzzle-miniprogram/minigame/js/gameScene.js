@@ -2003,7 +2003,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
 
     if (abandonConfirmOpen) {
-      R.overlay(ctx, W, H);
+      if (!pauseMenuOpen) R.overlay(ctx, W, H);
       var dW = W * 0.84, dH = 200;
       var dx = (W - dW) / 2, dy = (H - dH) / 2;
       R.roundRect(ctx, dx, dy, dW, dH, 14, '#fff');
