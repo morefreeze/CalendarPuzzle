@@ -1981,16 +1981,25 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx, slotPickerSelectedIdx);
     }
 
-    // --- Pause-menu sheet ---
+    // --- Pause-menu popover (anchored above the ☰ button at bottom-left) ---
     if (pauseMenuOpen) {
-      R.overlay(ctx, W, H);
-      var sheetH = Math.floor(H * 0.5);
-      var sheetY = H - sheetH;
-      R.roundRect(ctx, 0, sheetY, W, sheetH, 18, '#fff');
-      R.textBold(ctx, '菜单', W / 2, sheetY + 28, 18, '#333', 'center', 'middle');
-      L.pauseSheet = { x: 0, y: sheetY, w: W, h: sheetH };
       var rowH = 56, rowGap = 8;
-      var rowX = 16, rowY = sheetY + 60, rowW = W - 32;
+      var rowsCount = (M.isHardcore(mode) ? 1 : 0) + 1;
+      var popPadX = 12, popPadTop = 12, popPadBottom = 12;
+      var titleH = 20;
+      var popW = Math.min(W - 2 * pad, 280);
+      var rowsH = rowsCount * rowH + (rowsCount - 1) * rowGap;
+      var popH = popPadTop + rowsH + 10 + titleH + popPadBottom;
+      var popX = pad;
+      var popY = L.pauseBtn.y - 8 - popH;
+      // Floating card — no full-screen dim so the popover feels light.
+      // Subtle shadow via a slightly larger gray rect underneath.
+      R.roundRect(ctx, popX + 1, popY + 2, popW, popH, 14, 'rgba(0,0,0,0.08)');
+      R.roundRect(ctx, popX, popY, popW, popH, 14, '#fff');
+      L.pauseSheet = { x: popX, y: popY, w: popW, h: popH };
+
+      var rowX = popX + popPadX, rowW = popW - 2 * popPadX;
+      var rowY = popY + popPadTop;
 
       L.pauseRowAbandon = null;
       if (M.isHardcore(mode)) {
@@ -2003,18 +2012,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#F5F5F5');
       R.textBold(ctx, '🏠 返回首页', rowX + 16, rowY + rowH / 2, 16, '#333', 'left', 'middle');
       L.pauseRowBack = { x: rowX, y: rowY, w: rowW, h: rowH };
-      rowY += rowH + rowGap;
+      rowY += rowH + 10;
 
       // Read-only title block
       var difficultyLabel = (PG && PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[difficulty] && PG.DIFFICULTY_CONFIG[difficulty].label) || difficulty;
       var titleStr = puzzle.dateStr + ' · ' + difficultyLabel + (M.isHardcore(mode) ? ' · 🔥 硬核' : '');
-      R.text(ctx, titleStr, rowX, rowY + 8, 13, '#666', 'left');
+      R.text(ctx, titleStr, rowX, rowY + 4, 13, '#666', 'left');
     } else {
       L.pauseSheet = null;
     }
 
     if (abandonConfirmOpen) {
-      if (!pauseMenuOpen) R.overlay(ctx, W, H);
+      R.overlay(ctx, W, H);
       var dW = W * 0.84, dH = 200;
       var dx = (W - dW) / 2, dy = (H - dH) / 2;
       R.roundRect(ctx, dx, dy, dW, dH, 14, '#fff');
