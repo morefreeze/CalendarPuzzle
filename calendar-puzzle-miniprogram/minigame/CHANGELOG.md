@@ -2,25 +2,37 @@
 
 ## [0.7.0] — 2026-05-27
 
+> 硬核模式 — 一键关掉所有辅助（提示 / 换题 / 重开），换"全凭脑子"的专注挑战。可叠加在 5 档已有难度上；通关解锁 "🔥 硬核通关" 标识，按日期 + 难度记录战绩。
+
 ### Added
-- 硬核模式开关（`selectScene` 难度按钮下方一行，🔥 toggle，本地持久化 storage key `calendarPuzzleHardcoreOn`，退到菜单保留上次状态）。开启后任何底层难度均进入硬核局。
-- 暂停菜单 ☰（顶栏右上）半屏 sheet — MVP 三条：`🔥 放弃硬核`（仅硬核局可见，单向降级）、`🏠 返回首页`、当前题面只读信息。
-- 通关结算页"🔥 硬核通关"标签（仅硬核局展示）。
+- **硬核开关**（`selectScene` 难度按钮下方一行，🔥 toggle，本地持久化 storage key `calendarPuzzleHardcoreOn`，重启小游戏保留上次状态）。开启后任何底层难度均进入硬核局。
+- **游戏内暂停菜单**：左下角 ☰ 按钮（避开微信胶囊菜单），点开弹出锚定 popover（不占半屏，游戏 UI 仍可见）。MVP 三条：`🔥 放弃硬核`（仅硬核局可见，单向降级 + 二次确认）、`🏠 返回首页`、当前题面只读信息。
+- **通关结算页 "🔥 硬核通关" 标签**（仅硬核局展示），结算卡自动加高 24px 防遮挡。
+- **存档列表 🔥 badge**：继续游戏 / 槽位选择 / 覆盖确认 / 未完成对局四处难度后追加 🔥，一眼区分硬核存档。
 - `progress.hardcoreDays` 持久化每日每难度的硬核通关记录（storage key `calendarPuzzleHardcoreDays`）。
-- `mode.js` 模块：mode 对象 + capability helpers（`canUseHint` / `canSwapPuzzle` / `canRestart` / `canClearBoard`），未来扩展模式的容器。
+- `mode.js` 模块：mode 对象 + capability helpers（`canUseHint` / `canSwapPuzzle` / `canRestart` / `canClearBoard`），未来扩展模式（限时、每日挑战…）的统一容器。
 
 ### Changed
 - 硬核局控制行折叠为 1 个按钮 "🧹 清空"（替代 "↺ 重开"），**清空时计时器不重置**；提示、🎲 随机、🎯 选题在硬核局不渲染。
-- 存档 slot payload 新增 `mode: { hardcore: bool }` 字段；老存档无此字段自动视作非硬核（向后兼容，无需迁移）。
+- 存档 slot payload 新增 `mode: { hardcore: bool }` 字段；老存档无此字段自动视作非硬核（向后兼容，无需迁移脚本）。
 - `createGameScene(...)` 入参增加第 7 位 `modeOpts`；`selectScene` `onSelect(difficulty, savedState, modeOpts)`；`main.js` 三层透传。
+
+### Fixed
+- `gameScene.js` `padBottom` ReferenceError — ☰ 按钮位置误引用了 `computeLayout` 内的局部变量，改用闭包绑定的 `safeInsets.bottom`（与帮助弹窗、胜利卡片的写法一致）。
 
 ### Tests
 - 新 `tests/mode.test.js`：mode 模块全分支（7 用例）。
 - 新 `tests/progress.hardcore.test.js`：hardcoreDays 持久化 + 幂等 + 跨难度并存 + storage round-trip（5 用例）。
 - `tests/slotStore.test.js` +2：`mode` 字段 round-trip + 老 payload 无字段回读。
+- `npm test` 总数 234 → 248（+14），全绿。
 
 ### Manual verification required (真机 / 微信开发者工具)
 - 见 `docs/superpowers/specs/2026-05-27-hardcore-mode-design.md` §6.2 (1-8)。
+- 额外验证：
+  - ☰ 按钮在左下角不撞胶囊菜单 + popover 锚定 ☰ 上方弹出，点 ☰ 外任意位置关闭。
+  - 存档列表硬核局难度后显示 🔥；非硬核老存档无此后缀。
+  - 硬核开关重启小游戏后保留上次 ON/OFF 状态。
+  - 硬核 expert 通关 → 结算页 "🔥 硬核通关" 不与时间行重叠。
 
 ## [0.6.0] — 2026-05-27
 
