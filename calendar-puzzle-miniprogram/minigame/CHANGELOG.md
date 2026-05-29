@@ -3,7 +3,7 @@
 ## [0.7.0] — 2026-05-27
 
 ### Added
-- 硬核模式开关（`selectScene` 难度按钮下方一行，🔥 toggle，per-session 不持久）。开启后任何底层难度均进入硬核局。
+- 硬核模式开关（`selectScene` 难度按钮下方一行，🔥 toggle，本地持久化 storage key `calendarPuzzleHardcoreOn`，退到菜单保留上次状态）。开启后任何底层难度均进入硬核局。
 - 暂停菜单 ☰（顶栏右上）半屏 sheet — MVP 三条：`🔥 放弃硬核`（仅硬核局可见，单向降级）、`🏠 返回首页`、当前题面只读信息。
 - 通关结算页"🔥 硬核通关"标签（仅硬核局展示）。
 - `progress.hardcoreDays` 持久化每日每难度的硬核通关记录（storage key `calendarPuzzleHardcoreDays`）。

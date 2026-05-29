@@ -9,6 +9,17 @@ var slotUI = require('./slotUI');
 var slotStoreModule = require('./slotStore');
 var NAMED_SLOT_IDS = slotStoreModule.NAMED_SLOT_IDS || ['named-1', 'named-2', 'named-3'];
 
+// Hardcore toggle preference is persisted across launches so the player
+// keeps their choice between visits. Errors swallowed — toggle simply
+// defaults to OFF if storage is unavailable.
+var HARDCORE_ON_KEY = 'calendarPuzzleHardcoreOn';
+function loadHardcoreOn() {
+  try { return wx.getStorageSync(HARDCORE_ON_KEY) === '1'; } catch (e) { return false; }
+}
+function saveHardcoreOn(on) {
+  try { wx.setStorageSync(HARDCORE_ON_KEY, on ? '1' : ''); } catch (e) {}
+}
+
 module.exports = function createSelectScene(safeInsets, menuRect, onSelect, callbacks) {
   callbacks = callbacks || {};
   var scene = {};
@@ -27,7 +38,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
 
   var btnRects = [];
   var infoBtn = null;
-  var hardcoreOn = false;
+  var hardcoreOn = loadHardcoreOn();
   var hardcoreToggleRect = null;
   var helpOpen = false;
   var replayBtn = null;
@@ -403,6 +414,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
 
     if (hardcoreToggleRect && R.hitTest(x, y, hardcoreToggleRect)) {
       hardcoreOn = !hardcoreOn;
+      saveHardcoreOn(hardcoreOn);
       scene.dirty = true;
       return;
     }
