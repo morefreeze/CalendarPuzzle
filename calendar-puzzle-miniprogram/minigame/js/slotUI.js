@@ -92,6 +92,12 @@ function pickOldestNewest(slots) {
  * Map difficulty key to Chinese label. Unknown keys pass through unchanged.
  * Pulls from puzzleGenerator.DIFFICULTY_CONFIG so labels stay in sync with the game.
  */
+// Returns ' 🔥' when the saved slot was a hardcore run, '' otherwise.
+// Mode is round-tripped via captureState (gameScene.js) and slotStore.
+function hardcoreBadge(slot) {
+  return (slot && slot.mode && slot.mode.hardcore) ? ' 🔥' : '';
+}
+
 function difficultyLabel(diffKey) {
   if (!diffKey) return '';
   var cfg = PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[diffKey];
@@ -337,7 +343,7 @@ function drawSavePicker(ctx, layout, slots, selectedIdx) {
       ctx.lineWidth = borderWidth;
       R.roundRect(ctx, r.x, r.y, r.w, r.h, 8, PANEL_BG, borderColor);
       drawThumbnail(ctx, r.x + 6, r.y + (r.h - 48) / 2, 48, 48, slot);
-      R.textBold(ctx, difficultyLabel(slot.difficulty),
+      R.textBold(ctx, difficultyLabel(slot.difficulty) + hardcoreBadge(slot),
         r.x + 62, r.y + 12, 12, TEXT_DARK, 'left', 'top');
       R.text(ctx, formatSavedAt(slot.savedAt),
         r.x + 62, r.y + 30, 11, '#888888', 'left', 'top');
@@ -389,7 +395,7 @@ function drawOverwriteWarning(ctx, layout, slots, oldestIdx, newestIdx, selected
     }
     if (slot) {
       drawThumbnail(ctx, r.x + 6, r.y + (r.h - 48) / 2, 48, 48, slot);
-      var label = difficultyLabel(slot.difficulty);
+      var label = difficultyLabel(slot.difficulty) + hardcoreBadge(slot);
       if (i === oldestIdx) label += ' (最旧)';
       else if (i === newestIdx) label += ' (最近)';
       R.textBold(ctx, label, r.x + 62, r.y + 12, 12, TEXT_DARK, 'left', 'top');
@@ -434,7 +440,7 @@ function drawContinueDiscard(ctx, layout, unsavedSlot, pendingDifficulty) {
 
   if (unsavedSlot) {
     var infoY = pr.y + pr.h + 8;
-    R.text(ctx, difficultyLabel(unsavedSlot.difficulty) + '  ' + (unsavedSlot.date || ''),
+    R.text(ctx, difficultyLabel(unsavedSlot.difficulty) + hardcoreBadge(unsavedSlot) + '  ' + (unsavedSlot.date || ''),
       p.x + p.w / 2, infoY, 12, '#666666', 'center', 'top');
   }
 
@@ -480,7 +486,7 @@ function drawSlotGrid(ctx, layout, slots) {
       allEmpty = false;
       R.roundRect(ctx, r.x, r.y, r.w, r.h, 10, PANEL_BG, '#DDDDDD');
       drawThumbnail(ctx, r.x + 8, r.y + (r.h - 56) / 2, 56, 56, slot);
-      R.textBold(ctx, difficultyLabel(slot.difficulty),
+      R.textBold(ctx, difficultyLabel(slot.difficulty) + hardcoreBadge(slot),
         r.x + 72, r.y + 14, 13, TEXT_DARK, 'left', 'top');
       R.text(ctx, slot.date || '',
         r.x + 72, r.y + 32, 12, '#888888', 'left', 'top');
