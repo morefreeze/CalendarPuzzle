@@ -230,3 +230,35 @@ test('slotStore: nested hintState (weak/medium/strong locks + used counters) rou
   assert.strictEqual(got.hintState.mediumLocked['Y-block'].length, 2);
   assert.strictEqual(got.hintState.usedStrong, 1);
 });
+
+test('slotStore: mode field round-trips on writeSlot/readSlot', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s, now: function () { return 1716181000000; } });
+  ss.writeSlot('named-1', {
+    date: '2026-05-27',
+    difficulty: 'expert',
+    comboIndex: 1,
+    placedBlocks: [],
+    paletteBlocks: [],
+    elapsedMs: 0,
+    mode: { hardcore: true },
+  });
+  var got = ss.readSlot('named-1');
+  assert.deepStrictEqual(got.mode, { hardcore: true });
+});
+
+test('slotStore: legacy payload without mode reads back without a mode field (caller defaults)', function () {
+  var s = fakeStorage();
+  var ss = SS.create({ storage: s, now: function () { return 1716181000000; } });
+  ss.writeSlot('named-1', {
+    date: '2026-05-27',
+    difficulty: 'easy',
+    comboIndex: 0,
+    placedBlocks: [],
+    paletteBlocks: [],
+    elapsedMs: 0,
+    // no mode field
+  });
+  var got = ss.readSlot('named-1');
+  assert.strictEqual(got.mode, undefined);
+});

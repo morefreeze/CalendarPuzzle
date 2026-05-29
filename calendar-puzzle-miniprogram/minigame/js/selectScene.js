@@ -295,7 +295,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         if (saved) {
           modal = null; continueLayoutCache = null;
           scene.dirty = true;
-          onSelect(saved.difficulty, saved);
+          onSelect(saved.difficulty, saved, null);
         }
         return;
       }
@@ -312,7 +312,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
             showMsg('体力不足！需要 ' + pdCost + ' 点，当前 ' + stamina.getStamina() + ' 点');
             return;
           }
-          onSelect(pd, null);
+          onSelect(pd, null, null);
         }
         return;
       }
@@ -339,7 +339,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
           mode = 'menu';
           slotGridLayoutCache = null;
           scene.dirty = true;
-          onSelect(slotPayload.difficulty, slotPayload);
+          onSelect(slotPayload.difficulty, slotPayload, null);
           return;
         }
         // empty slot — ignore tap
@@ -389,7 +389,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
           showMsg('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }
-        onSelect(d, null);
+        onSelect(d, null, null);
         return;
       }
     }

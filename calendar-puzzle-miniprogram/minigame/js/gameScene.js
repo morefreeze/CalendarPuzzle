@@ -8,6 +8,7 @@ var stamina = require('./stamina');
 var shareState = require('./shareState');
 var progress = require('./progress');
 var Hint = require('./hint');
+var M = require('./mode');
 var Voucher = require('./voucher');
 var cloudClient = require('./cloudClient');
 var slotsGlobal = require('./slotsGlobal');
@@ -43,7 +44,7 @@ function setStaminaConfirmSkipUntilNext5AM() {
   } catch (e) { /* ignore */ }
 }
 
-module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState) {
+module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState, modeOpts) {
   var scene = {};
   scene.dirty = true;
 
@@ -87,6 +88,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+
+  // Mode resolution: a restored save carries its own mode (preserves hardcore
+  // across exit/resume); a fresh game receives modeOpts from selectScene; the
+  // implicit default is non-hardcore.
+  var mode = M.createMode(savedState && savedState.mode ? savedState.mode : modeOpts);
+  scene.mode = mode;
 
   // ---- Tutorial state machine ----
   // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
@@ -158,6 +165,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       elapsedMs: timer * 1000,
       hintState: hintState,
       playedCombos: Object.assign({}, playedCombos),
+      mode: mode,
     };
   }
 
