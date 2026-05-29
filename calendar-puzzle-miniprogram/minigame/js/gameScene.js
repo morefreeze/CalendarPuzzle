@@ -2001,6 +2001,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (helpOpen) return;
     if (hintMode) return;
     if (mediumMismatchModal) return;
+    if (pauseMenuOpen) return;
 
     // Grab a placed (non-locked) block from the board, if the touch lands on
     // one. The block is lifted into `dragging` and removed from dropped; on
@@ -2081,6 +2082,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchMove = function (x, y) {
+    if (pauseMenuOpen) return;
     if (selectPanelOpen && L.selectPanel) {
       if (!dragging) {
         var scrollDelta = dragStart.y - y;
