@@ -9,9 +9,9 @@
 
 - **本仓 / This repo**: `/Users/bytedance/mygit/CalendarPuzzle`（spec + plan + 三端旧代码 Python/React/小游戏）
 - **新仓 / Sibling repo**: `/Users/bytedance/mygit/calendar-puzzle-godot`（Godot 4 Steam 移植，private GitHub: morefreeze/calendar-puzzle-godot）
-- **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；spec + 12 plan + M0/M1/M2/M8-mac handoff + 2026-05-29 M3 plan-bug log）
-- **新仓当前分支 / Godot repo branch**: `feat/m3-puzzle-generation`（从 main commit 55616ae = M2 follow-up window+drag-test fix 派生；8 个 M3 commit 本地未 push）。main 上有 M0 + M1 + M2 + M8-mac-shortcut + 2026-05-29 fix(m2): window + test gap 已 push GitHub
-- **可玩 Mac app**: `~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（193MB universal binary，含 M3 select_scene + 1.6MB daily_puzzles.tres；本机直接 open 可启动；启动后默认进 select_scene 而非 play_scene）
+- **本仓当前工作分支 / Active branch**: `feat/godot-steam`（基于 `origin/main` 含 `fix/known-bugs-batch` PR#9 合并；spec + 12 plan + M0/M1/M2/M8-mac handoff + M3 plan-bug log + M4 plan-bug log）
+- **新仓当前分支 / Godot repo branch**: `feat/m4-ui-shell-saves`（从 feat/m3-puzzle-generation tip 派生；11 个 M4 commit + 8 个继承的 M3 commit + 1 个 M2 follow-up，全本地未 push）。main 上有 M0/M1/M2/M8-mac-shortcut + 2026-05-29 fix(m2): window + test gap 已 push GitHub
+- **可玩 Mac app**: `~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（194MB universal binary，含 M3 select_scene + 1.6MB daily_puzzles.tres + M4 main_menu/settings_panel/slot_picker；本机直接 open 可启动；启动后默认进 **main_menu** 而非 select_scene/play_scene）
 - **标准启动路径 / Standard startup**:
   - 旧 Backend: `python server.py` (默认 `PORT=5001`)
   - 旧 Web: `cd my-cal && npm install && npm start` (CRA, :3000)
@@ -25,12 +25,42 @@
   - **Godot 性能 benchmark**: `godot --headless --script tools/solver_benchmark.gd`（产出 docs/m1-benchmark-report.md）
   - **Godot 覆盖率**: `python3 tools/coverage_check.py`（产出 docs/m1-coverage.md，100% 函数覆盖）
   - **Godot boot 冒烟**: `godot --headless --quit-after 3 res://boot/boot.tscn` 看到 `[boot] module 'calendar_puzzle' started`
-- **当前最高优先级未完成功能 / Next priority feature**: M4 (UI 外壳 + 存档 + 设置) — M3 完成后 select_scene 已经在，主菜单/暂停/设置面板/3 槽手动存档/缩略图待补。
-- **当前 blocker / Current blocker**: 无（但等用户做 GUI 手测 Mac app 验 M2/M3 行为：拖块/5 难度/日历/Today/边界禁用）
+- **当前最高优先级未完成功能 / Next priority feature**: M5 (提示 + 教程) 或 M6 (Steam SDK 全接入) — M4 完成后主菜单/存档/设置面板都在，下一段按 spec 顺序是 M5 提示系统 + 5 步教程。
+- **当前 blocker / Current blocker**: 无（等用户 GUI 手测 Mac app 验 M2/M3/M4 全链路：拖块 + 5 难度 + 日历 + Today + main_menu 4 按钮 + Settings 3 标签 + KeyCapture 重绑 + 3 皮肤切换 + Save/Load slot picker + autosave 节流 + quit-flush）
 
 ---
 
 ## 会话记录 / Session log
+
+### 2026-05-30 → 2026-06-01 — M4 (UI shell + 真存档 + 设置面板) 一轮 11 task 全推完
+
+- **本轮目标 / Goal**: 用户 "开始 m4 在 m3 基础上"。从 feat/m3-puzzle-generation tip 派生 feat/m4-ui-shell-saves，subagent-driven 推 M4 11 task。
+- **已完成 / Completed**:
+  - **M4 全 11 task 完成**：Tasks 1-2-3 (Resource 类 + GameSnapshot+SlotResource + SaveAdapterTres) → 4 (boot 切真存档 adapter) → 5 (MainMenu) → 6 (KeyCapture widget) → 8 (Skin foundation 含 3 占位色板 .tres + SkinBus autoload) → 9 (SlotManager + play_scene/_current_snapshot/_restore_from_snapshot/capture_thumbnail) → 7 (SettingsPanel 3 标签 含 KeyCapture 集成 + 冲突检测 + Skin 选择器) → 10 (SlotPicker UI + play_scene HUD 加 💾 Save / 📂 Load) → 11 (全套 evidence log)。11 commit 本地落定 34a67ab → 810445f。
+  - **7 处 plan-bug 现场修**全部回灌 plan 文件底部新加的"Plan-bug log"段：(#M4-1) Task 4 _apply_settings 不强制 WINDOWED 蹂躏 M2 Maximized；(#M4-2) Task 5 boot.gd 不 preload Task 7 未建文件，_on_settings 留 stub；(#M4-3) Task 9 M2 没 _serialize_placed_blocks / _elapsed_seconds / place_block_from_snapshot / apply_skin，改用真 M2 API 重写 restore_from_snapshot；(#M4-4) Task 7 同 #M4-1 但发生在 tab_general._live_apply_fullscreen，关 fullscreen 时回 MAXIMIZED；(#M4-5) Task 7 plan 漏写 boot.gd 接 Task 5 stub，需 preload SettingsPanel + 替换 _on_settings body；(#M4-6) Task 7 tab_skins 用 plan 的直接 scan 路径 OK，不强求改 SkinBus；(#M4-7) Task 10 M2 没 HUD，加 minimal 顶右 HBoxContainer + 2 按钮。
+  - **Mac app rebuild**：build/mac/CalendarPuzzle.app 194MB（+1MB from M3 = settings 8 scenes + main_menu/slot_picker + skin .tres 等）。
+- **运行过的验证 / Validations run**:
+  - `godot --headless -s tests/run_tests.gd` → **194/194 pass, 973 asserts**（M0+M1+M2 既有 118 + M3 35 + M4 新 41）
+  - `godot --headless --quit-after 3 res://boot/boot.tscn` → `[SkinManager] registered 3 skins: ["mono_focus", "pastel", "default"]` + `[boot] starting Calendar Puzzle` → main_menu 挂载等待输入（不再自动进 game.gd，这是 M4 设计）
+  - `~/Library/Application Support/Godot/app_userdata/Calendar Puzzle/saves/profile.tres` 第二次 boot 后存在（profile 持久化 round-trip）
+- **已记录证据 / Evidence recorded**: feature_list.json M4 entry 升 passing + 完整 evidence 数组；docs/m4-evidence/all-tests-final.log committed at 810445f；docs/superpowers/plans/...m4-ui-shell-saves.md 底部加 Plan-bug log 段 + Execution log 表。
+- **提交记录 / Commits**:
+  - calendar-puzzle-godot feat/m4-ui-shell-saves: 11 commit（34a67ab → 0151508 → f35cb22 → 797babb → 76e91a8 → 3d046f1 → 49a1fe3 → 8c47985 → f4703fe → 3e21882 → 810445f），全本地未 push
+  - CalendarPuzzle feat/godot-steam: 本会话末尾的 handoff/plan 更新待 commit
+- **已知风险或未解决问题 / Known risks**:
+  - 所有 commit local only，未 push GitHub（仍等 M3 + M4 用户 GUI 手测后再 push）
+  - GUI 手测主菜单 / 设置 3 标签 / Save+Load slot UI / autosave 节流**未做** — subagent 跑不了 GUI
+  - `_mark_state_dirty` 在 play_scene 里**没有**接到 M2 input handlers（拖/放/旋/镜）— 故意 deferred 到 M5 + 避免 7 个 play_scene_integration 测试回归；意味着 M4 autosave 实际不会触发，但手动 Save 仍 work
+  - autosave 5s 节流 + quit-flush 路径已实现且单测覆盖（test_slot_manager.gd），但真机 cold boot → continue 流未 E2E 验证过
+- **下一步最佳动作 / Next best action**:
+  1. **用户验 Mac app**（本机 15-20 分钟）：跑 `open ~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`，过一遍 main_menu / Settings 3 标签 / KeyCapture 重绑 / 皮肤切换 / Save → SlotPicker → Load 流。
+  2. **Push + merge**：feat/m4-ui-shell-saves（含继承的 M3 commits）push GitHub → merge main；本仓 feat/godot-steam handoff/plan 更新 commit + push。
+  3. **决定下一段**：
+     - (a) **主线推进 M5** = 弱提示按钮 3/5 次 UI + medium/strong 隐藏代码就位 + 5 步教程（目标→锁块→放置→移除→完成）。plan 已就绪 (`docs/superpowers/plans/2026-05-26-godot-steam-m5-hints-tutorial.md`)。
+     - (b) **接通 _mark_state_dirty** = M4 留的 hook 接到 M2 拖放/旋转/镜像/双击移除处理器，让 autosave 真正自动触发。小、独立、可顺手做。
+     - (c) **完整 M8** = Apple Developer $99 + codesign + Win/Linux/Deck export，让 Mac app 外发不踩 Gatekeeper。
+
+---
 
 ### 2026-05-29 — M2 follow-up + M3 (5 难度 + 日历 + 预生成) 一波打通
 

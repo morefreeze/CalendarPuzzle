@@ -8,8 +8,32 @@
   },
   "features": [
     {
-      "id": "godot-steam-m3-puzzle-generation",
+      "id": "godot-steam-m4-ui-shell-saves",
       "priority": 0,
+      "area": "godot/boot",
+      "title": "Godot Steam port M4 — UI shell + 真存档 + 设置面板",
+      "user_visible_behavior": "启动后默认进 main_menu（Continue / New Game / Settings / Quit）。Continue 在有 autosave 时亮起，恢复上次题面 + 计时 + 已放块。Settings 面板 3 标签：General（音量 / Maximize/Fullscreen / 主题 / 语言 / Reset All）/ Controls（5 个 action 重绑 + KeyCapture 冲突检测）/ Skins（3 个皮肤占位）。Play scene 顶右多两个 HUD 按钮 💾 Save / 📂 Load → SlotPicker 弹层 3 槽（缩略图 + 名字 + 时间戳）。SaveAdapterTres 取代 StubSaveAdapter，profile.tres + slot_*.tres 全部落 user://saves/（Steam Cloud 在 M6 配 user://saves/* 自动同步）。",
+      "status": "passing",
+      "verification": [
+        "cd ~/mygit/calendar-puzzle-godot && godot --headless -s tests/run_tests.gd — 194/194 pass, 973 asserts（M0+M1+M2 既有 118 + M3 35 + M4 新 41：Settings 5 / Profile 4 / Slot 3 / SaveAdapter 6 / KeyCapture 8 / Skin 5 / SlotManager 7 / MainMenu 3）",
+        "godot --headless --quit-after 3 res://boot/boot.tscn — [SkinManager] registered 3 skins + [boot] starting → main_menu 挂载等待输入，无 ERROR",
+        "Mac app rebuild: build/mac/CalendarPuzzle.app 194MB（M4 新增 +1MB = 8 个 settings/main_menu/slot_picker 场景 + skin .tres）",
+        "Evidence log: docs/m4-evidence/all-tests-final.log（committed at 810445f）",
+        "Profile persistence: 第一次 boot 创建 user://saves/profile.tres，第二次 boot 不再 '[boot] no profile.tres' 消息（Task 4 验证）",
+        "(待用户做) GUI 手测 main_menu 4 按钮 / Settings 3 标签 / 5 KeyCapture 重绑含冲突 / 3 皮肤切换 / Save → SlotPicker → Load → 恢复 / autosave 5s 节流 + quit-flush 不丢"
+      ],
+      "evidence": [
+        "2026-05-30 ~ 2026-06-01: M4 全 11 task 完成。从 feat/m3-puzzle-generation 派生 feat/m4-ui-shell-saves 分支。Tasks 1-3 串行 subagent (Resource 类 → GameSnapshot+SlotResource → SaveAdapterTres) → 171/171 → 175/175。Task 4 boot SaveAdapterTres + Plan-bug #M4-1 现场修（_apply_settings 不强制 WINDOW_MODE_WINDOWED，否则蹂躏 M2 follow-up Maximized fix）。Task 5 MainMenu + Plan-bug #M4-2 现场修（boot.gd 不 preload Task 7 还没建的 settings_panel.tscn，_on_settings 留 stub）。Task 6 KeyCapture 序列化（'R'/'Ctrl+Z'）+ escape-to-cancel → 182/182。Task 8 SkinResource + SkinManager 注册为 SkinBus autoload + 3 占位色板 .tres → 187/187。",
+        "2026-06-01: Task 9 SlotManager （5s Timer 节流 autosave + 3 manual slots + 64×64 SubViewport thumbnail）+ Plan-bug #M4-3 现场修（plan 调用 M2 不存在的 API _serialize_placed_blocks / place_block_from_snapshot / _elapsed_seconds / apply_skin，改用 M2 真 API：placed_blocks 实例 var + get_elapsed_seconds() + restore_from_snapshot 用 load_puzzle 重建 generated state + 集合差重算 palette + 重锚 timer）。Plan-bug #M4-3b (apply_skin) 用 call() 而非直调过 GDScript 静态解析 → 194/194。",
+        "2026-06-01: Task 7 SettingsPanel 3 标签（tab_general + tab_controls 5 KeyCapture + 冲突检测 + tab_skins 占位色 + SkinBus emit_skin_changed）+ Plan-bug #M4-4 现场修（tab_general._live_apply_fullscreen 关 fullscreen 时回 MAXIMIZED 不是 WINDOWED）+ Plan-bug #M4-5 backfill（boot.gd preload SettingsPanel + 替换 Task 5 stub）。Godot 4.5 typing 3 处微调（KeyCapture 类型推断 / get_node_or_null Variant / array literal[idx] 都加显式 String/Node 注解）。",
+        "2026-06-01: Task 10 SlotPicker UI (3 slot 行 + thumbnail + AcceptDialog 取名)+ Plan-bug #M4-7 现场修（M2 没 HUD，append 一个顶右 HBoxContainer 加 💾 Save / 📂 Load 2 按钮作 minimal HUD）。整套 194/194 保持。Mac app rebuild → build/mac/CalendarPuzzle.app 194MB。",
+        "2026-06-01: Task 11 全套测试 evidence log 入库 docs/m4-evidence/all-tests-final.log (commit 810445f)。GUI 手测（main_menu / Settings 3 tab / Save-Load 流 / autosave 节流）交付给用户。"
+      ],
+      "notes": "Plan: docs/superpowers/plans/2026-05-26-godot-steam-m4-ui-shell-saves.md（已在文件底加 Plan-bug log 段 #M4-1~#M4-7 + Execution log 表）。代码: calendar-puzzle-godot/feat/m4-ui-shell-saves 分支，11 个 commit（34a67ab / 0151508 / f35cb22 / 797babb / 76e91a8 / 3d046f1 / 49a1fe3 / 8c47985 / f4703fe / 3e21882 / 810445f）从 feat/m3-puzzle-generation 派生（M3 commits 仍随 base 一起待 push）。所有 commits local only。下一步：用户 GUI 手测 → push feat/m4 + feat/m3 → 合 main → M5 (提示 + 教程)。"
+    },
+    {
+      "id": "godot-steam-m3-puzzle-generation",
+      "priority": 1,
       "area": "godot/scenes",
       "title": "Godot Steam port M3 — 5 难度 + 日历选题 + daily_puzzles.tres",
       "user_visible_behavior": "玩家进入游戏先看到 select_scene：5 个难度按钮（easy/medium/hard/expert/insomnia）+ 月历控件（2020-01-01 ~ 2035-12-31）+ 'Today' 快捷入口 + Start/Back。选完一组 (date, difficulty) 切到 play_scene 加载对应 puzzle。所有日期 × 难度通过预生成 daily_puzzles.tres（O(1) lookup）零网络确定性同步。",
@@ -34,7 +58,7 @@
     },
     {
       "id": "godot-steam-m8-mac-shortcut",
-      "priority": 1,
+      "priority": 2,
       "area": "godot/build",
       "title": "Godot Steam port M8 (shortcut) — macOS .app produced",
       "user_visible_behavior": "build/mac/CalendarPuzzle.app（190MB universal binary x86_64 + arm64）已能在本机 macOS 启动；点开/open 命令都能跑起来；含完整 M2 玩法（拖放/旋转/镜像/胜利）。Unsigned 不公证，外部下载会触 Gatekeeper 警告（右键打开绕开）。仅做了 Mac 平台；Win / Linux / Steam Deck 跳过；Apple Developer 公证跳过。",
@@ -56,7 +80,7 @@
     },
     {
       "id": "godot-steam-m2-gameplay-scene",
-      "priority": 2,
+      "priority": 3,
       "area": "godot/scenes",
       "title": "Godot Steam port M2 — core gameplay scene (cross-repo)",
       "user_visible_behavior": "boot 不再显示 stub label；现在挂的是真 PlayScene：8×7 棋盘自绘 + 候选方块行 + 拖放 + R 旋转 + F 镜像 + 双击移除 + 胜利覆盖层。InputContext 父类升 RefCounted → Node（_input event 必需）。",
@@ -79,7 +103,7 @@
     },
     {
       "id": "godot-steam-m1-solver",
-      "priority": 3,
+      "priority": 4,
       "area": "godot/solver",
       "title": "Godot Steam port M1 — solver port + benchmark (cross-repo)",
       "user_visible_behavior": "求解器层 GDScript 化：DLX 算法 + 8×7 棋盘 + 10 方块定义 + 5 难度 + puzzle_generator (生成/dig/combo) 全部从 JS 翻译过来；pack_free.js 3MB 题库已转成 pack_free.tres。50 GUT 单测全绿，100% 函数覆盖；JS-vs-GDScript round-trip 在 50 个参考题上完全对齐。",
@@ -103,7 +127,7 @@
     },
     {
       "id": "godot-steam-m0-scaffold",
-      "priority": 4,
+      "priority": 5,
       "area": "godot/scaffold",
       "title": "Godot Steam port M0 — project scaffold (cross-repo)",
       "user_visible_behavior": "新仓库 ~/mygit/calendar-puzzle-godot 跑起来；boot 加载 calendar_puzzle 模块显示 stub 标签；GodotSteam 4.19 GDExtension 集成（无 Steam 客户端时优雅降级到 standalone 模式）；GUT v9.5.0 测试框架就位，6/6 单测全绿。仓库已推到 GitHub private repo morefreeze/calendar-puzzle-godot。",
@@ -125,7 +149,7 @@
     },
     {
       "id": "minigame-share-group-decrypt",
-      "priority": 5,
+      "priority": 6,
       "area": "minigame/social",
       "title": "shareGroup decrypt follow-up — 0.4.0 升级后的解密兼容",
       "user_visible_behavior": "好友点开分享链接、被拉入 shareGroup 时，群组信息能正确解密并展示助力进度。",
@@ -139,7 +163,7 @@
     },
     {
       "id": "api-restructure",
-      "priority": 6,
+      "priority": 7,
       "area": "server/api",
       "title": "Restructure API architecture (openspec change)",
       "user_visible_behavior": "/api/game-id 与 /api/solution 的请求/响应 schema 更内聚；Python solver / React / minigame 三端共用同一份契约。",
@@ -154,7 +178,7 @@
     },
     {
       "id": "web-to-miniprogram-migration",
-      "priority": 7,
+      "priority": 8,
       "area": "miniprogram",
       "title": "Migrate remaining web features to mini-program (openspec change)",
       "user_visible_behavior": "Mini-program (calendar-puzzle-miniprogram/minigame) 的 UI / 交互覆盖 my-cal 的全部生产功能，最终 my-cal 可下线或仅作 demo。",

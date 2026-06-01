@@ -2791,3 +2791,114 @@ git commit -m "test(m4): all-tests + UI screenshots evidence"
 - Task 9 的 play_scene 修改使用 `has_method` 容错调用 M2 接口；M2 完工后回测确保 `_serialize_placed_blocks` / `place_block_from_snapshot` 真的实现了
 - Task 8 的 3 个 .tres 用粗略色板；M9 必须有"细化 3 个皮肤"task 填精确色 + 真 thumbnail
 - Steam Cloud 配置在 M6（Steamworks 后台设置 `user://saves/*`），M4 不接 — 别把它塞进本 milestone scope
+
+---
+
+## Plan-bug log (post-execution corrections — 2026-06-01)
+
+> 本段在首次执行 M4 时（2026-06-01）现场发现并修正的 plan 偏差。**原 task 文本未改，保留 diff 价值**；如未来重跑 M4 plan，按本段调整再粘。
+
+### 1. Task 2 — `func test_save_and_load_round_trip(tmp_path = "...")` 同 M3 老 bug
+
+GUT 不传参 → 默认参数死代码。改：
+
+```gdscript
+func test_save_and_load_round_trip():
+    var tmp_path = "user://test_slot_round_trip.tres"
+    ...
+```
+
+(M3 Task 2 已 fix；M4 Task 2 同样需要。)
+
+### 2. Task 4 + Task 7 — `_apply_settings` / `_live_apply_fullscreen` 强制 WINDOWED 会蹂躏 M2 Maximized fix
+
+M2 follow-up commit `55616ae` 在 `project.godot` 加了 `window/size/mode=2`（Maximized），让 Mac app 开窗即满屏。Task 4 plan 的 `_apply_settings` 和 Task 7 plan 的 `tab_general._live_apply_fullscreen` 都用：
+
+```gdscript
+DisplayServer.window_set_mode(
+    DisplayServer.WINDOW_MODE_FULLSCREEN if s.fullscreen
+    else DisplayServer.WINDOW_MODE_WINDOWED)
+```
+
+`s.fullscreen=false`（默认）时强制走 WINDOWED 把 Maximized 改回小窗。修：
+
+```gdscript
+# Task 4 _apply_settings：默认 false 时**不动**窗口模式（保持 project.godot 的 Maximized）
+if s.fullscreen:
+    DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+
+# Task 7 _live_apply_fullscreen：用户取消勾选时回 MAXIMIZED 不是 WINDOWED
+func _live_apply_fullscreen() -> void:
+    if _profile.settings.fullscreen:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+    else:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+```
+
+### 3. Task 5 — boot.gd 不能 preload 还不存在的 `settings_panel.tscn`
+
+Task 5 plan 写 `const SettingsPanel = preload("res://boot/settings/settings_panel.tscn")`，但 settings_panel 在 Task 7 才建，preload 在 parse time fail。
+
+Fix：Task 5 的 `_on_settings` 留 stub `push_warning("[boot] settings panel pending — Task 7 will land")`；Task 7 时再加 preload + 改 stub body。
+
+### 4. Task 7 — plan 没明说要更新 boot.gd 接 Task 5 stub
+
+Task 7 plan 列了 8 个新文件但漏掉 `boot/boot.gd` 修改。Task 7 实际需要：
+
+```gdscript
+# boot.gd 顶部加 preload：
+const SettingsPanel = preload("res://boot/settings/settings_panel.tscn")
+
+# 把 Task 5 留的 push_warning stub 替换为真实 body：
+func _on_settings() -> void:
+    var panel := SettingsPanel.instantiate()
+    panel.bind(_profile)
+    panel.closed.connect(_on_settings_closed)
+    add_child(panel)
+```
+
+`_on_settings_closed` 在 Task 5 已建好（保存 profile + reapply settings），不动。
+
+### 5. Task 9 — play_scene plan 引用了 M2 不存在的 API
+
+Plan 写：
+- `_serialize_placed_blocks()` — 不存在；M2 用 `placed_blocks: Array` 实例变量直接访问
+- `place_block_from_snapshot(b)` — 不存在；restore 逻辑改成"基于 generate_puzzle 还原 generated state → 用 snap 覆写 placed → 重算 palette = (full 10 - placed_ids)"
+- `_elapsed_seconds` 字段 — 不存在；M2 有 `get_elapsed_seconds() -> float` getter
+- `apply_skin(skin)` — 不存在（M9 工作）；保留 `has_method` 守卫，但要用 `call("apply_skin", skin)` 而非直接调用——GDScript 静态解析在 `has_method` 守卫里仍拒绝直接调用未声明方法
+
+正确 restore_from_snapshot 框架（详见已实施 commit `8c47985`）：
+
+```gdscript
+func restore_from_snapshot(snap: GameSnapshot) -> void:
+    if snap == null or snap.is_empty(): return
+    var payload := { "date": snap.date, "difficulty": snap.difficulty,
+                     "seed": snap.seed, "combo_index": snap.combo_index }
+    load_puzzle(payload)                              # base state
+    if snap.placed_blocks.size() > 0:
+        # overwrite placed_blocks + 重算 palette + 重锚 timer
+        ...
+    _start_time_ms = Time.get_ticks_msec() - snap.elapsed_seconds * 1000
+```
+
+`_mark_state_dirty` 暂时**不**接到 M2 input handlers — 风险大，会触发 7 个 play_scene_integration 测试回归。M5+ 接。
+
+---
+
+## Execution log (2026-05-30 → 2026-06-01)
+
+Branch: `feat/m4-ui-shell-saves` on `~/mygit/calendar-puzzle-godot/`，从 `feat/m3-puzzle-generation` tip 派生（M3 全套 commits 都在 base）。
+
+| Task | Commit | Tests | Plan-bug fix |
+|---|---|---|---|
+| 1 Resource 类 | `34a67ab` | 162/162 | — |
+| 2 GameSnapshot+SlotResource | `0151508` | 165/165 | #M4-? 默认参数 |
+| 3 SaveAdapterTres | `f35cb22` | 171/171 | — |
+| 4 boot SaveAdapterTres | `797babb` | 171/171 | #M4-1 fullscreen→Maximized |
+| 5 MainMenu | `76e91a8` | 174/174 | #M4-2 settings stub |
+| 6 KeyCapture widget | `3d046f1` | 182/182 | — |
+| 8 Skin foundation | `49a1fe3` | 187/187 | — |
+| 9 SlotManager | `8c47985` | 194/194 | #M4-3 M2 真 API |
+| 7 Settings panel | TBD（in flight） | TBD | #M4-4 fullscreen + #M4-5 boot 接线 |
+| 10 SlotPicker UI | TBD | TBD | TBD |
+| 11 全链路 QA | TBD | TBD | TBD |
