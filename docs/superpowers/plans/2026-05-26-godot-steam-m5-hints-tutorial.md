@@ -1,5 +1,20 @@
 # M5 — 提示系统 + 教程 Implementation Plan
 
+> **⚠️ 2026-06-01 EXECUTION HALT** after Tasks 1-2 landed (commits `444b102` HintResult + `37dedff` HintState 9 tests). Tasks 3-9 reference abstractions that **do not exist in the M4 codebase**:
+> - `PuzzleState` class wrapping board+palette+hint_state — M2 stored state as `play_scene.gd` instance vars; no separate PuzzleState class exists.
+> - `Board.collect_empty_cells()` / `Board.is_empty_cell()` — M1 Board has rotate/flip/is_valid_placement/check_game_win/get_block_at_cell/clone_block/get_uncoverable_cells only.
+> - `Dlx.solve(empty_cells, available_blocks)` — class is `DLX` (uppercase); the solve API takes a fully-prepared matrix from `puzzle_generator`, not partial board+palette state.
+> - `game_snapshot.gd` location: plan says `games/calendar_puzzle/resources/`; M4 actually built `shared/save/game_snapshot.gd`.
+> - `play_scene.init_from_date_and_difficulty(...)` — plan invents this; M2/M3 path is `setup(deps)` → `_ready` → `load_puzzle(payload)`.
+>
+> **Resume protocol**: spawn a Brainstorm session on M5 Tasks 3-9 to redesign the surface against M4 reality:
+> - Option A (smallest delta): write `HintSolver` against `play_scene` instance vars directly (`placed_blocks`, `palette_blocks`, `uncoverable`) and call a *new* helper on `puzzle_generator` to derive an additional solve from partial state. Skip the PuzzleState abstraction entirely.
+> - Option B (bigger refactor): introduce `PuzzleState` between play_scene and solver as plan envisioned, move state off play_scene, then proceed with plan as-written.
+> - Option C: postpone M5 hints UI; ship medium/strong as internal-only (dev-flag) APIs without play_scene wiring; just persist hint_state through GameSnapshot. Minimum useful subset.
+>
+> Tasks 1 + 2 (foundation) stand regardless of which option wins.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 `minigame/js/hint.js` 的 3 档提示状态机移植到 `games/calendar_puzzle/systems/hint_state.gd`，在 play_scene HUD 里接入弱提示按钮（普通难度 3 次/题；失眠 5 次/题），把 medium/strong 入口做成隐藏 Control 通过 CLI flag 切开发模式可见，并实现 5 步教程（仅首次启动播放）。

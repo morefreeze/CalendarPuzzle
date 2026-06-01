@@ -11,8 +11,9 @@
 - **本仓 `feat/godot-steam`**：未 commit 改动（feature_list.json + claude-progress.md + session-handoff.md + plans/...-m4-ui-shell-saves.md 的 Plan-bug log 段）。`.handoff_backup/feature-hardcore-mode/` 仍是 feature/hardcore-mode 分支的过期版本。
 - **新仓 `main`**：含 M0+M1+M2+M8-mac-shortcut（已 push）+ `55616ae` fix(m2): window + test gap（本地未 push）。
 - **新仓 `feat/m3-puzzle-generation`**：从 `55616ae` 派生 8 个 M3 commit，**全本地未 push**。
-- **新仓 `feat/m4-ui-shell-saves`**：从 `feat/m3-puzzle-generation` tip 派生 11 个 M4 commit，**全本地未 push**。当前 HEAD。
-- **测试基线**：`cd ~/mygit/calendar-puzzle-godot && godot --headless --path . -s tests/run_tests.gd` → **195/195 pass, 976 asserts**（M0+M1+M2 118 + M3 35 + M4 41 + 1 个 M3-era latent fix 的 regression）。
+- **新仓 `feat/m4-ui-shell-saves`**：从 `feat/m3-puzzle-generation` tip 派生 13 个 M4 commit + 2 个 bug fix + 1 个 .uid sweep + autosave 接线，**全本地未 push**。
+- **新仓 `feat/m5-hints-tutorial`**：从 feat/m4-ui-shell-saves tip 派生 2 个 M5 commit（Task 1 + 2 foundation），**全本地未 push**。**当前 HEAD**。
+- **测试基线**：`cd ~/mygit/calendar-puzzle-godot && godot --headless --path . -s tests/run_tests.gd` → **208/208 pass**（M0+M1+M2 118 + M3 35 + M4 41 + M3-era fix 1 + palette race fix 2 + autosave wiring 2 + M5 Task 2 9 = 208）。
 - **🎉 可玩 Mac app**：`~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（194MB universal binary，含 M3 select_scene + M4 main_menu/settings/slot_picker/skin/save 全套 + 1.6MB daily_puzzles.tres + boot.gd `_game_module` 持有 fix）。默认进 main_menu。`open` 命令可启动。**Start 按钮 bug 已修**：用户第一次跑 Mac app 报告"Start 没反应"，根因 boot.gd 局部 `module := CalendarPuzzleGame.new()` 的 Resource 函数返回即被 GC，select.puzzle_selected → module._on_puzzle_selected 的 callable 立刻失效。boot.gd 加 `var _game_module: Resource = null` 实例变量持有引用即可。M3-era latent，到 M4 用户手测才暴露。
 
 ## 本轮改动 / This session's changes
@@ -34,6 +35,10 @@
 | `810445f` | Task 11 — final evidence log docs/m4-evidence/all-tests-final.log | 194/194 |
 | `<chore .uid sweep>` | chore: 一批 M3/M4 subagent 漏 add 的 .gd.uid 全部 sweep 进库 | 194/194 |
 | `b1887cf` | fix(boot): hold game module Resource — 修 Start 按钮无响应 + regression test + diag tool | **195/195** |
+| `5302674` | fix(palette_view): remove_child sync — 修 drag 不响应（两次 set_blocks 同帧 → _item_rects 缓存 stale）+ test_palette_rebuild_race | **197/197** |
+| `d6d52ce` | feat(play_scene): wire _mark_state_dirty into M2 input handlers + test_autosave_wiring | **199/199** |
+| `444b102` | feat(hint): M5 Task 1 — HintResult value type + 3-tier enum (on feat/m5-hints-tutorial) | 199/199 |
+| `37dedff` | feat(hint): M5 Task 2 — port 3-tier hint state machine + 9 tests | **208/208** |
 
 ### 本仓 CalendarPuzzle 待 commit 改动
 
@@ -59,6 +64,18 @@
 - **`_mark_state_dirty` 未接 input handlers**（M4 已知 deferred）：autosave 不会因玩家拖放自动触发。下一段 quick win 是把 `_mark_state_dirty()` 接到 `_on_pointer_pressed` / `_on_pointer_released` / `_on_action_triggered` 中——预计 1-2 commit + 集成测试可能需要 update。
 - **tests/fixtures/easy_seeded_puzzle.gd date/board 不一致**仍未修（M3 留的）。M4 用真实 SeededPuzzle generator 路径，fixture 只用于 M2 集成测试。
 - 历史风险沿用：`server.py:220` `if False and 'gameId' in data:` 有意禁用（commit `bb9bf39`）；`board.py::mark_date` 物理日历坐标常量；都不要"修"。
+
+## M5 执行暂停 / M5 execution halted after Task 2
+
+Tasks 1-2 (foundation) shipped clean. **Tasks 3-9 BLOCKED**：M5 plan 假设的抽象在 M4 codebase 里**不存在**：
+
+- `PuzzleState` 类（M2 state 直接挂 play_scene 实例 vars）
+- `Board.collect_empty_cells()` / `Board.is_empty_cell()` (M1 Board 没有)
+- `Dlx.solve(empty_cells, available_blocks)` (class 名 `DLX`，签名完全不同)
+- `game_snapshot.gd` 路径错（plan 写 `resources/`, M4 在 `shared/save/`）
+- `play_scene.init_from_date_and_difficulty()` (M2/M3 用 `load_puzzle(payload)`)
+
+详见 plan 文件顶部新加的 EXECUTION HALT 段。**Resume protocol**: 下一段先 brainstorm 选 Option A (HintSolver 直接对接 play_scene 实例 vars，最小 delta) / B (引入 PuzzleState 重构) / C (skip UI 接线，medium/strong 只走 dev flag) 之一。
 
 ## 下一步最佳动作 / Next best action
 
