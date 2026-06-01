@@ -2859,6 +2859,38 @@ func _on_settings() -> void:
 
 `_on_settings_closed` 在 Task 5 已建好（保存 profile + reapply settings），不动。
 
+### M3-era latent — `CalendarPuzzleGame` 是 Resource，boot.gd 局部变量持有 → 函数返回即被 GC，signal callback 失效
+
+> 严格来说**不是 M4 plan-bug**——M3 Task 7 把 game.gd 改成 mount select_scene 时引入；M3 智能 boot.tscn 冒烟没点 Start，所以 latent 到 M4 用户手测才出来。
+
+复现：用户 New Game → 在 select_scene 点 Start → 没反应。`tools/diag_start_button.gd` 抓到 `puzzle_selected` 信号确实 emit，payload 正确，但 PlayScene 没挂载。
+
+根因：`CalendarPuzzleGame` extends `GameModule` extends **Resource**（不是 Node，ref-counted）。boot.gd._start_game 写：
+
+```gdscript
+func _start_game(deps: GameDeps, restore_autosave: bool = false) -> void:
+    var module := CalendarPuzzleGame.new()     # ← LOCAL VAR
+    _game_root = module.start(deps)
+    ...
+    add_child(_game_root)
+    # 函数返回 → `module` 出 scope → ref-count 0 → Resource 被释放
+    # 但 module._show_select 已经做了 select.puzzle_selected.connect(module._on_puzzle_selected)
+    # 那个 callable 绑的 receiver 现在指向死对象 → emit 后静默丢弃
+```
+
+Fix（commit `b1887cf`）：boot.gd 加实例变量持有：
+
+```gdscript
+var _game_module: Resource = null    # 保住 module 不被 ref-count GC
+
+func _start_game(...) -> void:
+    _game_module = CalendarPuzzleGame.new()
+    _game_root = _game_module.start(deps)
+    ...
+```
+
+Regression 测试 `tests/test_select_to_play_chain.gd` 走真 boot → game.start → SelectScene → _on_start_pressed → 断 PlayScene 必须出现在树里。既有 `test_select_scene.gd` 用 fake table 单独测 SelectScene，从不实例化 CalendarPuzzleGame，所以从来没接住这个。
+
 ### 5. Task 9 — play_scene plan 引用了 M2 不存在的 API
 
 Plan 写：

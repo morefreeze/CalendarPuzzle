@@ -12,8 +12,8 @@
 - **新仓 `main`**：含 M0+M1+M2+M8-mac-shortcut（已 push）+ `55616ae` fix(m2): window + test gap（本地未 push）。
 - **新仓 `feat/m3-puzzle-generation`**：从 `55616ae` 派生 8 个 M3 commit，**全本地未 push**。
 - **新仓 `feat/m4-ui-shell-saves`**：从 `feat/m3-puzzle-generation` tip 派生 11 个 M4 commit，**全本地未 push**。当前 HEAD。
-- **测试基线**：`cd ~/mygit/calendar-puzzle-godot && godot --headless --path . -s tests/run_tests.gd` → **194/194 pass, 973 asserts**（M0+M1+M2 118 + M3 35 + M4 41）。
-- **🎉 可玩 Mac app**：`~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（194MB universal binary，含 M3 select_scene + M4 main_menu/settings/slot_picker/skin/save 全套 + 1.6MB daily_puzzles.tres）。默认进 main_menu。`open` 命令可启动。
+- **测试基线**：`cd ~/mygit/calendar-puzzle-godot && godot --headless --path . -s tests/run_tests.gd` → **195/195 pass, 976 asserts**（M0+M1+M2 118 + M3 35 + M4 41 + 1 个 M3-era latent fix 的 regression）。
+- **🎉 可玩 Mac app**：`~/mygit/calendar-puzzle-godot/build/mac/CalendarPuzzle.app`（194MB universal binary，含 M3 select_scene + M4 main_menu/settings/slot_picker/skin/save 全套 + 1.6MB daily_puzzles.tres + boot.gd `_game_module` 持有 fix）。默认进 main_menu。`open` 命令可启动。**Start 按钮 bug 已修**：用户第一次跑 Mac app 报告"Start 没反应"，根因 boot.gd 局部 `module := CalendarPuzzleGame.new()` 的 Resource 函数返回即被 GC，select.puzzle_selected → module._on_puzzle_selected 的 callable 立刻失效。boot.gd 加 `var _game_module: Resource = null` 实例变量持有引用即可。M3-era latent，到 M4 用户手测才暴露。
 
 ## 本轮改动 / This session's changes
 
@@ -32,6 +32,8 @@
 | `f4703fe` | Task 7 — SettingsPanel 3 标签 (General + Controls KeyCapture + Skins) + plan-bug #M4-4 + #M4-5 | 194/194 |
 | `3e21882` | Task 10 — SlotPicker UI + play_scene HUD 加 Save/Load 按钮 + plan-bug #M4-7 (M2 没 HUD) | 194/194 |
 | `810445f` | Task 11 — final evidence log docs/m4-evidence/all-tests-final.log | 194/194 |
+| `<chore .uid sweep>` | chore: 一批 M3/M4 subagent 漏 add 的 .gd.uid 全部 sweep 进库 | 194/194 |
+| `b1887cf` | fix(boot): hold game module Resource — 修 Start 按钮无响应 + regression test + diag tool | **195/195** |
 
 ### 本仓 CalendarPuzzle 待 commit 改动
 
