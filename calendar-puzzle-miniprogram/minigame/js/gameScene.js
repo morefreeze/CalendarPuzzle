@@ -6,6 +6,7 @@ var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
+var shareGrayPalette = require('./shareGrayPalette');
 var progress = require('./progress');
 var Hint = require('./hint');
 var Voucher = require('./voucher');
@@ -87,6 +88,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+  // One-shot share-snapshot state. When non-null, the board piece-fill path
+  // substitutes piece.color with palette[piece.id] so the canvas snapshot
+  // taken by wx.shareAppMessage shows grayscale pieces, not the solution.
+  // _lastCtx/_lastW/_lastH let the share handler force a synchronous redraw
+  // before calling wx.shareAppMessage.
+  var shareSnapshotMode = null;
+  var _lastCtx = null, _lastW = 0, _lastH = 0;
 
   // ---- Tutorial state machine ----
   // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
@@ -885,6 +893,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- RENDER ----
   scene.render = function (ctx, W, H) {
+    _lastCtx = ctx; _lastW = W; _lastH = H;
     computeLayout(W, H);
     R.clear(ctx, W, H);
 
@@ -976,7 +985,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         // Background
         if (blockAt) {
           ctx.globalAlpha = locked ? 0.92 : 0.95;
-          ctx.fillStyle = blockAt.color;
+          ctx.fillStyle = (shareSnapshotMode && shareSnapshotMode.palette[blockAt.id]) || blockAt.color;
           ctx.fillRect(px, py, cs, cs);
           ctx.globalAlpha = 1;
         } else if (isUncov) {
@@ -2091,7 +2100,16 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
-        try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
+        try {
+          var ids = allBlocks().map(function (b) { return b.id; });
+          shareSnapshotMode = { palette: shareGrayPalette.makeShareGrayPalette(ids) };
+          if (_lastCtx) scene.render(_lastCtx, _lastW, _lastH);
+          wx.shareAppMessage(shareState.buildShareData());
+        } catch (e) {}
+        setTimeout(function () {
+          shareSnapshotMode = null;
+          scene.dirty = true;
+        }, 0);
         return;
       }
       if (!R.hitTest(x, y, L.winCard)) {
