@@ -30,12 +30,16 @@ test('makeShareGrayPalette: repeated calls produce different orderings', functio
 });
 
 test('makeShareGrayPalette: wraps when more ids than ramp slots', function () {
+  var RAMP_SIZE = 9;
   var ids = [];
   for (var i = 0; i < 15; i++) ids.push('id' + i);
   var pal = P.makeShareGrayPalette(ids);
   ids.forEach(function (id) {
     assert.match(pal[id], /^#[0-9A-Fa-f]{6}$/);
   });
+  var uniqueColors = new Set(ids.map(function (id) { return pal[id]; }));
+  assert.strictEqual(uniqueColors.size, RAMP_SIZE,
+    'expected exactly ' + RAMP_SIZE + ' distinct colors when ids exceed ramp size');
 });
 
 test('makeShareGrayPalette: empty input returns empty palette', function () {
