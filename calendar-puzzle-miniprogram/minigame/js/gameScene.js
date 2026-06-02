@@ -291,6 +291,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var confettiLastTick = 0;
   var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
   var winCardDismissed = false;
+  // Timestamp (ms) the win modal first became eligible to render. The ×
+  // close button ignores taps within WIN_MODAL_DISMISS_GRACE_MS of this so
+  // a stray touch from the placing-the-last-piece release (or a synthetic
+  // touch some Android runtimes emit after wx.vibrateLong) can't close the
+  // modal before the player sees it.
+  var winModalShownAt = 0;
+  var WIN_MODAL_DISMISS_GRACE_MS = 600;
 
   // ---- Toast (top-floating, doesn't push layout) ----
   var toast = { msg: '', isWin: false, start: 0, dur: 5000 };
@@ -415,6 +422,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        winModalShownAt = Date.now();
         // Force-close any open save modal (corner case: player completes puzzle while picker was open).
         slotModal = null; slotPickerLayoutCache = null;
         if (tutorialMode) tutorialStep = 5;
@@ -2080,10 +2088,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // ── Win modal: × dismisses; 随机下一题 / 完成新手教程 advances; share
-    //    shares; tap outside dismisses; tap inside (not a button) is swallowed.
+    // ── Win modal: × dismisses (after 600ms grace); 随机下一题 / 完成新手教程
+    //    advances; share shares; all other taps (including taps outside the
+    //    card) are swallowed so a stray touch can't close the modal before
+    //    the player sees it.
     if (isWon && !winCardDismissed && L.winCard) {
       if (L.winCloseBtn && R.hitTest(x, y, L.winCloseBtn)) {
+        if (Date.now() - winModalShownAt < WIN_MODAL_DISMISS_GRACE_MS) return;
         winCardDismissed = true; scene.dirty = true; return;
       }
       if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
@@ -2123,9 +2134,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         }, 0);
         return;
       }
-      if (!R.hitTest(x, y, L.winCard)) {
-        winCardDismissed = true; scene.dirty = true; return;
-      }
+      // Tap outside the card is intentionally swallowed (not a dismiss).
+      // Players celebrating their win often tap on the confetti or top toast,
+      // and those taps used to close the modal before they noticed it. The ×
+      // button is the only explicit-dismiss path now.
       return;
     }
 
