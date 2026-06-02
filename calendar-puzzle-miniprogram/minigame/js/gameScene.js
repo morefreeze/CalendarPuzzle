@@ -6,6 +6,7 @@ var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
+var shareGrayPalette = require('./shareGrayPalette');
 var progress = require('./progress');
 var Hint = require('./hint');
 var Voucher = require('./voucher');
@@ -87,6 +88,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+  // One-shot share-snapshot state. When the player taps "share" in the win
+  // modal, the canvas at that moment shows the full solution — every piece
+  // in its real color. Without this, the share-card thumbnail leaks "which
+  // colored piece covers which cell" to every recipient. When non-null, the
+  // board piece-fill path substitutes piece.color with palette[piece.id] so
+  // the snapshot grabbed by wx.shareAppMessage shows grayscale pieces.
+  // _lastCtx/_lastW/_lastH cache the render-context refs so the share
+  // handler can force a synchronous redraw of the gray frame before calling
+  // wx.shareAppMessage.
+  var shareSnapshotMode = null;
+  var _lastCtx = null, _lastW = 0, _lastH = 0;
 
   // ---- Tutorial state machine ----
   // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
@@ -885,6 +897,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- RENDER ----
   scene.render = function (ctx, W, H) {
+    _lastCtx = ctx; _lastW = W; _lastH = H;
     computeLayout(W, H);
     R.clear(ctx, W, H);
 
@@ -976,7 +989,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         // Background
         if (blockAt) {
           ctx.globalAlpha = locked ? 0.92 : 0.95;
-          ctx.fillStyle = blockAt.color;
+          // Falls back to real color if blockAt.id is missing from the
+          // palette (shouldn't happen — palette is built from allBlocks()
+          // immediately before the synchronous redraw — but degrades safely).
+          ctx.fillStyle = (shareSnapshotMode && shareSnapshotMode.palette[blockAt.id]) || blockAt.color;
           ctx.fillRect(px, py, cs, cs);
           ctx.globalAlpha = 1;
         } else if (isUncov) {
@@ -2091,7 +2107,20 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
-        try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
+        try {
+          var ids = allBlocks().map(function (b) { return b.id; });
+          shareSnapshotMode = { palette: shareGrayPalette.makeShareGrayPalette(ids) };
+          // Defensive only — L.shareBtn is set during a win-modal render,
+          // so _lastCtx is always populated by the time this branch is
+          // reachable. The guard costs nothing and avoids a theoretical
+          // first-tap-before-first-render NPE.
+          if (_lastCtx) scene.render(_lastCtx, _lastW, _lastH);
+          wx.shareAppMessage(shareState.buildShareData());
+        } catch (e) {}
+        setTimeout(function () {
+          shareSnapshotMode = null;
+          scene.dirty = true;
+        }, 0);
         return;
       }
       if (!R.hitTest(x, y, L.winCard)) {
