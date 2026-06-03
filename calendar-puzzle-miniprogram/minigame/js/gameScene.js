@@ -9,6 +9,7 @@ var shareState = require('./shareState');
 var shareGrayPalette = require('./shareGrayPalette');
 var progress = require('./progress');
 var Hint = require('./hint');
+var M = require('./mode');
 var Voucher = require('./voucher');
 var cloudClient = require('./cloudClient');
 var slotsGlobal = require('./slotsGlobal');
@@ -44,7 +45,7 @@ function setStaminaConfirmSkipUntilNext5AM() {
   } catch (e) { /* ignore */ }
 }
 
-module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState) {
+module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState, modeOpts) {
   var scene = {};
   scene.dirty = true;
 
@@ -100,6 +101,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var shareSnapshotMode = null;
   var _lastCtx = null, _lastW = 0, _lastH = 0;
 
+  // Mode resolution: a restored save carries its own mode (preserves hardcore
+  // across exit/resume); a fresh game receives modeOpts from selectScene; the
+  // implicit default is non-hardcore.
+  var mode = M.createMode(savedState && savedState.mode ? savedState.mode : modeOpts);
+  scene.mode = mode;
+
   // ---- Tutorial state machine ----
   // step 1: explain the goal — bubble at today's weekday marker, advance via "下一步"
   // step 2: point at a locked (pre-placed) block — these are fixed, advance via "下一步"
@@ -126,10 +133,21 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // Shape: { tier: 'weak'|'medium'|'strong', cost: number, skipChecked: bool }
   var staminaConfirm = null;
 
+  // ---- Pause-menu state ----
+  var pauseMenuOpen = false;
+  var abandonConfirmOpen = false;
+
   // ---- Save-slot modal state ----
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
   var slotPickerSelectedIdx = 0;      // 0..2
   var slotPickerLayoutCache = null;   // cached layout for the active modal
+
+  // ---- Medium-hint mismatch modal state ----
+  // null when no dialog open. Set by placeBlock() to one of:
+  //   { kind: 'right-block-wrong-loc', blockId }
+  //   { kind: 'wrong-block-on-hint', placedBlockId, hintedBlockId }
+  var mediumMismatchModal = null;
+  var mediumMismatchLayoutCache = null;
   function currentPuzzleId() {
     return puzzle.dateStr + ':' + difficulty + ':c' + puzzle.currentComboIndex;
   }
@@ -163,6 +181,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       elapsedMs: timer * 1000,
       hintState: hintState,
       playedCombos: Object.assign({}, playedCombos),
+      mode: mode,
     };
   }
 
@@ -435,12 +454,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         if (isInsomnia) {
           insomniaUnique = progress.markUniqueInsomnia(puzzle.dateStr, buildBoardKey());
         }
+        var hardcoreClear = false;
+        if (M.isHardcore(mode)) {
+          progress.markHardcoreCleared(puzzle.dateStr, difficulty);
+          hardcoreClear = true;
+        }
         winStats = {
           time: timer,
           isNewPB: pb.isNew,
           prevPB: pb.prev,
           todayDone: progress.countCompletedForDate(puzzle.dateStr),
           insomniaUnique: insomniaUnique,
+          hardcore: hardcoreClear,
         };
         var _bound = _slotBinding.getBound();
         if (_bound) {
@@ -481,6 +506,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     try { wx.vibrateShort && wx.vibrateShort({ type: 'medium' }); } catch (e) {}
     scene.dirty = true;
     _tempSlot.markDirty(captureState());
+    if (!hintState.mediumMismatchIgnored) {
+      var bCells = [];
+      for (var sy = 0; sy < nb.shape.length; sy++) {
+        for (var sx = 0; sx < nb.shape[sy].length; sx++) {
+          if (nb.shape[sy][sx] === 1) bCells.push({ x: nb.x + sx, y: nb.y + sy });
+        }
+      }
+      var mm = Hint.findMediumMismatch(hintState, nb.id, bCells);
+      if (mm) {
+        mediumMismatchModal = mm;
+        return;
+      }
+    }
     checkWin();
   }
 
@@ -645,23 +683,36 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // it needs to point at. Skip button is placed inside the bubble (laid
     // out at render time, not here).
 
-    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line, 4 icons (2 in insomnia
-    // mode, where switching puzzle is conceptually nonexistent).
+    // Control row: 提示 / 重开 / 🎲 / 🎯  — single line.
+    // Layout collapses based on capabilities:
+    //   default:  [💡 提示] [↺ 重开] [🎲 随机] [🎯 选题]      (4 buttons)
+    //   insomnia: [💡 提示] [↺ 重开]                          (2 buttons; no swap)
+    //   hardcore: [🧹 清空]                                    (1 button; replaces 重开)
     // Hidden during tutorial mode to keep the focus on the banner step.
     L.hintBtn = null;
     L.resetBtn = null;
     L.switchRandomBtn = null;
     L.switchManualBtn = null;
     if (!tutorialMode) {
+      var showHint = M.canUseHint(mode);
+      var showSwap = M.canSwapPuzzle(mode) && !isInsomnia;
+      var hardcore = M.isHardcore(mode);
+      var nCtrl = (showHint ? 1 : 0) + 1 /* reset/clear */ + (showSwap ? 2 : 0);
       var btnH = 36, btnGap = 8;
-      var nCtrl = isInsomnia ? 2 : 4;
       var ctrlBtnW = Math.floor((W - 2 * pad - (nCtrl - 1) * btnGap) / nCtrl);
       L.ctrlY = y;
-      L.hintBtn  = { x: pad,                                   y: y, w: ctrlBtnW, h: btnH };
-      L.resetBtn = { x: pad + (ctrlBtnW + btnGap) * 1,         y: y, w: ctrlBtnW, h: btnH };
-      if (!isInsomnia) {
-        L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * 2,  y: y, w: ctrlBtnW, h: btnH };
-        L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * 3,  y: y, w: ctrlBtnW, h: btnH };
+      var idx = 0;
+      if (showHint) {
+        L.hintBtn  = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
+      }
+      L.resetBtn   = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH, kind: hardcore ? 'clear' : 'reset' };
+      idx++;
+      if (showSwap) {
+        L.switchRandomBtn = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
+        L.switchManualBtn = { x: pad + (ctrlBtnW + btnGap) * idx, y: y, w: ctrlBtnW, h: btnH };
+        idx++;
       }
       y += btnH + 10;
     }
@@ -928,6 +979,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       ctx.stroke();
     }
 
+    // ☰ Pause-menu entry (bottom-left). Avoids collision with the WeChat
+    // capsule menu at top-right and the centered palette/hint at bottom.
+    // safeInsets.bottom is the home-indicator inset; padBottom is local to
+    // computeLayout, not in scope here.
+    var pmSize = 36;
+    L.pauseBtn = { x: pad, y: H - (safeInsets.bottom || 0) - pmSize - 4, w: pmSize, h: pmSize };
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    ctx.beginPath();
+    ctx.arc(L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2, pmSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    R.textBold(ctx, '☰', L.pauseBtn.x + pmSize / 2, L.pauseBtn.y + pmSize / 2 - 1, 22, '#555', 'center', 'middle');
+
     // Tutorial mode hides difficulty / sub / timer / stamina so the focus
     // is purely on the puzzle and the guidance bubble.
     if (!tutorialMode) {
@@ -954,9 +1017,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     //  can compute targets from their freshly-laid-out rects.)
 
     // --- Control row: 提示 / 重开 / 🎲 / 🎯 (hidden during tutorial) ---
-    if (L.hintBtn) {
-      R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
-      R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, '↺ 重开', dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
+    if (L.resetBtn) {
+      if (L.hintBtn) {
+        R.button(ctx, L.hintBtn.x, L.hintBtn.y, L.hintBtn.w, L.hintBtn.h, '💡 提示', BRAND, '#fff', 8);
+      }
+      var resetLabel = L.resetBtn.kind === 'clear' ? '🧹 清空' : '↺ 重开';
+      R.button(ctx, L.resetBtn.x, L.resetBtn.y, L.resetBtn.w, L.resetBtn.h, resetLabel, dropped.length ? NEUTRAL : '#cfcfcf', '#fff', 8);
       if (L.switchRandomBtn) {
         var randomBg = switchMode === 'random' ? BRAND : '#E0E0E0';
         var randomFg = switchMode === 'random' ? '#fff' : '#666';
@@ -1286,6 +1352,89 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       L.staminaConfirmConvertBtn = null;
       L.staminaConfirmNoBtn = null;
       L.staminaConfirmYesBtn = null;
+    }
+
+    // --- 中提示不一致弹窗 ---
+    if (mediumMismatchModal) {
+      R.overlay(ctx, W, H);
+      var mmW = Math.min(W * 0.78, 300), mmH = 200;
+      var mmX = (W - mmW) / 2, mmY = (H - mmH) / 2;
+      R.roundRect(ctx, mmX, mmY, mmW, mmH, 14, '#fff');
+
+      // Close (×) button — top right
+      var mmCloseR = 14;
+      var mmCloseX = mmX + mmW - mmCloseR - 12;
+      var mmCloseY = mmY + mmCloseR + 12;
+      R.roundRect(ctx, mmCloseX - mmCloseR, mmCloseY - mmCloseR, mmCloseR * 2, mmCloseR * 2, mmCloseR, '#f0f0f0');
+      R.textBold(ctx, '×', mmCloseX, mmCloseY, 16, '#666', 'center', 'middle');
+
+      R.textBold(ctx, '和中提示不一致', mmX + 20, mmY + 24, 15, '#333', 'left');
+
+      // Body — figure out which block(s) to draw + the prose around them.
+      // We need block shape + color from palette OR dropped (because the
+      // placed block has just been pushed into dropped).
+      var mmAllBlocks = palette.concat(dropped);
+      var _mmFindBlock = function (id) {
+        for (var i = 0; i < mmAllBlocks.length; i++) if (mmAllBlocks[i].id === id) return mmAllBlocks[i];
+        return null;
+      };
+      var mmKind = mediumMismatchModal.kind;
+      var mmPlacedId = mmKind === 'right-block-wrong-loc' ? mediumMismatchModal.blockId : mediumMismatchModal.placedBlockId;
+      var mmPlacedBlk = _mmFindBlock(mmPlacedId);
+      var mmHintedBlk = mmKind === 'wrong-block-on-hint' ? _mmFindBlock(mediumMismatchModal.hintedBlockId) : null;
+
+      // Draw a mini block-shape icon at (x, y), returning the width drawn.
+      var _mmDrawIcon = function (blk, x, y) {
+        if (!blk) return 0;
+        var cell = 7;
+        R.blockShape(ctx, blk.shape, blk.color, x, y, cell);
+        return blk.shape[0].length * cell;
+      };
+
+      var bodyY = mmY + 64;
+      var lineH = 22;
+      // Measure text width via ctx.measureText so inline icon positions don't
+      // depend on eyeballed CJK glyph widths (varies across WeChat WebView fonts).
+      var _mmMeasure = function (str) {
+        ctx.font = '13px sans-serif';
+        return ctx.measureText(str).width;
+      };
+      var gap = 4;
+      if (mmKind === 'right-block-wrong-loc') {
+        R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
+        var afterPrefix = mmX + 20 + _mmMeasure('你刚把') + gap;
+        var iconW = _mmDrawIcon(mmPlacedBlk, afterPrefix, bodyY - 10);
+        R.text(ctx, '放到了别的位置，', afterPrefix + iconW + gap, bodyY, 13, '#555', 'left', 'middle');
+        R.text(ctx, '但它的中提示还在等它。', mmX + 20, bodyY + lineH, 13, '#555', 'left', 'middle');
+      } else {
+        R.text(ctx, '你刚把', mmX + 20, bodyY, 13, '#555', 'left', 'middle');
+        var aP = mmX + 20 + _mmMeasure('你刚把') + gap;
+        var iw1 = _mmDrawIcon(mmPlacedBlk, aP, bodyY - 10);
+        var afterPlaced = aP + iw1 + gap;
+        R.text(ctx, '放到了', afterPlaced, bodyY, 13, '#555', 'left', 'middle');
+        var aP2 = afterPlaced + _mmMeasure('放到了') + gap;
+        var iw2 = _mmDrawIcon(mmHintedBlk, aP2, bodyY - 10);
+        R.text(ctx, '的中提示位置上。', aP2 + iw2 + gap, bodyY, 13, '#555', 'left', 'middle');
+      }
+
+      // Buttons
+      var mmBtnW = mmW - 40;
+      var mmTakeBackBtnH = 36;
+      var mmTakeBackY = mmY + mmH - mmTakeBackBtnH - 36;
+      R.button(ctx, mmX + 20, mmTakeBackY, mmBtnW, mmTakeBackBtnH, '取回并重新选中', '#43A047', '#fff', 8);
+
+      var mmIgnoreH = 20;
+      var mmIgnoreY = mmY + mmH - mmIgnoreH - 10;
+      R.text(ctx, '本局不再提示', mmX + mmW / 2, mmIgnoreY + mmIgnoreH / 2, 12, '#999', 'center', 'middle');
+
+      mediumMismatchLayoutCache = {
+        modal: { x: mmX, y: mmY, w: mmW, h: mmH },
+        closeBtn: { x: mmCloseX - mmCloseR, y: mmCloseY - mmCloseR, w: mmCloseR * 2, h: mmCloseR * 2 },
+        takeBackBtn: { x: mmX + 20, y: mmTakeBackY, w: mmBtnW, h: mmTakeBackBtnH },
+        ignoreBtn: { x: mmX + 20, y: mmIgnoreY, w: mmBtnW, h: mmIgnoreH + 4 },
+      };
+    } else {
+      mediumMismatchLayoutCache = null;
     }
 
     // --- 获取路径 二级 menu ---
@@ -1664,7 +1813,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var cardW = Math.min(W - 32, 320);
       // Tutorial stacks 2 (finish + invite). Regular win stacks 3
       // (restart / moments-hint / invite), so grow the card to match.
-      var cardH = tutorialMode ? 250 : 310;
+      var hcShift = (winStats && winStats.hardcore) ? 24 : 0;
+      var cardH = (tutorialMode ? 250 : 310) + hcShift;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       // Clamp against the bottom safe area so the taller 3-button card
@@ -1688,8 +1838,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.textBold(ctx, '×', L.winCloseBtn.x + clz / 2, L.winCloseBtn.y + clz / 2 - 1, 20, '#666', 'center', 'middle');
 
       R.textBold(ctx, '🎉 通关！', cardX + cardW / 2, cardY + 22, 20, BRAND_DARK, 'center');
+      if (winStats.hardcore) {
+        R.textBold(ctx, '🔥 硬核通关', cardX + cardW / 2, cardY + 50, 16, '#E64A19', 'center', 'middle');
+      }
       R.textBold(ctx, B.formatTime(winStats.time),
-        cardX + cardW / 2, cardY + 60, 26, '#333', 'center', 'middle');
+        cardX + cardW / 2, cardY + 60 + hcShift, 26, '#333', 'center', 'middle');
       var sub;
       if (winStats.isNewPB && winStats.prevPB != null) {
         sub = '🏆 新纪录！（前最佳 ' + B.formatTime(winStats.prevPB) + '）';
@@ -1698,18 +1851,18 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       } else {
         sub = '最佳 ' + B.formatTime(progress.getBestTime(puzzle.dateStr, difficulty));
       }
-      R.text(ctx, sub, cardX + cardW / 2, cardY + 88, 12,
+      R.text(ctx, sub, cardX + cardW / 2, cardY + 88 + hcShift, 12,
         winStats.isNewPB ? '#FF8F00' : '#888', 'center');
       if (isInsomnia && winStats.insomniaUnique) {
         var iu = winStats.insomniaUnique;
         var iuTxt = iu.isNew
           ? '✨ 新摆法 · 今日已发现 ' + iu.count + ' 种'
           : '🌙 这种摆法见过了 · 今日 ' + iu.count + ' 种';
-        R.text(ctx, iuTxt, cardX + cardW / 2, cardY + 110, 12,
+        R.text(ctx, iuTxt, cardX + cardW / 2, cardY + 110 + hcShift, 12,
           iu.isNew ? '#FF8F00' : '#888', 'center');
       } else {
         R.text(ctx, '今日已通关 ' + winStats.todayDone + ' 题',
-          cardX + cardW / 2, cardY + 110, 12, '#666', 'center');
+          cardX + cardW / 2, cardY + 110 + hcShift, 12, '#666', 'center');
       }
 
       // Stacked CTAs. Tutorial: [finish, invite]. Normal win:
@@ -1853,6 +2006,64 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       var _on = slotUI.pickOldestNewest(_slots2);
       slotUI.drawOverwriteWarning(ctx, slotPickerLayoutCache, _slots2, _on.oldestIdx, _on.newestIdx, slotPickerSelectedIdx);
     }
+
+    // --- Pause-menu popover (anchored above the ☰ button at bottom-left) ---
+    if (pauseMenuOpen) {
+      var rowH = 56, rowGap = 8;
+      var rowsCount = (M.isHardcore(mode) ? 1 : 0) + 1;
+      var popPadX = 12, popPadTop = 12, popPadBottom = 12;
+      var titleH = 20;
+      var popW = Math.min(W - 2 * pad, 280);
+      var rowsH = rowsCount * rowH + (rowsCount - 1) * rowGap;
+      var popH = popPadTop + rowsH + 10 + titleH + popPadBottom;
+      var popX = pad;
+      var popY = L.pauseBtn.y - 8 - popH;
+      // Floating card — no full-screen dim so the popover feels light.
+      // Subtle shadow via a slightly larger gray rect underneath.
+      R.roundRect(ctx, popX + 1, popY + 2, popW, popH, 14, 'rgba(0,0,0,0.08)');
+      R.roundRect(ctx, popX, popY, popW, popH, 14, '#fff');
+      L.pauseSheet = { x: popX, y: popY, w: popW, h: popH };
+
+      var rowX = popX + popPadX, rowW = popW - 2 * popPadX;
+      var rowY = popY + popPadTop;
+
+      L.pauseRowAbandon = null;
+      if (M.isHardcore(mode)) {
+        R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#FFF3E0');
+        R.textBold(ctx, '🔥 放弃硬核', rowX + 16, rowY + rowH / 2, 16, '#E64A19', 'left', 'middle');
+        L.pauseRowAbandon = { x: rowX, y: rowY, w: rowW, h: rowH };
+        rowY += rowH + rowGap;
+      }
+
+      R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#F5F5F5');
+      R.textBold(ctx, '🏠 返回首页', rowX + 16, rowY + rowH / 2, 16, '#333', 'left', 'middle');
+      L.pauseRowBack = { x: rowX, y: rowY, w: rowW, h: rowH };
+      rowY += rowH + 10;
+
+      // Read-only title block
+      var difficultyLabel = (PG && PG.DIFFICULTY_CONFIG && PG.DIFFICULTY_CONFIG[difficulty] && PG.DIFFICULTY_CONFIG[difficulty].label) || difficulty;
+      var titleStr = puzzle.dateStr + ' · ' + difficultyLabel + (M.isHardcore(mode) ? ' · 🔥 硬核' : '');
+      R.text(ctx, titleStr, rowX, rowY + 4, 13, '#666', 'left');
+    } else {
+      L.pauseSheet = null;
+    }
+
+    if (abandonConfirmOpen) {
+      R.overlay(ctx, W, H);
+      var dW = W * 0.84, dH = 200;
+      var dx = (W - dW) / 2, dy = (H - dH) / 2;
+      R.roundRect(ctx, dx, dy, dW, dH, 14, '#fff');
+      R.textBold(ctx, '放弃硬核?', dx + dW / 2, dy + 32, 18, '#333', 'center', 'middle');
+      R.text(ctx, '放弃后本局不再计入今日硬核通关，确定?', dx + dW / 2, dy + 70, 13, '#666', 'center');
+      var cBtnW = (dW - 48) / 2, cBtnH = 44;
+      L.abandonCancelBtn  = { x: dx + 16,                  y: dy + dH - 16 - cBtnH, w: cBtnW, h: cBtnH };
+      L.abandonConfirmBtn = { x: dx + 16 + cBtnW + 16,     y: dy + dH - 16 - cBtnH, w: cBtnW, h: cBtnH };
+      R.button(ctx, L.abandonCancelBtn.x,  L.abandonCancelBtn.y,  cBtnW, cBtnH, '取消',     '#eee',    '#333', 8);
+      R.button(ctx, L.abandonConfirmBtn.x, L.abandonConfirmBtn.y, cBtnW, cBtnH, '确定放弃', '#E64A19', '#fff', 8);
+    } else {
+      L.abandonCancelBtn = null;
+      L.abandonConfirmBtn = null;
+    }
   };
 
   // ---- TOUCH ----
@@ -1872,6 +2083,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (helpOpen) return;
     if (hintMode) return;
+    if (mediumMismatchModal) return;
+    if (pauseMenuOpen) return;
+    if (abandonConfirmOpen) return;
 
     // Grab a placed (non-locked) block from the board, if the touch lands on
     // one. The block is lifted into `dragging` and removed from dropped; on
@@ -1952,6 +2166,8 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchMove = function (x, y) {
+    if (pauseMenuOpen) return;
+    if (abandonConfirmOpen) return;
     if (selectPanelOpen && L.selectPanel) {
       if (!dragging) {
         var scrollDelta = dragStart.y - y;
@@ -1994,6 +2210,88 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   };
 
   scene.onTouchEnd = function (x, y) {
+    // Pause-menu interactions take precedence when open (modal sheet).
+    if (abandonConfirmOpen) {
+      if (L.abandonCancelBtn && R.hitTest(x, y, L.abandonCancelBtn)) {
+        abandonConfirmOpen = false;
+        scene.dirty = true;
+        return;
+      }
+      if (L.abandonConfirmBtn && R.hitTest(x, y, L.abandonConfirmBtn)) {
+        // Downgrade: rebuild mode without hardcore, repaint, persist.
+        mode = M.createMode({ hardcore: false });
+        scene.mode = mode;
+        abandonConfirmOpen = false;
+        pauseMenuOpen = false;
+        _tempSlot.markDirty(captureState());
+        showToast('已切回普通模式');
+        scene.dirty = true;
+        return;
+      }
+      return; // swallow taps elsewhere while confirm is open
+    }
+    if (pauseMenuOpen) {
+      if (L.pauseRowAbandon && R.hitTest(x, y, L.pauseRowAbandon)) {
+        abandonConfirmOpen = true;
+        scene.dirty = true;
+        return;
+      }
+      if (L.pauseRowBack && R.hitTest(x, y, L.pauseRowBack)) {
+        pauseMenuOpen = false;
+        // Same callback path as the top-left back arrow uses.
+        if (callbacks && callbacks.onBack) callbacks.onBack();
+        return;
+      }
+      if (L.pauseSheet && R.hitTest(x, y, L.pauseSheet)) {
+        return; // tap on blank sheet area = no-op
+      }
+      pauseMenuOpen = false;
+      scene.dirty = true;
+      return;
+    }
+    if (L.pauseBtn && R.hitTest(x, y, L.pauseBtn)) {
+      pauseMenuOpen = true;
+      scene.dirty = true;
+      return;
+    }
+
+    // ── Medium-hint mismatch modal: intercept ALL taps while open. ──
+    if (mediumMismatchModal && mediumMismatchLayoutCache) {
+      var mmL = mediumMismatchLayoutCache;
+      // Take back: remove the offending placed block + re-select it in palette.
+      if (R.hitTest(x, y, mmL.takeBackBtn)) {
+        var mmPlacedId = mediumMismatchModal.kind === 'right-block-wrong-loc'
+          ? mediumMismatchModal.blockId
+          : mediumMismatchModal.placedBlockId;
+        removeDropped(mmPlacedId);
+        for (var pi = palette.length - 1; pi >= 0; pi--) {
+          if (palette[pi].id === mmPlacedId) { selected = palette[pi]; break; }
+        }
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Ignore for the rest of this puzzle (persists across reload via hintState).
+      if (R.hitTest(x, y, mmL.ignoreBtn)) {
+        hintState = Hint.setMediumMismatchIgnored(hintState);
+        _tempSlot.markDirty(captureState());
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Close — dismiss this instance only; next mismatch re-opens dialog.
+      if (R.hitTest(x, y, mmL.closeBtn)) {
+        mediumMismatchModal = null;
+        mediumMismatchLayoutCache = null;
+        scene.dirty = true;
+        return;
+      }
+      // Tap on dialog backdrop / anywhere else — swallow, no fall-through.
+      return;
+    }
+
     // ── Save-slot modals: intercept ALL taps while a modal is open. ──
     if (slotModal === 'save-picker' && slotPickerLayoutCache) {
       var hit = slotUI.savePickerHitTest(x, y, slotPickerLayoutCache);
@@ -2345,7 +2643,6 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
               showToast('已提示 ' + hBlock.label + ' 的正确方向');
             } else if (hintTier === 'medium') {
               res = Hint.applyMedium(hintState, hBlock.id, palette, dropped, solvedPlacements);
-              showToast('已提示 ' + hBlock.label + ' 的落点');
             } else {
               res = Hint.applyStrong(hintState, hBlock.id, palette, dropped, solvedPlacements);
               showToast('已为 ' + hBlock.label + ' 落子');
@@ -2533,8 +2830,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
     if (L.resetBtn && R.hitTest(x, y, L.resetBtn)) {
       if (dropped.length === 0) return;
-      resetAllPlaced();
-      showToast('已重开当前题');
+      if (L.resetBtn.kind === 'clear') {
+        // Hardcore: clear all dropped blocks back to palette; DO NOT reset timer.
+        resetAllPlaced();
+        showToast('已清空棋盘');
+      } else {
+        // Default restart: delegates to resetAllPlaced (no timer state here).
+        resetAllPlaced();
+        showToast('已重开当前题');
+      }
       return;
     }
     if (L.switchRandomBtn && R.hitTest(x, y, L.switchRandomBtn)) {

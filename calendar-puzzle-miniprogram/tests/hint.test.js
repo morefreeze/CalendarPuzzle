@@ -347,3 +347,123 @@ test('restoreHintState: strong-locked block stays locked after restore (regressi
   assert.strictEqual(H.isFullyLocked(restored, 'X-block'), true, 'strong-locked block must remain locked after reload');
   assert.strictEqual(H.canUse(restored, 'strong'), false, 'strong-hint cap (1) must remain enforced after reload');
 });
+
+test('createHintState initialises mediumMismatchIgnored to false', function () {
+  var s = H.createHintState('p-mm-1');
+  assert.strictEqual(s.mediumMismatchIgnored, false);
+});
+
+test('restoreHintState defaults mediumMismatchIgnored to false when absent', function () {
+  var saved = { puzzleId: 'p-mm-rt-1', weakLocked: {}, mediumLocked: {}, strongLocked: {}, usedWeak: 0, usedMedium: 0, usedStrong: 0 };
+  var s = H.restoreHintState(saved, 'p-mm-rt-1');
+  assert.strictEqual(s.mediumMismatchIgnored, false);
+});
+
+test('restoreHintState round-trips mediumMismatchIgnored: true', function () {
+  var saved = { puzzleId: 'p-mm-rt-2', weakLocked: {}, mediumLocked: {}, strongLocked: {}, usedWeak: 0, usedMedium: 0, usedStrong: 0, mediumMismatchIgnored: true };
+  var s = H.restoreHintState(saved, 'p-mm-rt-2');
+  assert.strictEqual(s.mediumMismatchIgnored, true);
+});
+
+function _stateWithIgnored(puzzleId) {
+  return H.restoreHintState({
+    puzzleId: puzzleId,
+    weakLocked: {}, mediumLocked: {}, strongLocked: {},
+    usedWeak: 0, usedMedium: 0, usedStrong: 0,
+    mediumMismatchIgnored: true,
+  }, puzzleId);
+}
+
+test('applyWeak preserves mediumMismatchIgnored when true', function () {
+  var state = _stateWithIgnored('p-prop-1');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1], [0, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 0, y: 0, shape: [[1, 0], [1, 1]] } };
+  var res = H.applyWeak(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyWeak');
+});
+
+test('applyMedium preserves mediumMismatchIgnored when true', function () {
+  var state = _stateWithIgnored('p-prop-2');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
+  var res = H.applyMedium(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyMedium');
+});
+
+test('applyStrong preserves mediumMismatchIgnored when true', function () {
+  var state = _stateWithIgnored('p-prop-3');
+  var palette = [{ id: 'X-block', label: 'X', shape: [[1, 1]] }];
+  var dropped = [];
+  var solved = { 'X-block': { x: 2, y: 3, shape: [[1, 1]] } };
+  var res = H.applyStrong(state, 'X-block', palette, dropped, solved);
+  assert.strictEqual(res.newState.mediumMismatchIgnored, true, 'flag must survive applyStrong');
+});
+
+function _cellEq(a, b) { return a.x === b.x && a.y === b.y; }
+function _cellsContain(set, c) { for (var i = 0; i < set.length; i++) if (_cellEq(set[i], c)) return true; return false; }
+function _isSubset(sub, sup) { for (var i = 0; i < sub.length; i++) if (!_cellsContain(sup, sub[i])) return false; return true; }
+
+test('findMediumMismatch returns null when mediumLocked is empty', function () {
+  var s = H.createHintState('p-fm-1');
+  var cells = [{ x: 0, y: 0 }, { x: 1, y: 0 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', cells), null);
+});
+
+test('findMediumMismatch returns null when block covers all its own hint cells', function () {
+  var s = H.createHintState('p-fm-2');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var coversAll = [{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', coversAll), null);
+});
+
+test('findMediumMismatch returns right-block-wrong-loc when block misses any own hint cell', function () {
+  var s = H.createHintState('p-fm-3');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var missesOne = [{ x: 2, y: 3 }, { x: 2, y: 4 }];
+  var r = H.findMediumMismatch(s, 'A-block', missesOne);
+  assert.deepStrictEqual(r, { kind: 'right-block-wrong-loc', blockId: 'A-block' });
+});
+
+test('findMediumMismatch returns wrong-block-on-hint when foreign block covers another hint cell', function () {
+  var s = H.createHintState('p-fm-4');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  var foreign = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  var r = H.findMediumMismatch(s, 'B-block', foreign);
+  assert.deepStrictEqual(r, { kind: 'wrong-block-on-hint', placedBlockId: 'B-block', hintedBlockId: 'A-block' });
+});
+
+test('findMediumMismatch prioritises right-block-wrong-loc over wrong-block-on-hint', function () {
+  var s = H.createHintState('p-fm-5');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }, { x: 3, y: 3 }];
+  s.mediumLocked['B-block'] = [{ x: 5, y: 5 }];
+  // A-block is the placed block, misses one of its own cells (3,3), AND covers B-block's (5,5)
+  var weird = [{ x: 2, y: 3 }, { x: 5, y: 5 }];
+  var r = H.findMediumMismatch(s, 'A-block', weird);
+  assert.deepStrictEqual(r, { kind: 'right-block-wrong-loc', blockId: 'A-block' });
+});
+
+test('findMediumMismatch ignores mediumMismatchIgnored — that flag is the caller\'s guard, not the detector\'s', function () {
+  var s = H.createHintState('p-fm-6');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  var s2 = H.restoreHintState(Object.assign({}, s, { mediumMismatchIgnored: true }), 'p-fm-6');
+  var r = H.findMediumMismatch(s2, 'B-block', [{ x: 2, y: 3 }]);
+  assert.deepStrictEqual(r, { kind: 'wrong-block-on-hint', placedBlockId: 'B-block', hintedBlockId: 'A-block' });
+});
+
+test('findMediumMismatch returns null for null/empty blockCells', function () {
+  var s = H.createHintState('p-fm-7');
+  s.mediumLocked['A-block'] = [{ x: 2, y: 3 }];
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', null), null);
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', undefined), null);
+  assert.strictEqual(H.findMediumMismatch(s, 'A-block', []), null);
+});
+
+test('setMediumMismatchIgnored returns new state with flag true, original untouched', function () {
+  var s = H.createHintState('p-set-1');
+  var s2 = H.setMediumMismatchIgnored(s);
+  assert.strictEqual(s2.mediumMismatchIgnored, true);
+  assert.strictEqual(s.mediumMismatchIgnored, false, 'original state must not be mutated');
+  assert.notStrictEqual(s2, s, 'must return a new object reference');
+});

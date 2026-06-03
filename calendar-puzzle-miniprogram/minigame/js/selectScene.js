@@ -9,6 +9,17 @@ var slotUI = require('./slotUI');
 var slotStoreModule = require('./slotStore');
 var NAMED_SLOT_IDS = slotStoreModule.NAMED_SLOT_IDS || ['named-1', 'named-2', 'named-3'];
 
+// Hardcore toggle preference is persisted across launches so the player
+// keeps their choice between visits. Errors swallowed — toggle simply
+// defaults to OFF if storage is unavailable.
+var HARDCORE_ON_KEY = 'calendarPuzzleHardcoreOn';
+function loadHardcoreOn() {
+  try { return wx.getStorageSync(HARDCORE_ON_KEY) === '1'; } catch (e) { return false; }
+}
+function saveHardcoreOn(on) {
+  try { wx.setStorageSync(HARDCORE_ON_KEY, on ? '1' : ''); } catch (e) {}
+}
+
 module.exports = function createSelectScene(safeInsets, menuRect, onSelect, callbacks) {
   callbacks = callbacks || {};
   var scene = {};
@@ -27,6 +38,8 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
 
   var btnRects = [];
   var infoBtn = null;
+  var hardcoreOn = loadHardcoreOn();
+  var hardcoreToggleRect = null;
   var helpOpen = false;
   var replayBtn = null;
   var message = '';
@@ -135,7 +148,8 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         expert: '#7E57C2', insomnia: '#E53935',
       };
       // Shrink button height if buttons would overflow the remaining space.
-      var availH = H - y - padBottom - 16;
+      var TOGGLE_ROW_RESERVE = 56; // hardcore toggle row (36) + gap (2) + caption (18); see render block below
+      var availH = H - y - padBottom - 16 - TOGGLE_ROW_RESERVE;
       var needH = diffs.length * btnH + (diffs.length - 1) * btnGap;
       if (needH > availH) {
         btnH = Math.max(44, Math.floor((availH - (diffs.length - 1) * btnGap) / diffs.length));
@@ -180,6 +194,33 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         btnRects.push({ x: bx, y: y, w: btnW, h: btnH, diff: d });
         y += btnH + btnGap;
       }
+
+      // ── Hardcore mode toggle (per-session; not persisted) ─────────────
+      var hcRowH = 36;
+      var hcTrackW = 56, hcTrackH = 28;
+      var hcKnobR = 11;
+      var hcLabelX = (W - btnW) / 2;
+      var hcTrackX = hcLabelX + btnW - hcTrackW;
+      var hcTrackY = y + (hcRowH - hcTrackH) / 2;
+      // Label
+      R.textBold(ctx, '🔥 硬核模式', hcLabelX, y + hcRowH / 2, 16, '#333', 'left', 'middle');
+      // Track + knob
+      R.roundRect(ctx, hcTrackX, hcTrackY, hcTrackW, hcTrackH, hcTrackH / 2,
+        hardcoreOn ? '#FF7043' : '#BDBDBD');
+      var knobX = hardcoreOn
+        ? hcTrackX + hcTrackW - hcKnobR - 4
+        : hcTrackX + hcKnobR + 4;
+      ctx.beginPath();
+      ctx.arc(knobX, hcTrackY + hcTrackH / 2, hcKnobR, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      hardcoreToggleRect = { x: hcLabelX, y: y, w: btnW, h: hcRowH };
+      y += hcRowH + 2;
+      // Caption (small grey)
+      R.text(ctx, '关闭提示・换题・券，重开变为清空棋盘',
+        hcLabelX, y + 8, 11, '#888', 'left');
+      y += 18;
+      // ──────────────────────────────────────────────────────────────────
 
       // Info / rules button (top-right, below capsule menu).
       var iSize = 32;
@@ -295,7 +336,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
         if (saved) {
           modal = null; continueLayoutCache = null;
           scene.dirty = true;
-          onSelect(saved.difficulty, saved);
+          onSelect(saved.difficulty, saved, null);
         }
         return;
       }
@@ -312,7 +353,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
             showMsg('体力不足！需要 ' + pdCost + ' 点，当前 ' + stamina.getStamina() + ' 点');
             return;
           }
-          onSelect(pd, null);
+          onSelect(pd, null, { hardcore: hardcoreOn });
         }
         return;
       }
@@ -339,7 +380,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
           mode = 'menu';
           slotGridLayoutCache = null;
           scene.dirty = true;
-          onSelect(slotPayload.difficulty, slotPayload);
+          onSelect(slotPayload.difficulty, slotPayload, null);
           return;
         }
         // empty slot — ignore tap
@@ -371,6 +412,13 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
       return;
     }
 
+    if (hardcoreToggleRect && R.hitTest(x, y, hardcoreToggleRect)) {
+      hardcoreOn = !hardcoreOn;
+      saveHardcoreOn(hardcoreOn);
+      scene.dirty = true;
+      return;
+    }
+
     // Difficulty buttons — with temp-slot intercept.
     for (var i = 0; i < btnRects.length; i++) {
       if (R.hitTest(x, y, btnRects[i])) {
@@ -389,7 +437,7 @@ module.exports = function createSelectScene(safeInsets, menuRect, onSelect, call
           showMsg('体力不足！需要 ' + cost + ' 点，当前 ' + stamina.getStamina() + ' 点');
           return;
         }
-        onSelect(d, null);
+        onSelect(d, null, { hardcore: hardcoreOn });
         return;
       }
     }

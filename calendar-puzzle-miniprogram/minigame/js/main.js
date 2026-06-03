@@ -170,15 +170,15 @@ function showLoading() {
 
 function goToSelect() {
   if (currentScene && currentScene.destroy) currentScene.destroy();
-  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty, savedState) {
-    startGame(difficulty, savedState);
+  currentScene = createSelectScene(safeInsets, menuRect, function (difficulty, savedState, modeOpts) {
+    startGame(difficulty, savedState, modeOpts);
   }, {
     onReplayTutorial: function () { startTutorial(); },
   });
   currentScene.dirty = true;
 }
 
-function startGame(difficulty, savedState) {
+function startGame(difficulty, savedState, modeOpts) {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = null; // clear while generating
 
@@ -193,11 +193,11 @@ function startGame(difficulty, savedState) {
       goToSelect();
       return;
     }
-    launchGameScene(difficulty, puzzle, savedState);
+    launchGameScene(difficulty, puzzle, savedState, modeOpts);
   }, 50);
 }
 
-function launchGameScene(difficulty, puzzle, savedState) {
+function launchGameScene(difficulty, puzzle, savedState, modeOpts) {
   shareState.setCurrent({
     difficulty: difficulty,
     difficultyLabel: PG.DIFFICULTY_CONFIG[difficulty].label,
@@ -207,7 +207,7 @@ function launchGameScene(difficulty, puzzle, savedState) {
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = createGameScene(difficulty, puzzle, safeInsets, menuRect, {
     onSwitchPuzzle: function (newPuzzle) {
-      launchGameScene(difficulty, newPuzzle);
+      launchGameScene(difficulty, newPuzzle, null, currentScene && currentScene.mode ? currentScene.mode : null);
     },
     onBack: function () {
       // Tutorial → shared-puzzle handoff: if a friend's share-card brought a
@@ -219,7 +219,7 @@ function launchGameScene(difficulty, puzzle, savedState) {
       }
       goToSelect();
     },
-  }, savedState);
+  }, savedState, modeOpts);
   currentScene.dirty = true;
 }
 

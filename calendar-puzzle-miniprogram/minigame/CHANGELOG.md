@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.7.0] — 2026-05-27
+
+> 硬核模式 — 一键关掉所有辅助（提示 / 换题 / 重开），换"全凭脑子"的专注挑战。可叠加在 5 档已有难度上；通关解锁 "🔥 硬核通关" 标识，按日期 + 难度记录战绩。
+
+### Added
+- **硬核开关**（`selectScene` 难度按钮下方一行，🔥 toggle，本地持久化 storage key `calendarPuzzleHardcoreOn`，重启小游戏保留上次状态）。开启后任何底层难度均进入硬核局。
+- **游戏内暂停菜单**：左下角 ☰ 按钮（避开微信胶囊菜单），点开弹出锚定 popover（不占半屏，游戏 UI 仍可见）。MVP 三条：`🔥 放弃硬核`（仅硬核局可见，单向降级 + 二次确认）、`🏠 返回首页`、当前题面只读信息。
+- **通关结算页 "🔥 硬核通关" 标签**（仅硬核局展示），结算卡自动加高 24px 防遮挡。
+- **存档列表 🔥 badge**：继续游戏 / 槽位选择 / 覆盖确认 / 未完成对局四处难度后追加 🔥，一眼区分硬核存档。
+- `progress.hardcoreDays` 持久化每日每难度的硬核通关记录（storage key `calendarPuzzleHardcoreDays`）。
+- `mode.js` 模块：mode 对象 + capability helpers（`canUseHint` / `canSwapPuzzle` / `canRestart` / `canClearBoard`），未来扩展模式（限时、每日挑战…）的统一容器。
+
+### Changed
+- 硬核局控制行折叠为 1 个按钮 "🧹 清空"（替代 "↺ 重开"），**清空时计时器不重置**；提示、🎲 随机、🎯 选题在硬核局不渲染。
+- 存档 slot payload 新增 `mode: { hardcore: bool }` 字段；老存档无此字段自动视作非硬核（向后兼容，无需迁移脚本）。
+- `createGameScene(...)` 入参增加第 7 位 `modeOpts`；`selectScene` `onSelect(difficulty, savedState, modeOpts)`；`main.js` 三层透传。
+
+### Fixed
+- `gameScene.js` `padBottom` ReferenceError — ☰ 按钮位置误引用了 `computeLayout` 内的局部变量，改用闭包绑定的 `safeInsets.bottom`（与帮助弹窗、胜利卡片的写法一致）。
+
+### Tests
+- 新 `tests/mode.test.js`：mode 模块全分支（7 用例）。
+- 新 `tests/progress.hardcore.test.js`：hardcoreDays 持久化 + 幂等 + 跨难度并存 + storage round-trip（5 用例）。
+- `tests/slotStore.test.js` +2：`mode` 字段 round-trip + 老 payload 无字段回读。
+- `npm test` 总数 234 → 248（+14），全绿。
+
+### Manual verification required (真机 / 微信开发者工具)
+- 见 `docs/superpowers/specs/2026-05-27-hardcore-mode-design.md` §6.2 (1-8)。
+- 额外验证：
+  - ☰ 按钮在左下角不撞胶囊菜单 + popover 锚定 ☰ 上方弹出，点 ☰ 外任意位置关闭。
+  - 存档列表硬核局难度后显示 🔥；非硬核老存档无此后缀。
+  - 硬核开关重启小游戏后保留上次 ON/OFF 状态。
+  - 硬核 expert 通关 → 结算页 "🔥 硬核通关" 不与时间行重叠。
+
+## [0.6.0] — 2026-05-27
+
+> 中提示位置违规检测 — drop 后如果跟中提示对不上，弹个对话框让玩家立刻取回重选。
+
+### 改动一览
+
+- **中提示不一致对话框**：drop 后如果（a）刚放的方块占了别的方块的中提示位，或（b）刚放的方块是被中提示的那一块但没盖全提示位，弹一个白底圆角对话框。主按钮「取回并重新选中」一键撤回 + 自动选中那块；次级文字按钮「本局不再提示」整局闭嘴；右上角 × 仅关闭这次（下次再违规还弹）。
+- **跨重载**：「本局不再提示」状态搭车 `hintState.mediumMismatchIgnored` 走存档；同一道题恢复后继续闭嘴，换题或新开局自动重置。
+
+### 详情
+
+- `hint.js` 新增纯函数 `findMediumMismatch(state, blockId, blockCells)` + `setMediumMismatchIgnored(state)`，检测逻辑优先级：自己有中提示但没盖全 → `right-block-wrong-loc`；别的块的中提示位被占 → `wrong-block-on-hint`；都没命中返回 null。一次 drop 最多弹一次（找到第一个违规就返回）。
+- `gameScene.js` `placeBlock` 末尾、`checkWin` 之前插入检测调用；触发时模态层渲染对话框、tap handler 接管所有点击直到关闭。modal state 是 in-memory（`var mediumMismatchModal = null`），不参与存档；`hintState.mediumMismatchIgnored` 持久。
+- `restoreHintState` 兜底新字段：缺字段 → 默认 `false`，向后兼容历史存档。`applyWeak`/`applyMedium`/`applyStrong` 全部转写新字段，避免下一次提示把 ignored 状态吃掉。
+
+### 测试
+
+- `tests/hint.test.js` +14 用例：`createHintState` 字段默认、`restoreHintState` 缺字段 / `true` round-trip、`applyWeak/Medium/Strong` 各自的字段保留回归、`findMediumMismatch` 全分支（null / right-block / wrong-block / 优先级 / blockCells null/空 / 不受 mediumMismatchIgnored 影响）、`setMediumMismatchIgnored` 不可变性。
+- `npm test` → **234/234 pass**。
+- gameScene 模态渲染 + tap：无单元测试 harness，手测路径见下方。
+
+### 手测路径
+
+1. 任意题打开 → 用中提示在 A 块上揭一格 → 把 B 块（≠ A）拖到那一格 → 对话框弹出，文案带两个块的 mini-icon → 点「取回并重新选中」→ B 块回 palette 并自动选中。
+2. 同上揭 A 块一格 → A 块拖到别处（没盖到提示位）→ 对话框弹「你刚把 A 放到了别的位置」→ 关 × → 下次再这样放还弹。
+3. 同上揭 A 块一格 → B 块拖到提示位 → 点「本局不再提示」→ 之后再随便错放都不弹 → 退游戏 → 从存档恢复 → 错放还是不弹。换题或新开局后恢复弹。
+4. 教程模式 / 存档 `initialDropped` 自动放置不走 `placeBlock` → 不弹。
+
 ## [0.5.5] — 2026-05-25
 
 > 退出时自动占用第一个空的命名槽位，避免新对局沉到临时槽里被下次会话遗忘。
