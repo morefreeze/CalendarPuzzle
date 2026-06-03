@@ -6,6 +6,7 @@ var B = require('./board');
 var PG = require('./puzzleGenerator');
 var stamina = require('./stamina');
 var shareState = require('./shareState');
+var shareGrayPalette = require('./shareGrayPalette');
 var progress = require('./progress');
 var Hint = require('./hint');
 var M = require('./mode');
@@ -88,6 +89,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
   }
   var paletteOrder = palette.map(function (b) { return b.id; }); // stable display order
+  // One-shot share-snapshot state. When the player taps "share" in the win
+  // modal, the canvas at that moment shows the full solution — every piece
+  // in its real color. Without this, the share-card thumbnail leaks "which
+  // colored piece covers which cell" to every recipient. When non-null, the
+  // board piece-fill path substitutes piece.color with palette[piece.id] so
+  // the snapshot grabbed by wx.shareAppMessage shows grayscale pieces.
+  // _lastCtx/_lastW/_lastH cache the render-context refs so the share
+  // handler can force a synchronous redraw of the gray frame before calling
+  // wx.shareAppMessage.
+  var shareSnapshotMode = null;
+  var _lastCtx = null, _lastW = 0, _lastH = 0;
 
   // Mode resolution: a restored save carries its own mode (preserves hardcore
   // across exit/resume); a fresh game receives modeOpts from selectScene; the
@@ -298,6 +310,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   var confettiLastTick = 0;
   var winStats = null; // { time, isNewPB, prevPB, todayDone, difficulty }
   var winCardDismissed = false;
+  // Timestamp (ms) the win modal first became eligible to render. The ×
+  // close button ignores taps within WIN_MODAL_DISMISS_GRACE_MS of this so
+  // a stray touch from the placing-the-last-piece release (or a synthetic
+  // touch some Android runtimes emit after wx.vibrateLong) can't close the
+  // modal before the player sees it.
+  var winModalShownAt = 0;
+  var WIN_MODAL_DISMISS_GRACE_MS = 600;
 
   // ---- Toast (top-floating, doesn't push layout) ----
   var toast = { msg: '', isWin: false, start: 0, dur: 5000 };
@@ -422,6 +441,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     if (dropped.length === puzzle.remainingBlocks.length) {
       if (B.checkGameWin(allBlocks(), uncov)) {
         isWon = true;
+        winModalShownAt = Date.now();
         // Force-close any open save modal (corner case: player completes puzzle while picker was open).
         slotModal = null; slotPickerLayoutCache = null;
         if (tutorialMode) tutorialStep = 5;
@@ -936,6 +956,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
 
   // ---- RENDER ----
   scene.render = function (ctx, W, H) {
+    _lastCtx = ctx; _lastW = W; _lastH = H;
     computeLayout(W, H);
     R.clear(ctx, W, H);
 
@@ -1042,7 +1063,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         // Background
         if (blockAt) {
           ctx.globalAlpha = locked ? 0.92 : 0.95;
-          ctx.fillStyle = blockAt.color;
+          // Falls back to real color if blockAt.id is missing from the
+          // palette (shouldn't happen — palette is built from allBlocks()
+          // immediately before the synchronous redraw — but degrades safely).
+          ctx.fillStyle = (shareSnapshotMode && shareSnapshotMode.palette[blockAt.id]) || blockAt.color;
           ctx.fillRect(px, py, cs, cs);
           ctx.globalAlpha = 1;
         } else if (isUncov) {
@@ -2362,10 +2386,13 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       return;
     }
 
-    // ── Win modal: × dismisses; 随机下一题 / 完成新手教程 advances; share
-    //    shares; tap outside dismisses; tap inside (not a button) is swallowed.
+    // ── Win modal: × dismisses (after 600ms grace); 随机下一题 / 完成新手教程
+    //    advances; share shares; all other taps (including taps outside the
+    //    card) are swallowed so a stray touch can't close the modal before
+    //    the player sees it.
     if (isWon && !winCardDismissed && L.winCard) {
       if (L.winCloseBtn && R.hitTest(x, y, L.winCloseBtn)) {
+        if (Date.now() - winModalShownAt < WIN_MODAL_DISMISS_GRACE_MS) return;
         winCardDismissed = true; scene.dirty = true; return;
       }
       if (L.winFinishTutorialBtn && R.hitTest(x, y, L.winFinishTutorialBtn)) {
@@ -2389,12 +2416,26 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
-        try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
+        try {
+          var ids = allBlocks().map(function (b) { return b.id; });
+          shareSnapshotMode = { palette: shareGrayPalette.makeShareGrayPalette(ids) };
+          // Defensive only — L.shareBtn is set during a win-modal render,
+          // so _lastCtx is always populated by the time this branch is
+          // reachable. The guard costs nothing and avoids a theoretical
+          // first-tap-before-first-render NPE.
+          if (_lastCtx) scene.render(_lastCtx, _lastW, _lastH);
+          wx.shareAppMessage(shareState.buildShareData());
+        } catch (e) {}
+        setTimeout(function () {
+          shareSnapshotMode = null;
+          scene.dirty = true;
+        }, 0);
         return;
       }
-      if (!R.hitTest(x, y, L.winCard)) {
-        winCardDismissed = true; scene.dirty = true; return;
-      }
+      // Tap outside the card is intentionally swallowed (not a dismiss).
+      // Players celebrating their win often tap on the confetti or top toast,
+      // and those taps used to close the modal before they noticed it. The ×
+      // button is the only explicit-dismiss path now.
       return;
     }
 
