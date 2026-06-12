@@ -146,6 +146,11 @@ function tryLaunchShared(q) {
   if (!isSharedPuzzleQuery(q)) return false;
   var ci = parseInt(q.c, 10);
   var date = PG.parseDateStr(q.date) || new Date();
+  // hc=1 carries the sender's hardcore status so the receiver lands in the
+  // same mode (otherwise the "challenge this puzzle" framing is mismatched
+  // — receiver could trivially win with hints/restart that sender didn't
+  // have). Anything other than '1' is treated as off.
+  var hardcore = q.hc === '1';
   showLoading();
   setTimeout(function () {
     var puzzle = PG.generatePuzzle(q.d, { comboIndex: ci, date: date });
@@ -153,7 +158,7 @@ function tryLaunchShared(q) {
       goToSelect();
       return;
     }
-    launchGameScene(q.d, puzzle);
+    launchGameScene(q.d, puzzle, null, { hardcore: hardcore });
   }, 50);
   return true;
 }
@@ -198,11 +203,20 @@ function startGame(difficulty, savedState, modeOpts) {
 }
 
 function launchGameScene(difficulty, puzzle, savedState, modeOpts) {
+  // Hardcore propagates into the share query so 🎯 邀请朋友挑战这一题 lands
+  // the receiver in the same mode (sender's bragging-rights run is then
+  // comparable). A restored save carries its own mode; selectScene fresh
+  // game uses modeOpts; fall through to false.
+  var isHardcoreRun = !!(
+    (savedState && savedState.mode && savedState.mode.hardcore) ||
+    (modeOpts && modeOpts.hardcore)
+  );
   shareState.setCurrent({
     difficulty: difficulty,
     difficultyLabel: PG.DIFFICULTY_CONFIG[difficulty].label,
     comboIndex: puzzle.currentComboIndex,
     dateStr: puzzle.dateStr,
+    hardcore: isHardcoreRun,
   });
   if (currentScene && currentScene.destroy) currentScene.destroy();
   currentScene = createGameScene(difficulty, puzzle, safeInsets, menuRect, {

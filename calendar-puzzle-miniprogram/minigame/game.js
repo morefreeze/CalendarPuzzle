@@ -7,6 +7,13 @@ var cloudClient = require('./js/cloudClient'); // bundled for Plan 2b/c/d
 var canvas = wx.createCanvas();
 var ctx = canvas.getContext('2d');
 
+// Expose the main canvas via GameGlobal so deep modules (e.g. gameScene's
+// share-thumbnail pre-gen) can call wx.canvasToTempFilePath without an
+// extra plumbing arg. DPR is also needed so offscreen canvases can match
+// the main canvas's pixel resolution.
+GameGlobal.mainCanvas = canvas;
+GameGlobal.dpr = dpr;
+
 // Handle DPR for crisp rendering
 var sysInfo = wx.getSystemInfoSync();
 var dpr = sysInfo.pixelRatio;
@@ -97,6 +104,9 @@ wx.showShareMenu({
 });
 
 wx.onShareAppMessage(function () {
+  // shareData.imageUrl is pre-cached on win (gameScene.preGenShareThumb)
+  // so the share-card thumbnail uses the gray puzzle file instead of a
+  // live canvas capture — no leak of the solution colors.
   return shareState.buildShareData();
 });
 
