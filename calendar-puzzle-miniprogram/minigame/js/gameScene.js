@@ -45,6 +45,19 @@ function setStaminaConfirmSkipUntilNext5AM() {
   } catch (e) { /* ignore */ }
 }
 
+// 「方块透明显示日期」设置 — 持久化、暂停菜单中可中途切换。
+var TRANSPARENT_BLOCKS_KEY = 'calendarPuzzleTransparentBlocksOn';
+function loadTransparentBlocksOn() {
+  try {
+    return (typeof wx !== 'undefined' && wx.getStorageSync && wx.getStorageSync(TRANSPARENT_BLOCKS_KEY) === '1');
+  } catch (e) { return false; }
+}
+function saveTransparentBlocksOn(on) {
+  try {
+    if (typeof wx !== 'undefined' && wx.setStorageSync) wx.setStorageSync(TRANSPARENT_BLOCKS_KEY, on ? '1' : '');
+  } catch (e) { /* ignore */ }
+}
+
 module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRect, callbacks, savedState, modeOpts) {
   var scene = {};
   scene.dirty = true;
@@ -99,6 +112,10 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // handler can force a synchronous redraw of the gray frame before calling
   // wx.shareAppMessage.
   var shareSnapshotMode = null;
+  // When true, scene.render skips the win modal + confetti so the canvas
+  // shows a clean gray puzzle for wx.canvasToTempFilePath. Set only during
+  // the brief synchronous repaint inside preGenShareThumb().
+  var shareFramePaintMode = false;
   var _lastCtx = null, _lastW = 0, _lastH = 0;
 
   // Mode resolution: a restored save carries its own mode (preserves hardcore
@@ -136,6 +153,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
   // ---- Pause-menu state ----
   var pauseMenuOpen = false;
   var abandonConfirmOpen = false;
+  var transparentBlocksOn = loadTransparentBlocksOn();
 
   // ---- Save-slot modal state ----
   var slotModal = null;               // null | 'save-picker' | 'overwrite-warning'
@@ -478,6 +496,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         spawnConfetti();
         showToast('🎉 恭喜通关！', true);
         try { wx.vibrateLong && wx.vibrateLong(); } catch (e) {}
+        // Capture the gray-puzzle share thumbnail now, before the modal
+        // overlays the canvas in the next render. setTimeout(0) defers
+        // past the current touch handler so _lastCtx reflects the latest
+        // frame and the player perceives the modal popping in immediately.
+        setTimeout(preGenShareThumb, 0);
       }
     }
   }
@@ -737,6 +760,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     L.winCard = null;
     L.winCloseBtn = null;
     L.winNextBtn = null;
+    L.winChangeDifficultyBtn = null;
     L.winMomentsBtn = null;
     L.winFinishTutorialBtn = null;
     L.tutorialBanner = null;
@@ -954,6 +978,56 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // day cell: no decoration (clean)
   }
 
+  // ---- Share thumbnail pre-gen ----
+  // Right after the player wins, render one clean frame — gray pieces,
+  // no win modal, no confetti — to an offscreen canvas and capture it via
+  // wx.canvasToTempFilePath. The temp path goes onto shareState so both
+  // the in-modal share button AND wx.onShareAppMessage (capsule menu 转发)
+  // attach it as shareData.imageUrl. The main canvas is never touched —
+  // the live view goes straight from "last placed block" to "win modal
+  // + confetti" with no flicker — and the captured thumbnail can't race
+  // with the main render loop. Fail silently → falls back to WeChat's
+  // live-canvas capture (which would show modal+colors; acceptable).
+  function preGenShareThumb() {
+    if (typeof wx === 'undefined' || !wx.canvasToTempFilePath || !wx.createOffscreenCanvas) return;
+    if (!_lastCtx || !_lastW || !_lastH) return;
+    try {
+      var dpr = (typeof GameGlobal !== 'undefined' && GameGlobal.dpr) || 1;
+      var pxW = Math.round(_lastW * dpr);
+      var pxH = Math.round(_lastH * dpr);
+      // Modern API (lib 2.16.1+) takes type + dims; older form takes none
+      // and exposes settable .width/.height. Try modern first.
+      var off;
+      try {
+        off = wx.createOffscreenCanvas({ type: '2d', width: pxW, height: pxH });
+      } catch (eApi) {
+        off = wx.createOffscreenCanvas();
+        off.width = pxW; off.height = pxH;
+      }
+      var offCtx = off.getContext('2d');
+      offCtx.scale(dpr, dpr);
+
+      var ids = allBlocks().map(function (b) { return b.id; });
+      var savedCtx = _lastCtx, savedW = _lastW, savedH = _lastH;
+      shareSnapshotMode = { palette: shareGrayPalette.makeShareGrayPalette(ids) };
+      shareFramePaintMode = true;
+      scene.render(offCtx, _lastW, _lastH);
+      // Restore so subsequent main-loop renders keep using the live canvas.
+      _lastCtx = savedCtx; _lastW = savedW; _lastH = savedH;
+      shareSnapshotMode = null;
+      shareFramePaintMode = false;
+
+      wx.canvasToTempFilePath({
+        canvas: off,
+        success: function (res) { shareState.setImageUrl(res.tempFilePath); },
+        fail: function () { /* keep imageUrl empty → live-canvas fallback */ },
+      });
+    } catch (e) {
+      shareSnapshotMode = null;
+      shareFramePaintMode = false;
+    }
+  }
+
   // ---- RENDER ----
   scene.render = function (ctx, W, H) {
     _lastCtx = ctx; _lastW = W; _lastH = H;
@@ -1061,8 +1135,19 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         var locked = blockAt && isPrePlaced(blockAt.id);
 
         // Background
+        // 透明方块设置：方块落在日期/月份/星期格（非今日格）时，先绘制底格背景+装饰，
+        // 再以低 alpha 叠加方块色，让玩家看到下方信息。
+        var transparentHere = blockAt && transparentBlocksOn && !isUncov
+          && cell.t !== 'empty' && cell.v != null;
         if (blockAt) {
-          ctx.globalAlpha = locked ? 0.92 : 0.95;
+          if (transparentHere) {
+            ctx.fillStyle = B.CELL_COLORS[cell.t] || '#fff';
+            ctx.fillRect(px, py, cs, cs);
+            drawCellDecoration(ctx, cell.t, px, py, cs);
+            ctx.globalAlpha = 0.6;
+          } else {
+            ctx.globalAlpha = locked ? 0.92 : 0.95;
+          }
           // Falls back to real color if blockAt.id is missing from the
           // palette (shouldn't happen — palette is built from allBlocks()
           // immediately before the synchronous redraw — but degrades safely).
@@ -1121,8 +1206,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
           ctx.strokeRect(px, py, cs, cs);
         }
 
-        // Label (number / month / weekday) — only when not covered
-        if (!blockAt && cell.t !== 'empty' && cell.v != null) {
+        // Label (number / month / weekday) — visible when uncovered, or when
+        // the cell is showing through a transparent block.
+        if (cell.t !== 'empty' && cell.v != null && (!blockAt || transparentHere)) {
           R.textBold(ctx, String(cell.v), px + cs / 2, py + cs / 2,
             Math.max(9, cs * 0.28), isUncov ? '#fff' : '#333', 'center', 'middle');
         }
@@ -1807,14 +1893,17 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     }
 
     // --- Win modal (card + dim backdrop) + confetti ---
-    if (isWon && winStats && !winCardDismissed) {
+    // Suppressed during shareFramePaintMode so the canvasToTempFilePath
+    // capture sees a clean gray puzzle (no modal, no confetti, no overlay).
+    if (isWon && winStats && !winCardDismissed && !shareFramePaintMode) {
       // Dim backdrop — makes the card modal, click-outside dismisses.
       R.overlay(ctx, W, H);
       var cardW = Math.min(W - 32, 320);
-      // Tutorial stacks 2 (finish + invite). Regular win stacks 3
-      // (restart / moments-hint / invite), so grow the card to match.
+      // Tutorial stacks 2 (finish + invite). Regular win stacks 4
+      // (restart / change-difficulty / moments-hint / invite), so grow the
+      // card to match.
       var hcShift = (winStats && winStats.hardcore) ? 24 : 0;
-      var cardH = (tutorialMode ? 250 : 310) + hcShift;
+      var cardH = (tutorialMode ? 250 : 360) + hcShift;
       var cardX = (W - cardW) / 2;
       var cardY = Math.max(L.boardY + L.boardH / 2 - cardH / 2, L.headerY + 80);
       // Clamp against the bottom safe area so the taller 3-button card
@@ -1866,9 +1955,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       }
 
       // Stacked CTAs. Tutorial: [finish, invite]. Normal win:
-      // [restart, moments-hint, invite].
+      // [restart, change-difficulty, moments-hint, invite].
       var sbtnW = cardW - 32, sbtnH = 40, sbtnGap = 10;
-      var btnCount = tutorialMode ? 2 : 3;
+      var btnCount = tutorialMode ? 2 : 4;
       var primaryY = cardY + cardH - btnCount * sbtnH - (btnCount - 1) * sbtnGap - 14;
       var btnX = cardX + (cardW - sbtnW) / 2;
       var slotY = function (i) { return primaryY + i * (sbtnH + sbtnGap); };
@@ -1882,7 +1971,11 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         L.winNextBtn = { x: btnX, y: slotY(0), w: sbtnW, h: sbtnH };
         R.button(ctx, L.winNextBtn.x, L.winNextBtn.y, L.winNextBtn.w, L.winNextBtn.h,
           isInsomnia ? '↺ 重开' : '🎲 随机下一题', BRAND, '#fff', 10);
-        L.winMomentsBtn = { x: btnX, y: slotY(1), w: sbtnW, h: sbtnH };
+        L.winChangeDifficultyBtn = { x: btnX, y: slotY(1), w: sbtnW, h: sbtnH };
+        R.button(ctx, L.winChangeDifficultyBtn.x, L.winChangeDifficultyBtn.y,
+          L.winChangeDifficultyBtn.w, L.winChangeDifficultyBtn.h,
+          '换个难度', '#66BB6A', '#fff', 10);
+        L.winMomentsBtn = { x: btnX, y: slotY(2), w: sbtnW, h: sbtnH };
         R.button(ctx, L.winMomentsBtn.x, L.winMomentsBtn.y,
           L.winMomentsBtn.w, L.winMomentsBtn.h,
           '📤 分享朋友圈', '#1976D2', '#fff', 10);
@@ -2010,7 +2103,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
     // --- Pause-menu popover (anchored above the ☰ button at bottom-left) ---
     if (pauseMenuOpen) {
       var rowH = 56, rowGap = 8;
-      var rowsCount = (M.isHardcore(mode) ? 1 : 0) + 1;
+      var rowsCount = (M.isHardcore(mode) ? 1 : 0) + 1 + 1; // +1 透明方块 toggle, +1 返回首页
       var popPadX = 12, popPadTop = 12, popPadBottom = 12;
       var titleH = 20;
       var popW = Math.min(W - 2 * pad, 280);
@@ -2035,6 +2128,24 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         rowY += rowH + rowGap;
       }
 
+      // 🪟 透明方块 toggle 行（中途可切换；立即生效）
+      R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#F5F5F5');
+      R.textBold(ctx, '🪟 透明方块', rowX + 16, rowY + rowH / 2, 16, '#333', 'left', 'middle');
+      var tTrackW = 48, tTrackH = 26, tKnobR = 10;
+      var tTrackX = rowX + rowW - tTrackW - 16;
+      var tTrackY = rowY + (rowH - tTrackH) / 2;
+      R.roundRect(ctx, tTrackX, tTrackY, tTrackW, tTrackH, tTrackH / 2,
+        transparentBlocksOn ? '#43A047' : '#BDBDBD');
+      var tKnobX = transparentBlocksOn
+        ? tTrackX + tTrackW - tKnobR - 4
+        : tTrackX + tKnobR + 4;
+      ctx.beginPath();
+      ctx.arc(tKnobX, tTrackY + tTrackH / 2, tKnobR, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      L.pauseRowTransparent = { x: rowX, y: rowY, w: rowW, h: rowH };
+      rowY += rowH + rowGap;
+
       R.roundRect(ctx, rowX, rowY, rowW, rowH, 12, '#F5F5F5');
       R.textBold(ctx, '🏠 返回首页', rowX + 16, rowY + rowH / 2, 16, '#333', 'left', 'middle');
       L.pauseRowBack = { x: rowX, y: rowY, w: rowW, h: rowH };
@@ -2046,6 +2157,7 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
       R.text(ctx, titleStr, rowX, rowY + 4, 13, '#666', 'left');
     } else {
       L.pauseSheet = null;
+      L.pauseRowTransparent = null;
     }
 
     if (abandonConfirmOpen) {
@@ -2236,6 +2348,12 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         scene.dirty = true;
         return;
       }
+      if (L.pauseRowTransparent && R.hitTest(x, y, L.pauseRowTransparent)) {
+        transparentBlocksOn = !transparentBlocksOn;
+        saveTransparentBlocksOn(transparentBlocksOn);
+        scene.dirty = true;
+        return;
+      }
       if (L.pauseRowBack && R.hitTest(x, y, L.pauseRowBack)) {
         pauseMenuOpen = false;
         // Same callback path as the top-left back arrow uses.
@@ -2406,6 +2524,15 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         executeRandomSwitch();
         return;
       }
+      if (L.winChangeDifficultyBtn && R.hitTest(x, y, L.winChangeDifficultyBtn)) {
+        // Go back to the difficulty-select screen so the player can pick a
+        // different difficulty for the next round. Same path as the top-left
+        // back arrow / pause-menu 返回首页.
+        clearInterval(timerInterval);
+        flushSaveNow();
+        if (callbacks && callbacks.onBack) callbacks.onBack();
+        return;
+      }
       if (L.winMomentsBtn && R.hitTest(x, y, L.winMomentsBtn)) {
         // Mini-games have no programmatic wx.shareTimeline — only the user
         // can trigger Moments share via the capsule menu. Flash a pulsing
@@ -2416,20 +2543,9 @@ module.exports = function createGameScene(difficulty, puzzle, safeInsets, menuRe
         return;
       }
       if (L.shareBtn && R.hitTest(x, y, L.shareBtn)) {
-        try {
-          var ids = allBlocks().map(function (b) { return b.id; });
-          shareSnapshotMode = { palette: shareGrayPalette.makeShareGrayPalette(ids) };
-          // Defensive only — L.shareBtn is set during a win-modal render,
-          // so _lastCtx is always populated by the time this branch is
-          // reachable. The guard costs nothing and avoids a theoretical
-          // first-tap-before-first-render NPE.
-          if (_lastCtx) scene.render(_lastCtx, _lastW, _lastH);
-          wx.shareAppMessage(shareState.buildShareData());
-        } catch (e) {}
-        setTimeout(function () {
-          shareSnapshotMode = null;
-          scene.dirty = true;
-        }, 0);
+        // The gray-puzzle thumbnail was cached on win via preGenShareThumb,
+        // so shareData.imageUrl already points at the share-safe image.
+        try { wx.shareAppMessage(shareState.buildShareData()); } catch (e) {}
         return;
       }
       // Tap outside the card is intentionally swallowed (not a dismiss).
